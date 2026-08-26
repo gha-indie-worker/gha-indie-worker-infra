@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gha-indie-worker-web-server
+  namespace: gha-indie-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gha-indie-worker-web-server
+  template:
+    metadata:
+      labels:
+        app: gha-indie-worker-web-server
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/gha-indie-worker/gha-indie-worker-web-server.rs:main
+          ports:
+            - containerPort: 8081
+
