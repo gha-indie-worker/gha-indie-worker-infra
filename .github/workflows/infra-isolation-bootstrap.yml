@@ -1,0 +1,27 @@
+name: Bootstrap infra isolation contracts
+on:
+  push:
+    branches: [feat/DEN-3146-infra-isolation-tests]
+permissions:
+  contents: read
+jobs:
+  bootstrap-contracts:
+    name: Bootstrap offline infra contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: infra-isolation
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: infra-isolation/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - name: Report bootstrap scope
+        run: echo 'Validates the first workflow on this feature branch. Offline tests do not establish deployed isolation.' >> "$GITHUB_STEP_SUMMARY"
