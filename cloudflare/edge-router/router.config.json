@@ -1,0 +1,130 @@
+{
+  "$schema": "node_modules/@oresoftware/ores-edge-router/schemas/router.config.schema.json",
+  "org": "gha-indie-worker",
+  "domain": "indiebuild.dev",
+  "gcpProject": "gha-indie-worker",
+  "health": {
+    "paths": [
+      "/healthz",
+      "/readyz"
+    ],
+    "timeoutMs": 3000,
+    "failThreshold": 2,
+    "recoverThreshold": 2,
+    "staleAfterSeconds": 180
+  },
+  "hosts": {
+    "app": {
+      "primary": {
+        "url": "https://origin-hetzner.indiebuild.dev",
+        "kind": "k8s",
+        "hostHeader": "app.indiebuild.dev"
+      },
+      "fallback": {
+        "url": "https://gha-indie-worker-web-server-REPLACE.a.run.app",
+        "kind": "cloudrun",
+        "hostHeader": "gha-indie-worker-web-server-REPLACE.a.run.app"
+      },
+      "websocket": true
+    },
+    "user": {
+      "primary": {
+        "url": "https://origin-hetzner.indiebuild.dev",
+        "kind": "k8s",
+        "hostHeader": "user.indiebuild.dev"
+      },
+      "fallback": {
+        "url": "https://gha-indie-worker-web-server-REPLACE.a.run.app",
+        "kind": "cloudrun",
+        "hostHeader": "gha-indie-worker-web-server-REPLACE.a.run.app"
+      },
+      "websocket": true
+    },
+    "org": {
+      "primary": {
+        "url": "https://origin-hetzner.indiebuild.dev",
+        "kind": "k8s",
+        "hostHeader": "org.indiebuild.dev"
+      },
+      "fallback": {
+        "url": "https://gha-indie-worker-web-server-REPLACE.a.run.app",
+        "kind": "cloudrun",
+        "hostHeader": "gha-indie-worker-web-server-REPLACE.a.run.app"
+      },
+      "websocket": true
+    },
+    "m": {
+      "primary": {
+        "url": "https://origin-hetzner.indiebuild.dev",
+        "kind": "k8s",
+        "hostHeader": "m.indiebuild.dev"
+      },
+      "fallback": {
+        "url": "https://gha-indie-worker-web-server-REPLACE.a.run.app",
+        "kind": "cloudrun",
+        "hostHeader": "gha-indie-worker-web-server-REPLACE.a.run.app"
+      },
+      "websocket": true
+    },
+    "api": {
+      "primary": {
+        "url": "https://origin-hetzner.indiebuild.dev",
+        "kind": "k8s",
+        "hostHeader": "api.indiebuild.dev"
+      },
+      "fallback": {
+        "url": "https://gha-indie-worker-api-server-REPLACE.a.run.app",
+        "kind": "cloudrun",
+        "hostHeader": "gha-indie-worker-api-server-REPLACE.a.run.app"
+      },
+      "websocket": true
+    },
+    "auth": {
+      "primary": {
+        "url": "https://origin-hetzner.ores-shared-auth.com",
+        "kind": "k8s",
+        "hostHeader": "auth.indiebuild.dev"
+      },
+      "fallback": {
+        "url": "https://ores-shared-auth.com",
+        "kind": "other",
+        "mode": "redirect",
+        "hostHeader": "ores-shared-auth.com"
+      }
+    },
+    "admin": {
+      "primary": {
+        "url": "https://origin-hetzner.indiebuild.dev",
+        "kind": "k8s",
+        "hostHeader": "admin.indiebuild.dev"
+      },
+      "access": "cloudflare-access",
+      "websocket": true
+    },
+    "admin-api": {
+      "primary": {
+        "url": "https://origin-hetzner.indiebuild.dev",
+        "kind": "k8s",
+        "hostHeader": "admin-api.indiebuild.dev"
+      },
+      "access": "cloudflare-access",
+      "websocket": true
+    },
+    "api-admin": {
+      "primary": {
+        "url": "https://origin-hetzner.indiebuild.dev",
+        "kind": "k8s",
+        "hostHeader": "api-admin.indiebuild.dev"
+      },
+      "access": "cloudflare-access",
+      "websocket": true
+    },
+    "www": {
+      "primary": {
+        "url": "https://gha-indie-worker.github.io",
+        "kind": "github",
+        "hostHeader": "gha-indie-worker.github.io"
+      }
+    }
+  }
+}

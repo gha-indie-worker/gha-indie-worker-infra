@@ -1,0 +1,35 @@
+name: neon-preview
+
+# A Neon branch per PR on the two PRODUCT projects. The admin project is deliberately excluded:
+# it is provisioned closed and no CI job may open a connection to it.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+    paths: ["neon/**", ".db-providers.json"]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  branch:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project:
+          - crimson-cell-39815049 # canonical
+          - fancy-brook-94928157  # auth
+    steps:
+      - uses: actions/checkout@v4
+      - if: github.event.action != 'closed'
+        uses: neondatabase/create-branch-action@v5
+        with:
+          project_id: ${{ matrix.project }}
+          branch_name: preview/pr-${{ github.event.number }}-${{ github.head_ref }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+      - if: github.event.action == 'closed'
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ matrix.project }}
+          branch: preview/pr-${{ github.event.number }}-${{ github.head_ref }}
+          api_key: ${{ secrets.NEON_API_KEY }}

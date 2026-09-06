@@ -5,7 +5,7 @@
   "mapping": {
     "neonOrg": "org-misty-grass-10005930",
     "supabaseOrg": "agcymjepsfsztukakrrl",
-    "cloudflareDomain": null,
+    "cloudflareDomain": "indiebuild.dev",
     "slackChannel": "C0BMVTP7PGD",
     "gcpProject": "gha-indie-worker",
     "linearProject": "69d23e78-b898-49bf-bc84-d319bdaa2059"

@@ -10,3 +10,17 @@
 *.sqlite
 Cargo.lock
 
+
+# Terraform / OpenTofu working state. `tofu init` downloads provider binaries that are hundreds of
+# megabytes; committing one is an instant pre-receive rejection (GitHub's limit is 100 MB/file).
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+plan.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://github.com/ORESoftware/k8s-libs-and-shared-defs/supabase-defs/schemas/db-providers.schema.json",
+  "schemaVersion": "1.0.0",
+  "githubOrg": "gha-indie-worker",
+  "cloudflareDomain": "indiebuild.dev",
+  "gcpProject": "gha-indie-worker",
+  "slackChannel": "#gha-indie-worker",
+  "productionBranch": "main",
+  "contractSource": {
+    "repository": "gha-indie-worker/gha-indie-worker-orm-core",
+    "path": "migrations",
+    "zedPackage": "gha-indie-worker/gha-indie-worker-orm-core"
+  },
+  "supabase": {
+    "orgRef": "agcymjepsfsztukakrrl",
+    "orgDisplayName": "oresoftware",
+    "sharedOrg": "oresoftware",
+    "githubApp": {
+      "supabaseChangesOnly": true,
+      "deployToProduction": false,
+      "automaticBranching": true
+    },
+    "projects": [
+      {
+        "ref": "mktabbhmldkewllyfizc",
+        "slug": "canonical",
+        "role": "canonical",
+        "plane": "product",
+        "workingDirectory": "supabase/mktabbhmldkewllyfizc",
+        "schemaNamespace": "gha_indie_worker",
+        "migrationTarget": "own-org-later",
+        "state": "active"
+      },
+      {
+        "ref": "qelemqszswrasjtgwfag",
+        "slug": "auth",
+        "role": "auth",
+        "authParent": "child",
+        "plane": "product",
+        "workingDirectory": "supabase/qelemqszswrasjtgwfag",
+        "schemaNamespace": "gha_indie_worker",
+        "migrationTarget": "own-org-later",
+        "state": "active"
+      },
+      {
+        "ref": null,
+        "slug": "admin",
+        "role": "admin",
+        "plane": "admin",
+        "workingDirectory": "supabase/admin-pending",
+        "schemaNamespace": "gha_indie_worker",
+        "migrationTarget": "own-org-later",
+        "state": "planned",
+        "blockedOn": [
+          "owner cost confirmation (~$10/month for one additional project in the shared oresoftware org)",
+          "PrivateLink entitlement (Supabase places it under Enterprise; Team starts at $599/month/org)"
+        ],
+        "notes": "PrivateLink covers Postgres/PgBouncer only; REST, Auth, Storage and Realtime need separate controls on the admin project."
+      }
+    ]
+  },
+  "neon": {
+    "orgId": "org-misty-grass-10005930",
+    "directory": "neon",
+    "projects": [
+      {
+        "id": "crimson-cell-39815049",
+        "slug": "canonical",
+        "role": "canonical",
+        "plane": "product",
+        "region": "aws-us-east-1",
+        "databases": [{ "name": "canonical", "owner": "gha_indie_worker_app" }],
+        "previewBranches": true,
+        "state": "active"
+      },
+      {
+        "id": "fancy-brook-94928157",
+        "slug": "auth",
+        "role": "auth",
+        "authParent": "child",
+        "plane": "product",
+        "region": "aws-us-east-1",
+        "databases": [{ "name": "auth", "owner": "gha_indie_worker_auth" }],
+        "previewBranches": true,
+        "state": "active"
+      },
+      {
+        "id": "round-butterfly-64996380",
+        "slug": "admin",
+        "role": "admin",
+        "plane": "admin",
+        "region": "aws-us-east-1",
+        "databases": [{ "name": "admin", "owner": "gha_indie_worker_admin" }],
+        "previewBranches": false,
+        "state": "provisioned-closed",
+        "publicConnectionsBlocked": true,
+        "vpcConnectionsBlocked": true,
+        "blockedOn": [
+          "Neon private networking requires the Scale plan; this org reports Free"
+        ],
+        "acceptance": [
+          "private endpoint + private DNS created",
+          "connect from the admin network succeeds",
+          "connect from the product network is refused",
+          "connect from the public internet is refused"
+        ]
+      }
+    ]
+  },
+  "planes": {
+    "product": {
+      "services": ["gha-indie-worker-web-server", "gha-indie-worker-api-server"],
+      "vpcConnector": "giw-product",
+      "natOutput": "nat_addresses.product",
+      "mayReach": ["neon:canonical", "neon:auth", "supabase:canonical", "supabase:auth"]
+    },
+    "admin": {
+      "services": [
+        "gha-indie-worker-admin-web-server",
+        "gha-indie-worker-admin-api-server",
+        "gha-indie-worker-mcp-server"
+      ],
+      "vpcConnector": "giw-admin",
+      "natOutput": "nat_addresses.admin",
+      "mayReach": ["neon:admin", "supabase:admin", "aws-rds:admin"]
+    }
+  }
+}
