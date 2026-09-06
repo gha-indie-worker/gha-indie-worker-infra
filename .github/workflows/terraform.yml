@@ -1,0 +1,167 @@
+# Terraform checks.
+#
+# THIS WORKFLOW NEVER APPLIES ANYTHING. It formats, initialises without a
+# backend, validates, and — on a pull request — plans and posts the result. An
+# apply is a human running scripts/apply-terraform.sh with credentials that this
+# workflow does not have.
+#
+# `init -backend=false` on push means fmt/validate run without any state access
+# at all. The plan job needs read credentials, so it is gated on the pull request
+# coming from this repository rather than a fork.
+name: terraform
+
+on:
+  pull_request:
+    paths: ["terraform/**", ".github/workflows/terraform.yml", "scripts/hcl-sanity.py"]
+  push:
+    branches: [main]
+    paths: ["terraform/**", ".github/workflows/terraform.yml", "scripts/hcl-sanity.py"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+
+jobs:
+  # No credentials, no network beyond the provider registry. This job is the one
+  # that must always pass.
+  static:
+    name: fmt, validate, sanity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        root: [cloudflare, gcp]
+    defaults:
+      run:
+        working-directory: terraform/${{ matrix.root }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: terraform fmt -check
+        run: terraform fmt -check -diff -recursive
+
+      - name: terraform init (no backend, no state)
+        run: terraform init -backend=false
+
+      - name: terraform validate
+        run: terraform validate -no-color
+
+      - name: offline sanity checks
+        working-directory: .
+        run: python3 scripts/hcl-sanity.py terraform
+
+  # Plan needs read access to the real providers, so it only runs for a pull
+  # request opened from a branch in this repository. A fork's pull request gets
+  # the static job and nothing else — a plan from an untrusted branch is a
+  # credential handed to code the reviewer has not read yet.
+  plan:
+    name: plan (${{ matrix.root }})
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: terraform-plan
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        root: [cloudflare, gcp]
+    defaults:
+      run:
+        working-directory: terraform/${{ matrix.root }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      # GCP reads come from workload identity federation — no JSON key.
+      - name: Authenticate to Google Cloud
+        if: matrix.root == 'gcp'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: terraform init
+        run: terraform init
+
+      - name: terraform plan
+        id: plan
+        env:
+          # Cloudflare
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_account_id: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_zone_id: ${{ vars.TF_VAR_ZONE_ID }}
+          TF_VAR_k8s_origin_ip: ${{ secrets.TF_VAR_K8S_ORIGIN_IP }}
+          TF_VAR_aws_origin_ip: ${{ vars.TF_VAR_AWS_ORIGIN_IP }}
+          TF_VAR_admin_access_emails: ${{ secrets.TF_VAR_ADMIN_ACCESS_EMAILS }}
+          TF_VAR_admin_access_group_id: ${{ vars.TF_VAR_ADMIN_ACCESS_GROUP_ID }}
+          TF_VAR_cloud_run_web_host: ${{ vars.TF_VAR_CLOUD_RUN_WEB_HOST }}
+          TF_VAR_cloud_run_api_host: ${{ vars.TF_VAR_CLOUD_RUN_API_HOST }}
+          TF_VAR_cloud_run_admin_web_host: ${{ vars.TF_VAR_CLOUD_RUN_ADMIN_WEB_HOST }}
+          TF_VAR_cloud_run_admin_api_host: ${{ vars.TF_VAR_CLOUD_RUN_ADMIN_API_HOST }}
+          # GCP
+          TF_VAR_project_id: ${{ vars.TF_VAR_PROJECT_ID }}
+          TF_VAR_shared_auth_base: ${{ vars.TF_VAR_SHARED_AUTH_BASE }}
+          TF_VAR_shared_auth_admin_base: ${{ vars.TF_VAR_SHARED_AUTH_ADMIN_BASE }}
+          TF_VAR_admin_api_base: ${{ vars.TF_VAR_ADMIN_API_BASE }}
+          TF_VAR_admin_allowlist: ${{ secrets.TF_VAR_ADMIN_ALLOWLIST }}
+        run: |
+          set -euo pipefail
+          terraform plan -no-color -lock=false -out=tfplan | tee plan.txt
+          echo "exitcode=$?" >> "$GITHUB_OUTPUT"
+
+      # The plan text can name resources but never a secret value: this root
+      # creates secret containers, not versions, so there is no payload in the
+      # plan to leak. Still truncated, because a 3000-line comment helps nobody.
+      - name: Comment the plan on the pull request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'terraform/${{ matrix.root }}/plan.txt';
+            let body = fs.readFileSync(path, 'utf8');
+            const limit = 60000;
+            if (body.length > limit) {
+              body = body.slice(0, limit) + `\n... truncated (${body.length} bytes); read the full plan in the job log.`;
+            }
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### terraform plan — \`${{ matrix.root }}\`\n\n<details><summary>plan output</summary>\n\n\`\`\`terraform\n${body}\n\`\`\`\n\n</details>\n\n_Plan only. Nothing is applied by CI; an apply is a human running \`scripts/apply-terraform.sh\`._`,
+            });
+
+      # A plan file records the exact intended change. Keeping it lets a
+      # reviewer diff what was planned against what was eventually applied.
+      - name: Upload the plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ matrix.root }}
+          path: terraform/${{ matrix.root }}/tfplan
+          retention-days: 7
+          if-no-files-found: error

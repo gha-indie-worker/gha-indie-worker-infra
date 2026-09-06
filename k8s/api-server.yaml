@@ -1,24 +1,244 @@
+# gha-indie-worker-api-server — api.indiebuild.dev
+#
+# The primary origin for api.indiebuild.dev. Cloud Run is the fallback; see
+# cloudflare/edge-router/. Cluster source of truth: github.com/ORESoftware/k8s-cluster.
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gha-indie-worker-api-server
   namespace: gha-indie-worker
+  labels:
+    app: gha-indie-worker-api-server
+    plane: product
 spec:
   replicas: 2
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: gha-indie-worker-api-server
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   template:
     metadata:
       labels:
         app: gha-indie-worker-api-server
+        plane: product
     spec:
+      serviceAccountName: gha-indie-worker-api-server
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: api
           image: ghcr.io/gha-indie-worker/gha-indie-worker-api-server.rs:main
+          imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8080
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
           env:
+            - name: GHA_INDIE_WORKER_ENV
+              value: "prod"
             - name: GHA_INDIE_WORKER_API_BIND
               value: "0.0.0.0:8080"
-
+            - name: RUST_LOG
+              value: "info"
+            - name: SHARED_AUTH_AUDIENCE
+              value: "gha-indie-worker-api"
+            # Secret NAMES only. Values live in the cluster's sealed secrets;
+            # this repository never carries one.
+            - name: DATABASE_URL_CANONICAL
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-api
+                  key: database-url-canonical
+            - name: DATABASE_URL_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-api
+                  key: database-url-auth
+            - name: SHARED_AUTH_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-api
+                  key: shared-auth-base
+            - name: SHARED_AUTH_INTROSPECT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-api
+                  key: shared-auth-introspect-secret
+            - name: GHA_INDIE_WORKER_RATE_LIMIT_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-api
+                  key: rate-limit-hmac-secret
+            - name: GHA_INDIE_WORKER_GITHUB_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-api
+                  key: github-webhook-secret
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          # /readyz reports not-ready without a database, so a process that
+          # cannot persist leaves the load balancer instead of accepting writes
+          # it will drop.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 3
+            failureThreshold: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      # readOnlyRootFilesystem means anything that writes needs an explicit
+      # volume. /tmp is the only one.
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gha-indie-worker-api-server
+  namespace: gha-indie-worker
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gha-indie-worker-api-server
+  namespace: gha-indie-worker
+  labels:
+    app: gha-indie-worker-api-server
+spec:
+  type: ClusterIP
+  selector:
+    app: gha-indie-worker-api-server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gha-indie-worker-api-server
+  namespace: gha-indie-worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gha-indie-worker-api-server
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gha-indie-worker-api-server
+  namespace: gha-indie-worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gha-indie-worker-api-server
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gha-indie-worker-api-server
+  namespace: gha-indie-worker
+spec:
+  podSelector:
+    matchLabels:
+      app: gha-indie-worker-api-server
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # From the ingress controller, and from other pods in this namespace.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Postgres (Neon/Supabase), shared-auth and the chat upstream are all
+    # outside the cluster. This does NOT include the admin namespace: the
+    # product plane has no route to admin, here or in GCP.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6543
+    # NATS inside the cluster.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: nats
+      ports:
+        - protocol: TCP
+          port: 4222

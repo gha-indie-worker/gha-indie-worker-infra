@@ -2,3 +2,9 @@ name = "gha-indie-worker-infra"
 kind = "infra"
 version = "0.1.0"
 
+org = "gha-indie-worker"
+language = "hcl"
+
+[dependencies]
+"ORESoftware/ores-edge-router" = "^0.1.0"
+"ORESoftware/ores-gha-workflows" = "^0.1.0"

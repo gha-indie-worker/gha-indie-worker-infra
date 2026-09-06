@@ -1,0 +1,48 @@
+{
+  "$schema": "../schema/neon-project.schema.json",
+  "role": "admin",
+  "provider": "neon",
+  "orgId": "org-misty-grass-10005930",
+  "projectId": "round-butterfly-64996380",
+  "region": "us-east-1",
+  "plan": "free",
+  "status": "blocked",
+  "autoResume": false,
+  "consumers": [
+    "gha-indie-worker-admin-api-server.rs"
+  ],
+  "branches": [
+    { "name": "main", "protected": true, "default": true, "parent": null, "purpose": "production admin data" }
+  ],
+  "roles": [
+    { "name": "giw_admin_owner", "access": "owner", "secretRef": null, "branches": ["main"] },
+    { "name": "giw_admin", "access": "readwrite", "secretRef": "admin-database-url", "branches": ["main"] }
+  ],
+  "databases": [
+    { "name": "giw_admin", "owner": "giw_admin_owner", "schemas": ["public"] }
+  ],
+  "network": {
+    "publicConnectionsBlocked": true,
+    "vpcConnectionsBlocked": true,
+    "privateNetworking": {
+      "enabled": false,
+      "blockedReason": "Private networking requires the Scale plan; this org is on Free. Until a private endpoint exists there is no correct way in, so there is no way in.",
+      "endpointIds": null
+    },
+    "ipAllow": {
+      "enabled": true,
+      "cidrs": [],
+      "primaryBranchOnly": true
+    }
+  },
+  "blockedReason": "Both public and VPC connections are blocked. This is the intended state, not an outage: the admin database refuses every connection until a private endpoint exists to accept the right one.",
+  "todo": [
+    "Upgrade this org to Scale, or accept that the admin plane has no database until then.",
+    "Create the AWS VPC endpoint, record its vpce-... id here AND in infra-isolation/contract.json (projects[neon/admin].endpointIds).",
+    "Only then set vpcConnectionsBlocked to false — and never publicConnectionsBlocked."
+  ],
+  "notes": [
+    "An empty ipAllow list with enabled=true is what refuses every public address. It is not a missing value.",
+    "This matches the recorded state in the September 2026 inventory: the admin project accepts no connections."
+  ]
+}

@@ -1,0 +1,46 @@
+# Copy to terraform.tfvars (gitignored) or pass with -var-file.
+# Nothing here is a secret. Secret VALUES never appear in Terraform — they are
+# added to Secret Manager by hand; see secrets.tf.
+
+project_id = "gha-indie-worker"
+region     = "us-central1"
+github_org = "gha-indie-worker"
+domain     = "indiebuild.dev"
+
+# ---- network -----------------------------------------------------------------
+vpc_name               = "giw-vpc"
+product_subnet_cidr    = "10.20.0.0/20"
+admin_subnet_cidr      = "10.30.0.0/20"
+product_connector_cidr = "10.20.240.0/28"
+admin_connector_cidr   = "10.30.240.0/28"
+
+# ---- Cloud Run shape ----------------------------------------------------------
+product_min_instances = 1
+product_max_instances = 20
+admin_min_instances   = 0
+admin_max_instances   = 4
+cloud_run_cpu         = "1"
+cloud_run_memory      = "512Mi"
+
+# TRUE is required for the edge-router fallback to work. Read the comment on
+# this variable in variables.tf before changing it.
+product_services_public = true
+
+# ---- application configuration -------------------------------------------------
+shared_auth_base       = "https://auth.indiebuild.dev/shared-auth"
+shared_auth_admin_base = ""
+ores_chat_api_base     = ""
+nats_url               = ""
+admin_nats_url         = ""
+admin_mcp_url          = ""
+
+# Fill in from `terraform output cloud_run_urls` after the first apply.
+admin_api_base = ""
+
+# Subject ids permitted on the admin plane (not a secret; an identity list).
+admin_allowlist = ""
+
+# ---- secrets -------------------------------------------------------------------
+# Leave false. A secret with no version fails a deploy loudly; a placeholder
+# version lets a service start up authenticated against nothing.
+create_placeholder_secret_versions = false

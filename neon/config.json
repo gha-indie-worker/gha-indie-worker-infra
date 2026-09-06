@@ -1,0 +1,21 @@
+{
+  "$schema": "./schema/neon-org.schema.json",
+  "provider": "neon",
+  "orgId": "org-misty-grass-10005930",
+  "githubOrg": "gha-indie-worker",
+  "defaultRegion": "us-east-1",
+  "plan": "free",
+  "expectedState": "paused",
+  "contract": "../infra-isolation/contract.json",
+  "projects": {
+    "canonical": "projects/canonical.json",
+    "auth": "projects/auth.json",
+    "admin": "projects/admin.json"
+  },
+  "constraints": [
+    "Private networking (AWS PrivateLink) requires the Scale plan. This org is on Free, so no project has a private endpoint.",
+    "Neon compute endpoint ids (ep-...) are not AWS VPC endpoint ids (vpce-...); infra-isolation/contract.json wants the latter.",
+    "Neon suspension alone can wake on traffic. A paused fleet must also show autoResume=false.",
+    "A VPC is regional. Neon is us-east-1 and Supabase is us-east-2, so they cannot share one literal VPC; see infra-isolation/README.md."
+  ]
+}

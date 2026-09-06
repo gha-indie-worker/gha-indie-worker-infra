@@ -1,0 +1,30 @@
+{
+  "role": "admin",
+  "provider": "supabase",
+  "orgId": "agcymjepsfsztukakrrl",
+  "projectRef": null,
+  "region": null,
+  "status": "blocked",
+  "schemaNamespace": "giw_admin",
+  "consumers": [
+    "gha-indie-worker-admin-api-server.rs"
+  ],
+  "surfaces": {
+    "postgres": { "publicBlocked": true, "privateLink": false },
+    "pooler": { "publicBlocked": true, "privateLink": false },
+    "auth": { "used": false, "publicBlocked": true },
+    "rest": { "used": false, "publicBlocked": true },
+    "storage": { "used": false, "publicBlocked": true },
+    "realtime": { "used": false, "publicBlocked": true },
+    "functions": { "used": false, "publicBlocked": true }
+  },
+  "blockedReason": "No Supabase project exists for the admin role. A dedicated project costs about $25/month and has not been approved.",
+  "todo": [
+    "Decide whether the admin plane needs Supabase at all: the admin API's database is Neon (round-butterfly-64996380), and Supabase Auth is not used on the admin plane.",
+    "If it does: create the project, record its ref here AND in infra-isolation/contract.json (projects[supabase/admin].projectId), and re-run the infra-isolation tests.",
+    "Until then this file stays null. A guessed or borrowed ref would make the isolation contract report a boundary that does not exist."
+  ],
+  "notes": [
+    "publicBlocked is true for every surface here because nothing exists to be public. It is a description of a project that is absent, not of one that is locked down."
+  ]
+}

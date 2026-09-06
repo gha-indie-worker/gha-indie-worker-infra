@@ -1,0 +1,26 @@
+{
+  "role": "canonical",
+  "provider": "supabase",
+  "orgId": "agcymjepsfsztukakrrl",
+  "projectRef": "mktabbhmldkewllyfizc",
+  "region": "us-east-2",
+  "status": "provisioned",
+  "schemaNamespace": "giw",
+  "consumers": [
+    "gha-indie-worker-api-server.rs",
+    "gha-indie-worker-web-server.rs"
+  ],
+  "surfaces": {
+    "postgres": { "publicBlocked": false, "privateLink": false },
+    "pooler": { "publicBlocked": false, "privateLink": false },
+    "auth": { "used": false, "publicBlocked": false },
+    "rest": { "used": false, "publicBlocked": false },
+    "storage": { "used": false, "publicBlocked": false },
+    "realtime": { "used": true, "publicBlocked": false },
+    "functions": { "used": false, "publicBlocked": false }
+  },
+  "notes": [
+    "Realtime is used for client log streaming from Flutter/WASM/TS clients.",
+    "publicBlocked is false everywhere because no network control is in place yet; this file records what IS, not what we would like."
+  ]
+}
