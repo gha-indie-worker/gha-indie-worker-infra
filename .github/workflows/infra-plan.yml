@@ -1,0 +1,64 @@
+name: infra-plan
+
+# Plan only. Nothing in this repo applies automatically: the DNS, the Cloud Run services and the
+# Neon projects are all human-gated, and `dpm` apply is gated separately in orm-core.
+on:
+  pull_request:
+    paths:
+      - "cloudflare/**"
+      - "gcp/**"
+      - "neon/**"
+      - ".db-providers.json"
+  push:
+    branches: [main]
+    paths:
+      - "cloudflare/**"
+      - "gcp/**"
+      - "neon/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  fmt-and-validate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [cloudflare/dns, gcp/cloudrun, neon]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.9.0
+      - name: fmt
+        run: tofu -chdir=${{ matrix.dir }} fmt -check -diff
+      - name: init (no backend)
+        run: tofu -chdir=${{ matrix.dir }} init -backend=false -input=false
+      - name: validate
+        run: tofu -chdir=${{ matrix.dir }} validate
+
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: .db-providers.json is valid JSON and the planes are disjoint
+        run: node scripts/check-db-providers.mjs
+      - name: edge-router config matches the schema
+        working-directory: cloudflare/edge-router
+        run: |
+          npm install --no-audit --no-fund
+          npm run validate
+  isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - working-directory: infra-isolation
+        run: npm ci --ignore-scripts && npm test

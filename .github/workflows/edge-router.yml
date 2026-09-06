@@ -1,0 +1,39 @@
+name: edge-router
+
+on:
+  push:
+    branches: [main]
+    paths: ["cloudflare/edge-router/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production # requires the reviewer approval configured on the environment
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - working-directory: cloudflare/edge-router
+        run: npm install --no-audit --no-fund
+      - name: validate config
+        working-directory: cloudflare/edge-router
+        run: npm run validate
+      - name: refuse to deploy while fallback placeholders remain
+        working-directory: cloudflare/edge-router
+        run: |
+          if grep -q 'REPLACE\.a\.run\.app' router.config.json; then
+            echo "::error::router.config.json still has *-REPLACE.a.run.app placeholders; apply gcp/cloudrun and paste the fallback_urls output first"
+            exit 1
+          fi
+      - name: deploy
+        working-directory: cloudflare/edge-router
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          HEALTH_KV_ID: ${{ vars.CF_HEALTH_KV_ID }}
+        run: npm run deploy
