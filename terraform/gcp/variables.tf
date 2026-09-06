@@ -166,8 +166,8 @@ variable "product_services_public" {
     balancer in front instead. Authentication is application-level either way:
     every route on these services refuses an anonymous caller with 401.
   EOT
-  type    = bool
-  default = true
+  type        = bool
+  default     = true
 }
 
 # ---- application configuration --------------------------------------------------
@@ -259,6 +259,6 @@ variable "create_placeholder_secret_versions" {
 
     Turn it on only for a throwaway environment.
   EOT
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
 }
