@@ -1,0 +1,84 @@
+# The two namespaces, and the default-deny that makes the admin one worth having.
+#
+# Apply this BEFORE the workloads. A NetworkPolicy that arrives after the pods it
+# is meant to constrain leaves a window in which they are unconstrained.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gha-indie-worker
+  labels:
+    kubernetes.io/metadata.name: gha-indie-worker
+    plane: product
+    # Pod Security Admission: reject a pod that does not meet the restricted
+    # profile, rather than warning about it after it is running.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gha-indie-worker-admin
+  labels:
+    kubernetes.io/metadata.name: gha-indie-worker-admin
+    plane: admin
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+# DEFAULT DENY for the admin namespace, both directions.
+#
+# An empty podSelector selects every pod; naming both policy types with no rules
+# denies all ingress and all egress. Everything the admin workloads are allowed
+# to do is then re-granted, explicitly, by the per-workload policies in
+# admin-api-server.yaml and admin-web-server.yaml.
+#
+# The consequence to understand: a new pod added to this namespace has NO network
+# until someone writes it a policy. That is the intended failure mode — a
+# forgotten policy shows up as an obviously broken pod, not as an accidentally
+# reachable one.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: gha-indie-worker-admin
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# The only blanket allow in the admin namespace: DNS. Without it every policy
+# above fails in a way that looks like a name-resolution bug rather than a
+# policy decision.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: gha-indie-worker-admin
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Admin pods may talk to each other. Stated once, here, so each workload policy
+# only has to describe what is unusual about that workload.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-admin-namespace
+  namespace: gha-indie-worker-admin
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gha-indie-worker-admin

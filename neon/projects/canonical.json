@@ -1,0 +1,45 @@
+{
+  "$schema": "../schema/neon-project.schema.json",
+  "role": "canonical",
+  "provider": "neon",
+  "orgId": "org-misty-grass-10005930",
+  "projectId": "crimson-cell-39815049",
+  "region": "us-east-1",
+  "plan": "free",
+  "status": "provisioned",
+  "autoResume": false,
+  "consumers": [
+    "gha-indie-worker-api-server.rs",
+    "gha-indie-worker-web-server.rs"
+  ],
+  "branches": [
+    { "name": "main", "protected": true, "default": true, "parent": null, "purpose": "production" },
+    { "name": "dev", "protected": false, "default": false, "parent": "main", "purpose": "development and CI branches" }
+  ],
+  "roles": [
+    { "name": "giw_owner", "access": "owner", "secretRef": null, "branches": ["main", "dev"] },
+    { "name": "giw_api", "access": "readwrite", "secretRef": "gha-indie-worker-database-url-canonical", "branches": ["main"] },
+    { "name": "giw_web_ro", "access": "readonly", "secretRef": "gha-indie-worker-canonical-read-url", "branches": ["main"] }
+  ],
+  "databases": [
+    { "name": "giw", "owner": "giw_owner", "schemas": ["public"] }
+  ],
+  "network": {
+    "publicConnectionsBlocked": false,
+    "vpcConnectionsBlocked": false,
+    "privateNetworking": {
+      "enabled": false,
+      "blockedReason": "Private networking requires the Scale plan; this org is on Free.",
+      "endpointIds": null
+    },
+    "ipAllow": {
+      "enabled": false,
+      "cidrs": [],
+      "primaryBranchOnly": true
+    }
+  },
+  "notes": [
+    "publicConnectionsBlocked is false because it IS false: with no IP allow-list and no private networking, this project is reachable from the internet with credentials alone.",
+    "giw_owner has no secretRef on purpose — DDL is dpm's, run by a human, never by a service."
+  ]
+}

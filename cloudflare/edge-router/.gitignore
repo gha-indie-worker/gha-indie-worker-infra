@@ -1,0 +1,4 @@
+node_modules/
+# Written by `npm run render:check` and diffed against the committed file.
+wrangler.rendered.toml
+.wrangler/

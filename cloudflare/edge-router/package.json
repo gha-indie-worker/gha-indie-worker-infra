@@ -2,7 +2,7 @@
   "name": "@gha-indie-worker/edge-router",
   "private": true,
   "version": "0.1.0",
-  "description": "indiebuild.dev edge router — rendered from router.config.json by ores-edge-router",
+  "description": "indiebuild.dev edge router \u2014 rendered from router.config.json by ores-edge-router",
   "type": "module",
   "scripts": {
     "validate": "ores-edge-router-validate router.config.json",
@@ -11,7 +11,7 @@
     "tail": "wrangler tail"
   },
   "dependencies": {
-    "@oresoftware/ores-edge-router": "github:ORESoftware/ores-edge-router#v0.1.1"
+    "@oresoftware/ores-edge-router": "github:ORESoftware/ores-edge-router#92adaf8345188014b25a3469b378443e655362f4"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

@@ -1,0 +1,213 @@
+# gha-indie-worker-admin-web-server — admin.indiebuild.dev
+#
+# The admin console. Its ONLY upstream is the admin API in the same namespace;
+# it never talks to a database, and it never talks to the product plane.
+# Namespace `gha-indie-worker-admin` is default-deny (namespace.yaml).
+#
+# Binds 0.0.0.0:8788 with GHA_INDIE_WORKER_ADMIN_ALLOW_PUBLIC_BIND=1 — the binary
+# refuses a non-loopback bind otherwise and does not read $PORT.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gha-indie-worker-admin-web-server
+  namespace: gha-indie-worker-admin
+  labels:
+    app: gha-indie-worker-admin-web-server
+    plane: admin
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: gha-indie-worker-admin-web-server
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: gha-indie-worker-admin-web-server
+        plane: admin
+    spec:
+      serviceAccountName: gha-indie-worker-admin-web-server
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: admin-web
+          image: ghcr.io/gha-indie-worker/gha-indie-worker-admin-web-server.rs:main
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8788
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: GHA_INDIE_WORKER_ENV
+              value: "prod"
+            - name: GHA_INDIE_WORKER_ADMIN_BIND
+              value: "0.0.0.0:8788"
+            - name: GHA_INDIE_WORKER_ADMIN_ALLOW_PUBLIC_BIND
+              value: "1"
+            - name: RUST_LOG
+              value: "info"
+            - name: ORES_MIDDLEWARE_ENV
+              value: "prod"
+            - name: SHARED_AUTH_ADMIN_AUDIENCE
+              value: "gha-indie-worker-admin"
+            - name: GHA_INDIE_WORKER_ADMIN_API_BASE
+              value: "http://gha-indie-worker-admin-api-server.gha-indie-worker-admin.svc.cluster.local"
+            # Off unless a mesh sidecar really injects the actor headers.
+            # Outside a mesh those headers are attacker-controlled.
+            - name: GHA_INDIE_WORKER_ADMIN_TRUST_MESH_HEADERS
+              value: "0"
+            - name: GHA_INDIE_WORKER_ADMIN_INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-admin-web
+                  key: admin-internal-secret
+            - name: GHA_INDIE_WORKER_ADMIN_ALLOWLIST
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-admin-web
+                  key: admin-allowlist
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 3
+            failureThreshold: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gha-indie-worker-admin-web-server
+  namespace: gha-indie-worker-admin
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gha-indie-worker-admin-web-server
+  namespace: gha-indie-worker-admin
+  labels:
+    app: gha-indie-worker-admin-web-server
+spec:
+  type: ClusterIP
+  selector:
+    app: gha-indie-worker-admin-web-server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gha-indie-worker-admin-web-server
+  namespace: gha-indie-worker-admin
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gha-indie-worker-admin-web-server
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gha-indie-worker-admin-web-server
+  namespace: gha-indie-worker-admin
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gha-indie-worker-admin-web-server
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gha-indie-worker-admin-web-server
+  namespace: gha-indie-worker-admin
+spec:
+  podSelector:
+    matchLabels:
+      app: gha-indie-worker-admin-web-server
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gha-indie-worker-admin
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8788
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The admin API and nothing else. No database, no product namespace, no
+    # general internet: this console has exactly one upstream.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: gha-indie-worker-admin-api-server
+      ports:
+        - protocol: TCP
+          port: 8787

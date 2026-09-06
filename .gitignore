@@ -24,3 +24,12 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+# --- terraform ---
+crash.*.log
+*.tfvars
+!*.tfvars.example
+tfplan
+# .terraform.lock.hcl IS committed: it pins provider versions + checksums.
+# --- wrangler ---
+.wrangler/
+wrangler.rendered.toml

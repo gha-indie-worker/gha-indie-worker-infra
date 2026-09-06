@@ -1,0 +1,244 @@
+# gha-indie-worker-admin-api-server — admin-api.indiebuild.dev
+#
+# Lives in the SEPARATE namespace `gha-indie-worker-admin`, which is default-deny
+# (see namespace.yaml). Nothing from the product namespace can reach it: the
+# default-deny policy refuses everything, and the allow rules below name only the
+# admin namespace and the ingress controller.
+#
+# THE BIND ADDRESS IS LOAD-BEARING. The binary defaults to 127.0.0.1:8787 and
+# refuses a non-loopback bind unless GHA_INDIE_WORKER_ADMIN_ALLOW_PUBLIC_BIND is
+# exactly "1". It does not read $PORT. Both variables are set here, next to the
+# network policy that makes them safe — never baked into the image.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gha-indie-worker-admin-api-server
+  namespace: gha-indie-worker-admin
+  labels:
+    app: gha-indie-worker-admin-api-server
+    plane: admin
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: gha-indie-worker-admin-api-server
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: gha-indie-worker-admin-api-server
+        plane: admin
+    spec:
+      serviceAccountName: gha-indie-worker-admin-api-server
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: admin-api
+          image: ghcr.io/gha-indie-worker/gha-indie-worker-admin-api-server.rs:main
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8787
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: GHA_INDIE_WORKER_ENV
+              value: "prod"
+            - name: GHA_INDIE_WORKER_ADMIN_BIND
+              value: "0.0.0.0:8787"
+            - name: GHA_INDIE_WORKER_ADMIN_ALLOW_PUBLIC_BIND
+              value: "1"
+            - name: RUST_LOG
+              value: "info"
+            - name: ORES_MIDDLEWARE_ENV
+              value: "prod"
+            # The ADMIN shared-auth instance. A customer-instance token must be
+            # refused, which is why the customer audience is named here too —
+            # only to build the deny list.
+            - name: SHARED_AUTH_ADMIN_AUDIENCE
+              value: "gha-indie-worker-admin"
+            - name: GHA_INDIE_WORKER_ADMIN_DENY_AUDIENCES
+              value: "gha-indie-worker-api,gha-indie-worker-web"
+            # Secret NAMES only.
+            - name: SHARED_AUTH_ADMIN_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-admin-api
+                  key: shared-auth-admin-base
+            - name: SHARED_AUTH_ADMIN_INTROSPECT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-admin-api
+                  key: shared-auth-admin-introspect-secret
+            # The admin database, reachable only from this plane.
+            - name: ADMIN_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-admin-api
+                  key: admin-database-url
+            - name: GHA_INDIE_WORKER_ADMIN_INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-admin-api
+                  key: admin-internal-secret
+            - name: GHA_INDIE_WORKER_ADMIN_ALLOWLIST
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-admin-api
+                  key: admin-allowlist
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 3
+            failureThreshold: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gha-indie-worker-admin-api-server
+  namespace: gha-indie-worker-admin
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gha-indie-worker-admin-api-server
+  namespace: gha-indie-worker-admin
+  labels:
+    app: gha-indie-worker-admin-api-server
+spec:
+  type: ClusterIP
+  selector:
+    app: gha-indie-worker-admin-api-server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gha-indie-worker-admin-api-server
+  namespace: gha-indie-worker-admin
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gha-indie-worker-admin-api-server
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gha-indie-worker-admin-api-server
+  namespace: gha-indie-worker-admin
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gha-indie-worker-admin-api-server
+  minReplicas: 2
+  # The admin plane is a handful of operators, not the internet. A ceiling this
+  # low is also a blast-radius limit if something ever does reach it.
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gha-indie-worker-admin-api-server
+  namespace: gha-indie-worker-admin
+spec:
+  podSelector:
+    matchLabels:
+      app: gha-indie-worker-admin-api-server
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # ONLY the admin namespace and the ingress controller. The product namespace
+    # appears nowhere, and the default-deny policy means "not named" is "denied".
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gha-indie-worker-admin
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8787
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The admin database and the admin shared-auth instance, both outside the
+    # cluster. Private ranges are excluded so this rule cannot become a path
+    # into the product namespace.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6543

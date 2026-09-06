@@ -1,21 +1,255 @@
+# gha-indie-worker-web-server — app. / user. / org. / m.indiebuild.dev
+#
+# ONE process serves all four hosts, routing on the Host header. It answers 404
+# on EVERY path — /healthz included — for a host it does not recognise, so every
+# probe below carries an explicit Host header. Without it the pod never becomes
+# ready. Cluster source of truth: github.com/ORESoftware/k8s-cluster.
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gha-indie-worker-web-server
   namespace: gha-indie-worker
+  labels:
+    app: gha-indie-worker-web-server
+    plane: product
 spec:
   replicas: 2
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: gha-indie-worker-web-server
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   template:
     metadata:
       labels:
         app: gha-indie-worker-web-server
+        plane: product
     spec:
+      serviceAccountName: gha-indie-worker-web-server
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: web
           image: ghcr.io/gha-indie-worker/gha-indie-worker-web-server.rs:main
+          imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8081
-
+            - name: http
+              containerPort: 8081
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: GHA_INDIE_WORKER_ENV
+              value: "production"
+            - name: GHA_INDIE_WORKER_WEB_BIND
+              value: "0.0.0.0:8081"
+            - name: GHA_INDIE_WORKER_BASE_DOMAIN
+              value: "indiebuild.dev"
+            - name: GHA_INDIE_WORKER_ASSETS_DIR
+              value: "/app/assets"
+            - name: GHA_INDIE_WORKER_CHAT_ENABLED
+              value: "true"
+            - name: RUST_LOG
+              value: "info"
+            - name: SHARED_AUTH_AUDIENCE
+              value: "gha-indie-worker-web"
+            - name: ORES_MIDDLEWARE_ENV
+              value: "production"
+            # Behind the cluster ingress, which is behind Cloudflare.
+            - name: ORES_MIDDLEWARE_TLS_MODE
+              value: "trusted-proxy"
+            - name: GHA_INDIE_WORKER_API_HTTP_BASE
+              value: "http://gha-indie-worker-api-server.gha-indie-worker.svc.cluster.local"
+            # Secret NAMES only.
+            - name: GHA_INDIE_WORKER_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-web
+                  key: session-secret
+            - name: GHA_INDIE_WORKER_RATE_LIMIT_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-web
+                  key: rate-limit-hmac-secret
+            - name: SHARED_AUTH_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-web
+                  key: shared-auth-base
+            - name: SHARED_AUTH_INTROSPECT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-web
+                  key: shared-auth-introspect-secret
+            # A READ-ONLY role on the canonical project.
+            - name: DATABASE_URL_CANONICAL
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-web
+                  key: database-url-canonical-readonly
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: app.indiebuild.dev
+            periodSeconds: 3
+            failureThreshold: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: app.indiebuild.dev
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: app.indiebuild.dev
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gha-indie-worker-web-server
+  namespace: gha-indie-worker
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gha-indie-worker-web-server
+  namespace: gha-indie-worker
+  labels:
+    app: gha-indie-worker-web-server
+spec:
+  type: ClusterIP
+  selector:
+    app: gha-indie-worker-web-server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gha-indie-worker-web-server
+  namespace: gha-indie-worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gha-indie-worker-web-server
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gha-indie-worker-web-server
+  namespace: gha-indie-worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gha-indie-worker-web-server
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gha-indie-worker-web-server
+  namespace: gha-indie-worker
+spec:
+  podSelector:
+    matchLabels:
+      app: gha-indie-worker-web-server
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8081
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The API server, in this namespace.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: gha-indie-worker-api-server
+      ports:
+        - protocol: TCP
+          port: 8080
+    # shared-auth and the read-only database, both outside the cluster.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6543

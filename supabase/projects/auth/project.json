@@ -1,0 +1,26 @@
+{
+  "role": "auth",
+  "provider": "supabase",
+  "orgId": "agcymjepsfsztukakrrl",
+  "projectRef": "qelemqszswrasjtgwfag",
+  "region": "us-east-2",
+  "status": "provisioned",
+  "schemaNamespace": "giw",
+  "consumers": [
+    "shared-auth",
+    "gha-indie-worker-api-server.rs"
+  ],
+  "surfaces": {
+    "postgres": { "publicBlocked": false, "privateLink": false },
+    "pooler": { "publicBlocked": false, "privateLink": false },
+    "auth": { "used": true, "publicBlocked": false },
+    "rest": { "used": false, "publicBlocked": false },
+    "storage": { "used": false, "publicBlocked": false },
+    "realtime": { "used": false, "publicBlocked": false },
+    "functions": { "used": false, "publicBlocked": false }
+  },
+  "notes": [
+    "Supabase Auth is federated by shared-auth; product servers accept the resulting JWT verified against JWKS.",
+    "The Auth surface is public by necessity — end users authenticate against it — so PrivateLink would not cover it even on a Team plan."
+  ]
+}

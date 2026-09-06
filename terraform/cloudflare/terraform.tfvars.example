@@ -1,0 +1,46 @@
+# Copy to terraform.tfvars (gitignored) or pass with -var-file.
+# Nothing in this file is a secret: the API token comes from the environment.
+
+cloudflare_account_id = "00000000000000000000000000000000"
+zone_name             = "indiebuild.dev"
+# Leave zone_id empty to look the zone up by name.
+zone_id = ""
+
+gcp_region = "us-central1"
+
+# ---- origins -----------------------------------------------------------------
+# The public IPv4 of the k8s-cluster ingress. Published UNPROXIED.
+k8s_origin_ip = "203.0.113.10"
+# Leave empty until there is an AWS edge.
+aws_origin_ip = ""
+
+# Cloud Run hostnames, from `terraform -chdir=terraform/gcp output cloud_run_hosts`.
+cloud_run_web_host       = ""
+cloud_run_api_host       = ""
+cloud_run_admin_web_host = ""
+cloud_run_admin_api_host = ""
+
+# ---- auth --------------------------------------------------------------------
+# shared-auth owns auth.indiebuild.dev in its own repository. Only flip this if
+# this root becomes the single owner of that record.
+manage_auth_record = false
+auth_origin_target = ""
+
+# ---- Access ------------------------------------------------------------------
+admin_access_emails   = ["alexander.d.mills@gmail.com"]
+admin_access_group_id = ""
+access_require_mfa    = true
+
+# ---- WAF ---------------------------------------------------------------------
+api_rate_limit_requests = 600
+api_rate_limit_period   = 60
+enable_bot_challenge    = true
+
+# ---- TLS ---------------------------------------------------------------------
+# Start at one day. Raise to 31536000 once every host is verified HTTPS-only.
+hsts_max_age = 86400
+hsts_preload = false
+
+# ---- email -------------------------------------------------------------------
+manage_email_posture = true
+dmarc_rua            = ""

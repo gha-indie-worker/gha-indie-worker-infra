@@ -1,0 +1,85 @@
+# Supabase desired state for github.com/gha-indie-worker.
+#
+# Per the fleet convention, Supabase configuration lives in the org's -infra
+# repository rather than in a repository of its own: the projects here are the
+# same three roles the infra-isolation contract already tracks, and splitting
+# them across repositories is how a contract and its implementation drift.
+#
+# This file is DESIRED STATE that provider tooling and validators ingest. It is
+# not applied by anything in this repository today — see README.md for what is
+# and is not automated, and for the two entitlements (PrivateLink, per-project
+# billing) that block the parts marked `blocked`.
+#
+# It contains no keys, no connection strings and no tokens. Only identities.
+
+[org]
+# The Supabase organisation. Today every ORESoftware org shares one Supabase
+# organisation; see [near_term] below.
+id = "agcymjepsfsztukakrrl"
+github_org = "gha-indie-worker"
+
+[fleet]
+# Mirrors infra-isolation/contract.json. If these disagree, the contract wins
+# and this file is wrong.
+contract = "../infra-isolation/contract.json"
+expected_state = "paused"
+
+[projects.canonical]
+ref = "mktabbhmldkewllyfizc"
+region = "us-east-2"
+role = "canonical"
+# Which servers connect: the product plane only.
+consumers = ["gha-indie-worker-api-server.rs", "gha-indie-worker-web-server.rs"]
+schema_namespace = "giw"
+
+[projects.auth]
+ref = "qelemqszswrasjtgwfag"
+region = "us-east-2"
+role = "auth"
+# shared-auth federates Supabase Auth; product servers verify the resulting JWT.
+consumers = ["shared-auth", "gha-indie-worker-api-server.rs"]
+schema_namespace = "giw"
+
+[projects.admin]
+# NOT PROVISIONED. Deliberately null, not guessed.
+ref = ""
+region = ""
+role = "admin"
+consumers = ["gha-indie-worker-admin-api-server.rs"]
+schema_namespace = "giw_admin"
+status = "blocked"
+blocked_reason = "no Supabase project exists for the admin role; a separate project is ~$25/mo and has not been approved"
+
+[near_term]
+# Until per-org Supabase projects are funded, every org shares the `oresoftware`
+# Supabase organisation and is separated by a per-GitHub-org SCHEMA NAMESPACE
+# rather than by a project boundary.
+#
+# Be honest about what that is worth: a schema is a naming boundary enforced by
+# grants inside one database. It is NOT the isolation the infra-isolation
+# contract describes, and it never satisfies the three-area invariant. It is a
+# staging arrangement with a known end date, not a design.
+shared_supabase_org = "oresoftware"
+schema_namespace = "giw"
+admin_schema_namespace = "giw_admin"
+isolation = "schema-only"
+satisfies_infra_isolation_contract = false
+
+[network]
+# PrivateLink covers Postgres and the pooler ONLY. Auth, REST/Data API, Storage,
+# Realtime and Functions are separate surfaces needing separate controls; do not
+# read "Postgres is private" as "the project is private".
+private_link = false
+private_link_blocked_reason = "requires Team or Enterprise (Team from $599/mo); all orgs are on the free plan"
+public_services_blocked = false
+postgres_public_blocked = false
+
+[migrations]
+# dpm is the only migration tool in this fleet. Nothing here runs DDL.
+tool = "dpm"
+source_of_truth = "gha-indie-worker-orm-core/schema.sql"
+supabase_mirrors = "auth-adjacent tables only"
+
+[functions]
+# Not used. See functions/README.md.
+edge_functions = false
