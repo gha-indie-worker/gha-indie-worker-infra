@@ -18,11 +18,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: cloudflare/edge-router/package-lock.json
       - working-directory: cloudflare/edge-router
-        run: npm install --no-audit --no-fund
+        run: npm ci --ignore-scripts
       - name: validate config
         working-directory: cloudflare/edge-router
-        run: npm run validate
+        run: npm test
       - name: refuse to deploy while fallback placeholders remain
         working-directory: cloudflare/edge-router
         run: |

@@ -5,13 +5,14 @@
   "description": "indiebuild.dev edge router — rendered from router.config.json by ores-edge-router",
   "type": "module",
   "scripts": {
-    "validate": "ores-edge-router-validate router.config.json",
-    "render": "ores-edge-router-render router.config.json > wrangler.toml",
+    "validate": "node node_modules/@oresoftware/ores-edge-router/scripts/validate-config.mjs router.config.json",
+    "render": "node scripts/render-wrangler.mjs router.config.json",
+    "test": "npm run validate && npm run render && git diff --exit-code -- wrangler.toml",
     "deploy": "npm run validate && npm run render && wrangler deploy",
     "tail": "wrangler tail"
   },
   "dependencies": {
-    "@oresoftware/ores-edge-router": "github:ORESoftware/ores-edge-router#v0.1.1"
+    "@oresoftware/ores-edge-router": "https://github.com/ORESoftware/ores-edge-router/archive/c410f590074b59c5fd06ca08b641d180041e53ba.tar.gz"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
