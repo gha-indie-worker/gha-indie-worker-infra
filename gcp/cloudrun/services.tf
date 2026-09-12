@@ -31,11 +31,16 @@ locals {
 }
 
 resource "google_cloud_run_v2_service" "web" {
-  name                = "gha-indie-worker-web-server"
-  location            = var.region
-  ingress             = "INGRESS_TRAFFIC_ALL"
-  deletion_protection = false
-  description         = "MASH/Leptos/Dioxus web server — Cloud Run fallback for app./user./org./m.${var.domain}"
+  name     = "gha-indie-worker-web-server"
+  location = var.region
+  ingress  = "INGRESS_TRAFFIC_ALL"
+  # Cloudflare Workers cannot present a Google service-account identity. The application
+  # boundary therefore validates the Worker-signed edge secret; keep the Cloud Run IAM
+  # invoker check disabled only for these product fallback services. Admin services remain
+  # IAM- and ingress-private below.
+  invoker_iam_disabled = true
+  deletion_protection  = false
+  description          = "MASH/Leptos/Dioxus web server — Cloud Run fallback for app./user./org./m.${var.domain}"
 
   template {
     service_account = google_service_account.svc["web"].email
@@ -128,11 +133,14 @@ resource "google_cloud_run_v2_service" "web" {
 }
 
 resource "google_cloud_run_v2_service" "api" {
-  name                = "gha-indie-worker-api-server"
-  location            = var.region
-  ingress             = "INGRESS_TRAFFIC_ALL"
-  deletion_protection = false
-  description         = "JSON API + WebSocket — Cloud Run fallback for api.${var.domain}"
+  name     = "gha-indie-worker-api-server"
+  location = var.region
+  ingress  = "INGRESS_TRAFFIC_ALL"
+  # See the web service: this is the public, edge-only fallback. The API must still reject
+  # requests without the Cloudflare edge signature before doing any work.
+  invoker_iam_disabled = true
+  deletion_protection  = false
+  description          = "JSON API + WebSocket — Cloud Run fallback for api.${var.domain}"
 
   template {
     service_account = google_service_account.svc["api"].email
@@ -230,7 +238,9 @@ locals {
     # Deep links to the ADMIN provider projects (never the canonical/auth ones).
     GHA_INDIE_WORKER_PLANE = "admin"
     # MCP: the admin plane talks to our own MCP servers for development/introspection.
-    GHA_INDIE_WORKER_MCP_URL = "https://gha-indie-worker-mcp-server-REPLACE.a.run.app"
+    # Terraform supplies the exact service URI, so the admin web/API plane never ships with a
+    # guessed or stale MCP hostname. IAM below grants only admin service accounts invoke access.
+    GHA_INDIE_WORKER_MCP_URL = google_cloud_run_v2_service.mcp.uri
   })
 
   admin_common_secrets = {

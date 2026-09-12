@@ -1,7 +1,8 @@
 # Admin Supabase project — not provisioned
 
 Rename this directory to the real 20-character project ref once the admin project exists, and set
-`supabase.projects[] .ref` + `state: "active"` in `../../.db-providers.json`.
+`supabase.projects[] .ref` + `state: "active"` in `../../.db-providers.json` only after the
+project has passed the private-network acceptance. Until then it remains `state: "planned"`.
 
 **Blocked on two owner decisions** (both recorded in the rollout report, neither an engineering task):
 

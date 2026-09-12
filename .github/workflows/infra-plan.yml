@@ -48,11 +48,11 @@ jobs:
           node-version: 22
       - name: .db-providers.json is valid JSON and the planes are disjoint
         run: node scripts/check-db-providers.mjs
+      - name: edge and Cloud Run platform contract is closed
+        run: node scripts/check-platform-contract.mjs
       - name: edge-router config matches the schema
         working-directory: cloudflare/edge-router
-        run: |
-          npm install --no-audit --no-fund
-          npm run validate
+        run: npm ci --ignore-scripts && npm test
   isolation:
     runs-on: ubuntu-latest
     steps:
