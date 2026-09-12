@@ -33,3 +33,7 @@ tfplan
 # --- wrangler ---
 .wrangler/
 wrangler.rendered.toml
+
+# Local temporary directories and repository-owned worktrees
+tmp/
+temp/
