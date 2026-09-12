@@ -18,8 +18,11 @@ grants, Auth/Storage/Realtime configuration, and Edge Functions. Services never 
 
 ## Near-term shared-org model
 
-Projects live in the shared `oresoftware` Supabase org (org ref `agcymjepsfsztukakrrl`) because a
-dedicated project is ~$25/month each. Isolation is by Postgres **schema namespace**
+Projects are declared in the shared `oresoftware` Supabase org (org ref `agcymjepsfsztukakrrl`) because a
+dedicated project is ~$25/month each. The live control-plane audit on 2026-09-07 reported both
+declared product projects as `INACTIVE`; that is a readiness blocker, not evidence that the
+projects are healthy. Do not resume them or point DNS at them without owner authorization and a
+fresh advisor/readiness probe. When active, isolation is by Postgres **schema namespace**
 `gha_indie_worker`; every migration here starts with `create schema if not exists gha_indie_worker;`
 and is scoped to it. `migrationTarget: own-org-later` in `.db-providers.json` marks the planned move
 to a per-org Supabase org, at which point `pg_dump --schema=gha_indie_worker` carries the namespace

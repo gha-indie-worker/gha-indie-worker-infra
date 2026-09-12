@@ -36,12 +36,14 @@ server is `ingress: internal` in the same admin subnet, invokable only by `sa-gi
 admin plane uses, never a way into it: nothing outside the admin subnet can call it, and it holds
 no write capability that would make it worth reaching.
 
-## Current provisioning state (2026-09-05)
+## Current provisioning state (2026-09-07)
 
 - Neon: canonical + auth **active**; admin **provisioned but closed** (public and VPC connections
   both blocked). Opening it needs private networking, which needs the Scale plan.
-- Supabase: canonical + auth active in the shared `oresoftware` org, isolated by the
-  `gha_indie_worker` schema; admin **not created** (cost + PrivateLink entitlement decisions).
+- Supabase: canonical + auth are **declared but currently `INACTIVE` in the live control plane**
+  (read-only audit on 2026-09-07), isolated by the `gha_indie_worker` schema when resumed; admin
+  **not created** (cost + PrivateLink entitlement decisions). Do not treat the desired-state
+  `state: "active"` fields in `.db-providers.json` as provider readiness.
 - Until the Neon admin project opens, the admin plane's system of record is the AWS RDS admin
   database, reachable only from the admin NAT address.
 
