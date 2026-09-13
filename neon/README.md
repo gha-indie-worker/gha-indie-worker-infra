@@ -9,6 +9,10 @@ per role, exactly as the 2026-09-05 fleet provisioning pass created them for all
 | auth | `fancy-brook-94928157` | shared-auth customer realm | web-server, api-server |
 | **admin** | `round-butterfly-64996380` | admin plane | admin-web-server, admin-api-server **only** (admin NAT address) |
 
+## External PR CI does not add a fourth project
+
+The `indiebuild.dev/ci` webhook gateway is stateless. Durable job state remains owned by the existing build-server persistence layer, so PR dispatch is not a reason to provision a shadow Neon project. `ci_control_plane.tf` records that boundary and asserts that the canonical/auth/admin topology remains exactly three projects. If CI later needs provider-owned data, that is a separate schema/role design review rather than an implicit project creation.
+
 ## The admin project is provisioned but intentionally unreachable
 
 It was created with **public connections blocked and VPC connections blocked**. That is not a
