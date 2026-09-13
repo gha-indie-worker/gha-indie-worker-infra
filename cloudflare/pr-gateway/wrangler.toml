@@ -1,0 +1,11 @@
+name = "gha-indie-worker-pr-gateway"
+main = "worker.js"
+compatibility_date = "2026-09-12"
+workers_dev = false
+
+# The Rust origin URL is intentionally not committed. Set PR_GATEWAY_ORIGIN as
+# an environment variable/secret during deployment so this Worker never owns
+# GitHub or build-server credentials.
+[[routes]]
+pattern = "hooks.indiebuild.dev/*"
+zone_name = "indiebuild.dev"
