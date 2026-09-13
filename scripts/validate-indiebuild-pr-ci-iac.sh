@@ -33,8 +33,8 @@ fi
 python3 - <<'PY'
 from pathlib import Path
 import json
+import re
 import tomllib
-import yaml
 
 with open("cloudflare/pr-gateway/wrangler.toml", "rb") as fh:
     wrangler = tomllib.load(fh)
@@ -48,10 +48,11 @@ assert supabase["ci"]["create_project"] is False
 assert supabase["secrets"]["allow_in_supabase"] is False
 
 text = Path("k8s/pr-gateway.yaml").read_text()
-docs = list(yaml.safe_load_all(text))
-assert {d["kind"] for d in docs} >= {"ConfigMap", "Deployment", "Service", "PodDisruptionBudget", "NetworkPolicy"}
-config_map = next(d for d in docs if d["kind"] == "ConfigMap")
-profiles = json.loads(config_map["data"]["repo-profiles.json"])
+for kind in ("ConfigMap", "Deployment", "Service", "PodDisruptionBudget", "NetworkPolicy"):
+    assert f"kind: {kind}" in text, kind
+match = re.search(r"repo-profiles\.json:\s*>-\s*\n\s*(\{[^\n]+\})", text)
+assert match, "repo-profiles.json ConfigMap payload missing"
+profiles = json.loads(match.group(1))
 assert len(profiles) >= 10
 assert set(profiles.values()) == {"rust-verify"}
 
