@@ -95,6 +95,7 @@ services:
 
   ci-worker:
     runtime: host
+    profiles: [control]
     working_dir: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker.rs"
     command: ["cargo", "run", "--release"]
     environment:
@@ -132,6 +133,7 @@ services:
 
   cloudflare-tunnel:
     runtime: host
+    profiles: [control]
     command: ["cloudflared", "tunnel", "--no-autoupdate", "run"]
     environment:
       TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN}"
