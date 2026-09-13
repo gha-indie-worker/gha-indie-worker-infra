@@ -1,0 +1,132 @@
+version: "0.1"
+name: gha-indie-worker
+
+environment:
+  GHA_INDIE_WORKER_WORKSPACE:
+    default: "${HOME}/src/gha-indie-worker"
+  BUILD_SERVER_WORK_ROOT:
+    default: "${HOME}/.cache/gha-indie-worker/jobs"
+  BUILD_SERVER_GITHUB_WEBHOOK_SECRET:
+    required: true
+    secret: true
+  BUILD_SERVER_AUTH_SECRET:
+    required: true
+    secret: true
+  CLOUDFLARE_TUNNEL_TOKEN:
+    required: true
+    secret: true
+  DATABASE_URL:
+    external_service: postgres
+  REDIS_URL:
+    external_service: redis
+
+network:
+  isolation: session
+  backend: auto
+  internet: true
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: local
+      POSTGRES_DB: gha_indie_worker
+    ports: [5432]
+    restart: unless_stopped
+
+  redis:
+    image: redis:8
+    ports: [6379]
+    restart: unless_stopped
+
+  api:
+    runtime: host
+    working_dir: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker-api-server.rs"
+    command: ["cargo", "run", "--release"]
+    environment:
+      PORT: "8081"
+      DATABASE_URL: "${DATABASE_URL:-postgres://postgres:local@postgres:5432/gha_indie_worker}"
+      REDIS_URL: "${REDIS_URL:-redis://redis:6379}"
+    depends_on: [postgres, redis]
+    ports: [8081]
+    restart: on_failure
+
+  web:
+    runtime: host
+    working_dir: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker-web-server.rs"
+    command: ["cargo", "run", "--release"]
+    environment:
+      PORT: "8080"
+      API_URL: "http://api:8081"
+    depends_on: [api]
+    ports: [8080]
+    restart: on_failure
+
+  admin-api:
+    runtime: host
+    working_dir: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker-admin-api-server.rs"
+    command: ["cargo", "run", "--release"]
+    environment:
+      PORT: "9081"
+      DATABASE_URL: "${DATABASE_URL:-postgres://postgres:local@postgres:5432/gha_indie_worker}"
+      REDIS_URL: "${REDIS_URL:-redis://redis:6379}"
+    depends_on: [postgres, redis]
+    ports: [9081]
+    restart: on_failure
+
+  admin-web:
+    runtime: host
+    working_dir: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker-admin-web-server.rs"
+    command: ["cargo", "run", "--release"]
+    environment:
+      PORT: "9080"
+      ADMIN_API_URL: "http://admin-api:9081"
+    depends_on: [admin-api]
+    ports: [9080]
+    restart: on_failure
+
+  ci-worker:
+    runtime: host
+    working_dir: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker.rs"
+    command: ["cargo", "run", "--release"]
+    environment:
+      HOST: "127.0.0.1"
+      PORT: "8100"
+      BUILD_SERVER_WORK_ROOT: "${BUILD_SERVER_WORK_ROOT}"
+      BUILD_SERVER_NERDCTL_BIN: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker.rs/scripts/oci-cli-compat.sh"
+      BUILD_SERVER_GITHUB_WEBHOOK_SECRET: "${BUILD_SERVER_GITHUB_WEBHOOK_SECRET}"
+      BUILD_SERVER_AUTH_SECRET: "${BUILD_SERVER_AUTH_SECRET}"
+      BUILD_SERVER_WEBHOOK_RULES_PATH: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker.rs/examples/laptop/webhook-rules.json"
+      BUILD_SERVER_DEPLOY_ENABLED: "false"
+      BUILD_SERVER_PUSH_ENABLED: "false"
+      BUILD_SERVER_ECR_LOGIN_ENABLED: "false"
+      BUILD_SERVER_COORDINATION_ENABLED: "false"
+      BUILD_SERVER_NATS_ENABLED: "false"
+      BUILD_SERVER_NATS_INTAKE_ENABLED: "false"
+      BUILD_SERVER_GH_SYNC_ENABLED: "false"
+      BUILD_SERVER_MAX_CONCURRENT_BUILDS: "2"
+      BUILD_SERVER_MAX_QUEUED: "16"
+    ports:
+      - name: http
+        target: 8100
+        expose: host
+        host_port: 8100
+    healthcheck:
+      test: ["curl", "--fail", "--silent", "http://127.0.0.1:8100/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    restart: on_failure
+    stdin_open: true
+
+  cloudflare-tunnel:
+    runtime: host
+    command: ["cloudflared", "tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN}"
+    depends_on:
+      ci-worker:
+        condition: service_healthy
+        required: true
+        restart: true
+    restart: unless_stopped
