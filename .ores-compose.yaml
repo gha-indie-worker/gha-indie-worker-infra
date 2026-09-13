@@ -10,6 +10,10 @@ environment:
     default: "${HOME}/.cache/gha-indie-worker/orgs"
   BUILD_SERVER_INFRA_REPO:
     default: "gha-indie-worker/gha-indie-worker-infra"
+  BUILD_SERVER_ALLOWED_REPO_PREFIXES:
+    default: "https://github.com/ORESoftware/,https://github.com/gha-indie-worker/,git@github.com:ORESoftware/,git@github.com:gha-indie-worker/"
+  BUILD_SERVER_ALLOWED_PROFILE_REPO_PREFIXES:
+    default: "https://github.com/ORESoftware/,https://github.com/gha-indie-worker/,git@github.com:ORESoftware/,git@github.com:gha-indie-worker/"
   BUILD_SERVER_GITHUB_WEBHOOK_SECRET:
     required: true
     secret: true
@@ -104,6 +108,8 @@ services:
       BUILD_SERVER_WORK_ROOT: "${BUILD_SERVER_WORK_ROOT}"
       BUILD_SERVER_ORG_WORKSPACE_ROOT: "${BUILD_SERVER_ORG_WORKSPACE_ROOT}"
       BUILD_SERVER_INFRA_REPO: "${BUILD_SERVER_INFRA_REPO}"
+      BUILD_SERVER_ALLOWED_REPO_PREFIXES: "${BUILD_SERVER_ALLOWED_REPO_PREFIXES}"
+      BUILD_SERVER_ALLOWED_PROFILE_REPO_PREFIXES: "${BUILD_SERVER_ALLOWED_PROFILE_REPO_PREFIXES}"
       BUILD_SERVER_GIT_TOKEN: "${BUILD_SERVER_GIT_TOKEN}"
       BUILD_SERVER_NERDCTL_BIN: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker.rs/scripts/oci-cli-compat.sh"
       BUILD_SERVER_GITHUB_WEBHOOK_SECRET: "${BUILD_SERVER_GITHUB_WEBHOOK_SECRET}"
