@@ -3,7 +3,12 @@
 | path | status | what it is |
 |---|---|---|
 | `edge-router/` | **current** | the real edge Worker: health-based failover for every `indiebuild.dev` host, adopted from `ores-edge-router` |
+| `pr-gateway/` | **current** | bounded raw-body GitHub PR webhook proxy for `hooks.indiebuild.dev`; the Rust origin verifies HMAC and dispatches gha-indie-worker profiles |
 | `worker.js`, `wrangler.toml` | **superseded — not deployed** | the original `gha-indie-worker-edge` placeholder |
+
+## PR CI webhook edge
+
+`pr-gateway/` is deliberately separate from the general edge router. GitHub must reach the webhook without Cloudflare Access, the exact request bytes must survive for `X-Hub-Signature-256` verification, and the edge must never own the GitHub status token or build-server auth credential. The Worker only bounds the body and proxies `POST /webhooks/github` to the restricted Rust gateway origin.
 
 ## Why the placeholder is kept rather than deleted
 
