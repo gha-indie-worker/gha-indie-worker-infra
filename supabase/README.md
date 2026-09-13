@@ -9,6 +9,11 @@ Supabase GitHub App with working directory `supabase/<ref>` and "Supabase change
 | `mktabbhmldkewllyfizc/` | canonical (product data) | `mktabbhmldkewllyfizc` | product | web-server, api-server |
 | `qelemqszswrasjtgwfag/` | auth (shared-auth customer realm) | `qelemqszswrasjtgwfag` | product | web-server, api-server |
 | `admin-pending/` | **admin** | not created yet | admin | admin-web-server, admin-api-server **only** |
+| `ci-control-plane/` | desired-state boundary only | none | product control plane | no direct database connection |
+
+## External PR CI is stateless here
+
+`ci-control-plane/config.toml` records that `indiebuild.dev/ci` does **not** provision another Supabase project and does not store GitHub webhook/status or build-server credentials in Supabase. The Rust gateway dispatches work and the build server remains the durable job-state authority. This directory is intentionally not a project-ref overlay and must never be connected to the Supabase GitHub App as one.
 
 ## Portable SQL does not live here
 
