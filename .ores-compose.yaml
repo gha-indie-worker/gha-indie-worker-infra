@@ -6,12 +6,20 @@ environment:
     default: "${HOME}/src/gha-indie-worker"
   BUILD_SERVER_WORK_ROOT:
     default: "${HOME}/.cache/gha-indie-worker/jobs"
+  BUILD_SERVER_ORG_WORKSPACE_ROOT:
+    default: "${HOME}/.cache/gha-indie-worker/orgs"
+  BUILD_SERVER_INFRA_REPO:
+    default: "gha-indie-worker/gha-indie-worker-infra"
   BUILD_SERVER_GITHUB_WEBHOOK_SECRET:
     required: true
     secret: true
   BUILD_SERVER_AUTH_SECRET:
     required: true
     secret: true
+  BUILD_SERVER_GIT_TOKEN:
+    required: true
+    secret: true
+    description: "Narrow GitHub credential used by external PR CI for repo/workflow reads, private clone auth, and commit-status writes. Never passed into tested profile containers."
   CLOUDFLARE_TUNNEL_TOKEN:
     required: true
     secret: true
@@ -93,6 +101,9 @@ services:
       HOST: "127.0.0.1"
       PORT: "8100"
       BUILD_SERVER_WORK_ROOT: "${BUILD_SERVER_WORK_ROOT}"
+      BUILD_SERVER_ORG_WORKSPACE_ROOT: "${BUILD_SERVER_ORG_WORKSPACE_ROOT}"
+      BUILD_SERVER_INFRA_REPO: "${BUILD_SERVER_INFRA_REPO}"
+      BUILD_SERVER_GIT_TOKEN: "${BUILD_SERVER_GIT_TOKEN}"
       BUILD_SERVER_NERDCTL_BIN: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker.rs/scripts/oci-cli-compat.sh"
       BUILD_SERVER_GITHUB_WEBHOOK_SECRET: "${BUILD_SERVER_GITHUB_WEBHOOK_SECRET}"
       BUILD_SERVER_AUTH_SECRET: "${BUILD_SERVER_AUTH_SECRET}"
