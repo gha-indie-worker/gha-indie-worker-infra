@@ -3,7 +3,10 @@
 | path | status | what it is |
 |---|---|---|
 | `edge-router/` | **current** | the real edge Worker: health-based failover for every `indiebuild.dev` host, adopted from `ores-edge-router` |
+| `laptop-tunnel/` | **current** | remotely managed Cloudflare Tunnel for `ci-laptop.indiebuild.dev` -> laptop `gha-indie-worker` on `127.0.0.1:8100` |
 | `worker.js`, `wrangler.toml` | **superseded — not deployed** | the original `gha-indie-worker-edge` placeholder |
+
+The laptop tunnel is intentionally separate from `edge-router/`: it is an opportunistic CI ingress, not a production origin or failover target. GitHub push webhooks can reach it without consuming GitHub-hosted Actions minutes, and the worker verifies its own webhook HMAC before accepting work.
 
 ## Why the placeholder is kept rather than deleted
 
