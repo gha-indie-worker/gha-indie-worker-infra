@@ -1,0 +1,20 @@
+# Non-secret desired state for external PR CI. This file deliberately declares
+# no new Supabase project: the webhook gateway is stateless and gha-indie-worker
+# remains the build/job persistence authority.
+
+[ci]
+status_context = "indiebuild.dev/ci"
+webhook_state = "stateless"
+create_project = false
+
+[supabase]
+organization_ref = "agcymjepsfsztukakrrl"
+canonical_project_ref = "mktabbhmldkewllyfizc"
+auth_project_ref = "qelemqszswrasjtgwfag"
+schema_namespace = "gha_indie_worker"
+
+[secrets]
+# GitHub webhook/status credentials and build-server auth belong in the cluster's
+# sealed-secret path, never in Supabase project config, migrations, or Edge Functions.
+provider = "sealed-secrets"
+allow_in_supabase = false
