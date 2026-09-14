@@ -16,7 +16,7 @@ environment:
     default: "https://github.com/ORESoftware/,https://github.com/gha-indie-worker/,git@github.com:ORESoftware/,git@github.com:gha-indie-worker/"
   BUILD_SERVER_PR_PROFILE_RULES:
     default: >-
-      [{"repo":"ORESoftware/ores-sw.js","targets":[{"profile":"node-source-verify","contextDir":"."},{"profile":"rust-source-verify","contextDir":"."},{"profile":"rust-wasm-verify","contextDir":"wasm"}]},{"repo":"ORESoftware/ores-mobile-bg-procs","targets":[{"profile":"rust-verify","contextDir":"."},{"profile":"flutter-verify","contextDir":"flutter"}]},{"repo":"ORESoftware/ores-desktop-bg-procs","targets":[{"profile":"rust-verify","contextDir":"."},{"profile":"dart-verify","contextDir":"clients/dart"}]}]
+      [{"repo":"ORESoftware/ores-sw.js","targets":[{"profile":"node-source-verify","contextDir":"."},{"profile":"rust-source-verify","contextDir":"."},{"profile":"rust-wasm-verify","contextDir":"wasm"}]},{"repo":"ORESoftware/ores-mobile-bg-procs","targets":[{"profile":"node-source-verify","contextDir":"."},{"profile":"rust-verify","contextDir":"."},{"profile":"flutter-verify","contextDir":"flutter"}]},{"repo":"ORESoftware/ores-desktop-bg-procs","targets":[{"profile":"node-source-verify","contextDir":"."},{"profile":"rust-verify","contextDir":"."},{"profile":"dart-verify","contextDir":"clients/dart"}]}]
     description: "Operator-owned external-PR profile/context map. PR code cannot change these execution selections."
   BUILD_SERVER_GITHUB_WEBHOOK_SECRET:
     required: true
@@ -80,7 +80,7 @@ services:
 
   admin-api:
     runtime: host
-    working_dir: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker-admin-api-server.rs"
+n    working_dir: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker-admin-api-server.rs"
     command: ["cargo", "run", "--release"]
     environment:
       PORT: "9081"
