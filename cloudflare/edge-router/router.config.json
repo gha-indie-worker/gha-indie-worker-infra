@@ -3,6 +3,7 @@
   "org": "gha-indie-worker",
   "domain": "indiebuild.dev",
   "gcpProject": "gha-indie-worker",
+  "linearProject": "https://linear.app/denman/project/69d23e78-b898-49bf-bc84-d319bdaa2059",
   "health": {
     "paths": [
       "/healthz",

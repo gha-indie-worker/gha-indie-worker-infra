@@ -1,0 +1,30 @@
+# Copy outside the repository before use. Never commit the real credentials file
+# or tunnel token.
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /Users/REPLACE/.cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+# Defense in depth: Cloudflare Access evaluates at the edge, and cloudflared
+# validates the Access JWT again before forwarding the request to the laptop.
+# Replace these values with the Terraform laptop_ingress output / Zero Trust team.
+originRequest:
+  connectTimeout: 5s
+  access:
+    required: true
+    teamName: REPLACE_WITH_ACCESS_TEAM_NAME
+    audTag:
+      - REPLACE_WITH_LAPTOP_ACCESS_AUD
+
+ingress:
+  # Public default: stable first-level hostname + /p/project/session/service path.
+  # The laptop gateway itself must bind loopback only.
+  - hostname: local.indiebuild.dev
+    service: http://127.0.0.1:8080
+
+  # Do NOT add *.local.indiebuild.dev here by default. Although Tunnel/DNS can
+  # route wildcard subdomains, ordinary Universal SSL on a full zone does not
+  # cover deeper names such as api.zed-pkg.pr-481.local.indiebuild.dev.
+  # Enable deeper public host routing only together with Total TLS or an
+  # explicitly matching advanced/custom certificate.
+
+  # Required fail-closed catch-all. Unknown hostnames never reach the laptop.
+  - service: http_status:404

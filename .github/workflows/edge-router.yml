@@ -1,39 +1,117 @@
 name: edge-router
 
 on:
+  pull_request:
+    paths:
+      - "cloudflare/edge-router/**"
+      - "cloudflare/laptop-ingress/**"
+      - "terraform/cloudflare/**"
+      - ".github/workflows/edge-router.yml"
   push:
     branches: [main]
-    paths: ["cloudflare/edge-router/**"]
+    paths:
+      - "cloudflare/edge-router/**"
+      - "cloudflare/laptop-ingress/**"
+      - "terraform/cloudflare/**"
+      - ".github/workflows/edge-router.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: edge-router-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    environment: production # requires the reviewer approval configured on the environment
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-      - working-directory: cloudflare/edge-router
-        run: npm install --no-audit --no-fund
-      - name: validate config
+
+      - name: Install pinned edge tooling
+        working-directory: cloudflare/edge-router
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Validate router contract
         working-directory: cloudflare/edge-router
         run: npm run validate
-      - name: refuse to deploy while fallback placeholders remain
+
+      - name: Verify rendered Wrangler config is committed without drift
+        working-directory: cloudflare/edge-router
+        run: |
+          npm run render
+          git diff --exit-code -- wrangler.toml
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production # requires the reviewer approval configured on the environment
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Install pinned edge tooling
+        working-directory: cloudflare/edge-router
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Validate config
+        working-directory: cloudflare/edge-router
+        run: npm run validate
+
+      - name: Refuse fallback placeholders
         working-directory: cloudflare/edge-router
         run: |
           if grep -q 'REPLACE\.a\.run\.app' router.config.json; then
-            echo "::error::router.config.json still has *-REPLACE.a.run.app placeholders; apply gcp/cloudrun and paste the fallback_urls output first"
+            echo "::error::router.config.json still has *-REPLACE.a.run.app placeholders; apply gcp/cloudrun and update the fallback hosts first"
             exit 1
           fi
-      - name: deploy
+
+      - name: Require Access JWT verifier inputs
+        env:
+          CF_ACCESS_TEAM_DOMAIN: ${{ vars.CF_ACCESS_TEAM_DOMAIN }}
+          CF_ACCESS_AUDIENCES: ${{ vars.CF_ACCESS_AUDIENCES }}
+        run: |
+          test -n "$CF_ACCESS_TEAM_DOMAIN" || { echo "::error::CF_ACCESS_TEAM_DOMAIN repository/environment variable is required"; exit 1; }
+          test -n "$CF_ACCESS_AUDIENCES" || { echo "::error::CF_ACCESS_AUDIENCES repository/environment variable is required"; exit 1; }
+
+      - name: Render production Wrangler config
+        working-directory: cloudflare/edge-router
+        env:
+          HEALTH_KV_ID: ${{ vars.CF_HEALTH_KV_ID }}
+        run: |
+          test -n "$HEALTH_KV_ID" || { echo "::error::CF_HEALTH_KV_ID is required"; exit 1; }
+          node node_modules/@oresoftware/ores-edge-router/scripts/render-wrangler.mjs \
+            router.config.json --out wrangler.toml --kv-id "$HEALTH_KV_ID"
+
+      - name: Deploy
         working-directory: cloudflare/edge-router
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          HEALTH_KV_ID: ${{ vars.CF_HEALTH_KV_ID }}
-        run: npm run deploy
+          CF_ACCESS_TEAM_DOMAIN: ${{ vars.CF_ACCESS_TEAM_DOMAIN }}
+          CF_ACCESS_AUDIENCES: ${{ vars.CF_ACCESS_AUDIENCES }}
+        run: |
+          npx wrangler deploy \
+            --var "CF_ACCESS_TEAM_DOMAIN:${CF_ACCESS_TEAM_DOMAIN}" \
+            --var "CF_ACCESS_AUDIENCES:${CF_ACCESS_AUDIENCES}"
