@@ -114,7 +114,6 @@ services:
       BUILD_SERVER_NERDCTL_BIN: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker.rs/scripts/oci-cli-compat.sh"
       BUILD_SERVER_GITHUB_WEBHOOK_SECRET: "${BUILD_SERVER_GITHUB_WEBHOOK_SECRET}"
       BUILD_SERVER_AUTH_SECRET: "${BUILD_SERVER_AUTH_SECRET}"
-      CLOUDFLARE_TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN}"
       BUILD_SERVER_WEBHOOK_RULES_PATH: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker.rs/examples/laptop/webhook-rules.json"
       BUILD_SERVER_DEPLOY_ENABLED: "false"
       BUILD_SERVER_PUSH_ENABLED: "false"
@@ -138,6 +137,8 @@ services:
     restart: on_failure
     stdin_open: true
 
+  # The tunnel credential belongs only to the connector process. The CI worker
+  # must not inherit it merely because both services share one ores-compose session.
   cloudflare-tunnel:
     runtime: host
     profiles: [control]
