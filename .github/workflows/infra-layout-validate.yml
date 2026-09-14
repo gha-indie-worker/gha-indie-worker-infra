@@ -6,24 +6,19 @@ on:
     branches: [main]
     paths: [".ores-infra.toml", "modules/**", "environments/**"]
 permissions: { contents: read }
+concurrency: { group: "infra-layout-${{ github.workflow }}-${{ github.ref }}", cancel-in-progress: true }
 jobs:
   terraform:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy: { fail-fast: false, matrix: { environment: [preview, staging, production] } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with: { terraform_version: "1.16.2" }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with: { terraform_version: 1.16.2, terraform_wrapper: false }
       - run: terraform fmt -check -recursive modules/cloudflare/terraform
       - run: terraform fmt -check -recursive "environments/${{ matrix.environment }}"
       - working-directory: environments/${{ matrix.environment }}
         run: terraform init -backend=false -input=false
       - working-directory: environments/${{ matrix.environment }}
         run: terraform validate -no-color
-  cloudflare-worker:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - shell: bash
-        run: |
-          if [[ ! -f modules/cloudflare/durable-coordinator/package.json ]]; then echo "No durable coordinator; skipping."; exit 0; fi
