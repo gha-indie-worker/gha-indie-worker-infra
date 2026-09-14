@@ -80,7 +80,7 @@ services:
 
   admin-api:
     runtime: host
-n    working_dir: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker-admin-api-server.rs"
+    working_dir: "${GHA_INDIE_WORKER_WORKSPACE}/gha-indie-worker-admin-api-server.rs"
     command: ["cargo", "run", "--release"]
     environment:
       PORT: "9081"
