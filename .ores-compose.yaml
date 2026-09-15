@@ -3,21 +3,38 @@ project: gha-indie-worker
 allow_lazy_start: false
 source:
   repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git
-  commit: fa0723ca1e143f81d9926a4c8260d532905a9f26
+  commit: e8b849ab484f1ee06699b5af43c3ef9d6dde08b8
   checkout_dir: .ores/sources/gha-indie-worker-monorepo
+
+load_balancer:
+  strategy: round-robin
+  max_attempts: 2
+  failover_on_missing_backend: true
+  failover_on_invalid_backend: true
+
 services:
   api:
     runtime: host
-    command: ["cargo", "run", "--locked"]
+    command: ["cargo", "run"]
     build:
-      - ["cargo", "build", "--locked"]
+      - ["cargo", "build"]
     working_dir: apps/gha-indie-worker-api-server.rs
     replicas: 1
+    healthcheck:
+      command: ["curl", "--fail", "--silent", "http://127.0.0.1:8080/readyz"]
+      interval_ms: 1000
+      timeout_ms: 1000
+      retries: 30
   web:
     runtime: host
-    command: ["cargo", "run", "--locked"]
+    command: ["cargo", "run"]
     build:
-      - ["cargo", "build", "--locked"]
+      - ["cargo", "build"]
     working_dir: apps/gha-indie-worker-web-server.rs
     replicas: 1
     depends_on: [api]
+    healthcheck:
+      command: ["curl", "--fail", "--silent", "http://127.0.0.1:8081/readyz"]
+      interval_ms: 1000
+      timeout_ms: 1000
+      retries: 30
