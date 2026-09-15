@@ -1,0 +1,179 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gha-indie-worker-pr-gateway
+  namespace: gha-indie-worker
+data:
+  repo-profiles.json: >-
+    {"gha-indie-worker/gha-clone-server.rs":"rust-verify","gha-indie-worker/gha-indie-worker-cli":"rust-verify","zed-pkg/zed-sidecar.rs":"rust-verify","zed-pkg/zed-mcp-server.rs":"rust-verify","shared-auth/shared-auth-sidecar.rs":"rust-verify","shared-auth/shared-auth-server.rs":"rust-verify","opto-sync/opto-sync-sidecar.rs":"rust-verify","opto-sync/opto-sync-api-server.rs":"rust-verify","fiducia-cloud/fiducia-api-server.rs":"rust-verify","fiducia-cloud/fiducia-mcp-server.rs":"rust-verify"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gha-indie-worker-pr-gateway
+  namespace: gha-indie-worker
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: gha-indie-worker-pr-gateway
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: gha-indie-worker-pr-gateway
+        plane: product
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: ghcr.io/gha-indie-worker/gha-clone-server.rs:pr-gateway
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8127
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "8127"
+            - name: INDIEBUILD_PUBLIC_BASE_URL
+              value: "https://indiebuild.dev"
+            - name: INDIEBUILD_REPO_PROFILES
+              valueFrom:
+                configMapKeyRef:
+                  name: gha-indie-worker-pr-gateway
+                  key: repo-profiles.json
+            - name: INDIEBUILD_GITHUB_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-pr-gateway
+                  key: github-webhook-secret
+            - name: INDIEBUILD_GITHUB_STATUS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-pr-gateway
+                  key: github-status-token
+            - name: INDIEBUILD_BUILD_SERVER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-pr-gateway
+                  key: build-server-url
+            - name: INDIEBUILD_BUILD_SERVER_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-pr-gateway
+                  key: build-server-auth
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 192Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gha-indie-worker-pr-gateway
+  namespace: gha-indie-worker
+spec:
+  type: ClusterIP
+  selector:
+    app: gha-indie-worker-pr-gateway
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gha-indie-worker-pr-gateway
+  namespace: gha-indie-worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gha-indie-worker-pr-gateway
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gha-indie-worker-pr-gateway
+  namespace: gha-indie-worker
+spec:
+  podSelector:
+    matchLabels:
+      app: gha-indie-worker-pr-gateway
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8127
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8125

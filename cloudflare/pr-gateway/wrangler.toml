@@ -1,0 +1,8 @@
+name = "gha-indie-worker-pr-gateway"
+main = "worker.js"
+compatibility_date = "2026-09-15"
+workers_dev = false
+
+[[routes]]
+pattern = "hooks.indiebuild.dev/*"
+zone_name = "indiebuild.dev"
