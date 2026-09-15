@@ -1,19 +1,22 @@
 name: infra-plan
 
-# Plan only. Nothing in this repo applies automatically: the DNS, the Cloud Run services and the
-# Neon projects are all human-gated, and `dpm` apply is gated separately in orm-core.
 on:
   pull_request:
     paths:
+      - "modules/**"
+      - "environments/**"
       - "cloudflare/**"
-      - "gcp/**"
+      - "supabase/**"
       - "neon/**"
       - ".db-providers.json"
+      - ".ores-infra.toml"
   push:
     branches: [main]
     paths:
+      - "modules/**"
+      - "environments/**"
       - "cloudflare/**"
-      - "gcp/**"
+      - "supabase/**"
       - "neon/**"
 
 permissions:
@@ -26,37 +29,39 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dir: [cloudflare/dns, gcp/cloudrun, neon]
+        provider: [gcp, cloudflare, neon, supabase]
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: false
       - uses: opentofu/setup-opentofu@v1
         with:
           tofu_version: 1.9.0
       - name: fmt
-        run: tofu -chdir=${{ matrix.dir }} fmt -check -diff
+        run: tofu -chdir=environments/production/${{ matrix.provider }} fmt -check -diff -recursive
       - name: init (no backend)
-        run: tofu -chdir=${{ matrix.dir }} init -backend=false -input=false
+        run: tofu -chdir=environments/production/${{ matrix.provider }} init -backend=false -input=false
       - name: validate
-        run: tofu -chdir=${{ matrix.dir }} validate
-
+        run: tofu -chdir=environments/production/${{ matrix.provider }} validate
   contracts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: .db-providers.json is valid JSON and the planes are disjoint
-        run: node scripts/check-db-providers.mjs
+      - run: node scripts/check-db-providers.mjs
       - name: edge-router config matches the schema
         working-directory: cloudflare/edge-router
-        run: |
-          npm install --no-audit --no-fund
-          npm run validate
+        run: npm install --no-audit --no-fund && npm run validate
   isolation:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22

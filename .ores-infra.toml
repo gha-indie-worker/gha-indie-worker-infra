@@ -21,3 +21,7 @@ module_directory = "modules/cloudflare"
 working_directory = "."
 native_config = "neon.ts"
 module_directory = "modules/neon"
+
+[providers.gcp]
+working_directory = "environments/production/gcp"
+module_directory = "modules/gcp"

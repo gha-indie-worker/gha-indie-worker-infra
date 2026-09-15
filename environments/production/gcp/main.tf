@@ -1,0 +1,53 @@
+module "gcp" {
+  source = "../../../modules/gcp"
+
+  project_id                         = var.project_id
+  region                             = var.region
+  github_org                         = var.github_org
+  domain                             = var.domain
+  vpc_name                           = var.vpc_name
+  product_subnet_cidr                = var.product_subnet_cidr
+  admin_subnet_cidr                  = var.admin_subnet_cidr
+  product_connector_cidr             = var.product_connector_cidr
+  admin_connector_cidr               = var.admin_connector_cidr
+  connector_machine_type             = var.connector_machine_type
+  connector_min_instances            = var.connector_min_instances
+  connector_max_instances            = var.connector_max_instances
+  artifact_registry_id               = var.artifact_registry_id
+  artifact_registry_keep_versions    = var.artifact_registry_keep_versions
+  cloud_run_cpu                      = var.cloud_run_cpu
+  cloud_run_memory                   = var.cloud_run_memory
+  product_min_instances              = var.product_min_instances
+  product_max_instances              = var.product_max_instances
+  admin_min_instances                = var.admin_min_instances
+  admin_max_instances                = var.admin_max_instances
+  request_timeout_seconds            = var.request_timeout_seconds
+  container_concurrency              = var.container_concurrency
+  cloud_run_deletion_protection      = var.cloud_run_deletion_protection
+  image_tag                          = var.image_tag
+  product_services_public            = var.product_services_public
+  web_service_env                    = var.web_service_env
+  api_service_env                    = var.api_service_env
+  admin_web_service_env              = var.admin_web_service_env
+  admin_api_service_env              = var.admin_api_service_env
+  shared_auth_base                   = var.shared_auth_base
+  shared_auth_admin_base             = var.shared_auth_admin_base
+  ores_chat_api_base                 = var.ores_chat_api_base
+  nats_url                           = var.nats_url
+  admin_nats_url                     = var.admin_nats_url
+  admin_mcp_url                      = var.admin_mcp_url
+  admin_api_base                     = var.admin_api_base
+  admin_allowlist                    = var.admin_allowlist
+  create_placeholder_secret_versions = var.create_placeholder_secret_versions
+}
+
+output "GCP_WORKLOAD_IDENTITY_PROVIDER" { value = module.gcp.GCP_WORKLOAD_IDENTITY_PROVIDER }
+output "GCP_SERVICE_ACCOUNT" { value = module.gcp.GCP_SERVICE_ACCOUNT }
+output "GCP_RUN_SERVICE_ACCOUNT" { value = module.gcp.GCP_RUN_SERVICE_ACCOUNT }
+output "cloud_run_hosts" { value = module.gcp.cloud_run_hosts }
+output "cloud_run_urls" { value = module.gcp.cloud_run_urls }
+output "ingress_posture" { value = module.gcp.ingress_posture }
+output "artifact_registry" { value = module.gcp.artifact_registry }
+output "vpc_connectors" { value = module.gcp.vpc_connectors }
+output "secret_ids" { value = module.gcp.secret_ids }
+output "unpopulated_secrets_are_expected" { value = module.gcp.unpopulated_secrets_are_expected }
