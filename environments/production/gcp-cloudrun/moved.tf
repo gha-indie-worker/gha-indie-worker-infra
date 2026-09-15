@@ -1,29 +1,144 @@
-moved { from = google_compute_network.vpc to = module.gcp_cloudrun.google_compute_network.vpc }
-moved { from = google_compute_subnetwork.product to = module.gcp_cloudrun.google_compute_subnetwork.product }
-moved { from = google_compute_subnetwork.admin to = module.gcp_cloudrun.google_compute_subnetwork.admin }
-moved { from = google_vpc_access_connector.product to = module.gcp_cloudrun.google_vpc_access_connector.product }
-moved { from = google_vpc_access_connector.admin to = module.gcp_cloudrun.google_vpc_access_connector.admin }
-moved { from = google_compute_router.router to = module.gcp_cloudrun.google_compute_router.router }
-moved { from = google_compute_address.nat_product to = module.gcp_cloudrun.google_compute_address.nat_product }
-moved { from = google_compute_address.nat_admin to = module.gcp_cloudrun.google_compute_address.nat_admin }
-moved { from = google_compute_router_nat.product to = module.gcp_cloudrun.google_compute_router_nat.product }
-moved { from = google_compute_router_nat.admin to = module.gcp_cloudrun.google_compute_router_nat.admin }
-moved { from = google_compute_firewall.deny_cross_plane to = module.gcp_cloudrun.google_compute_firewall.deny_cross_plane }
-moved { from = google_compute_firewall.admin_internal to = module.gcp_cloudrun.google_compute_firewall.admin_internal }
-moved { from = google_service_account.svc to = module.gcp_cloudrun.google_service_account.svc }
-moved { from = google_artifact_registry_repository.images to = module.gcp_cloudrun.google_artifact_registry_repository.images }
-moved { from = google_artifact_registry_repository_iam_member.pull to = module.gcp_cloudrun.google_artifact_registry_repository_iam_member.pull }
-moved { from = google_project_iam_member.logging to = module.gcp_cloudrun.google_project_iam_member.logging }
-moved { from = google_project_iam_member.metrics to = module.gcp_cloudrun.google_project_iam_member.metrics }
-moved { from = google_cloud_run_v2_service_iam_member.admin_api_invokers to = module.gcp_cloudrun.google_cloud_run_v2_service_iam_member.admin_api_invokers }
-moved { from = google_cloud_run_v2_service_iam_member.mcp_invokers to = module.gcp_cloudrun.google_cloud_run_v2_service_iam_member.mcp_invokers }
-moved { from = google_secret_manager_secret.product to = module.gcp_cloudrun.google_secret_manager_secret.product }
-moved { from = google_secret_manager_secret.admin to = module.gcp_cloudrun.google_secret_manager_secret.admin }
-moved { from = google_secret_manager_secret_iam_member.product_access to = module.gcp_cloudrun.google_secret_manager_secret_iam_member.product_access }
-moved { from = google_secret_manager_secret_iam_member.admin_access to = module.gcp_cloudrun.google_secret_manager_secret_iam_member.admin_access }
-moved { from = google_secret_manager_secret_iam_member.mcp_access to = module.gcp_cloudrun.google_secret_manager_secret_iam_member.mcp_access }
-moved { from = google_cloud_run_v2_service.web to = module.gcp_cloudrun.google_cloud_run_v2_service.web }
-moved { from = google_cloud_run_v2_service.api to = module.gcp_cloudrun.google_cloud_run_v2_service.api }
-moved { from = google_cloud_run_v2_service.admin_api to = module.gcp_cloudrun.google_cloud_run_v2_service.admin_api }
-moved { from = google_cloud_run_v2_service.admin_web to = module.gcp_cloudrun.google_cloud_run_v2_service.admin_web }
-moved { from = google_cloud_run_v2_service.mcp to = module.gcp_cloudrun.google_cloud_run_v2_service.mcp }
+moved {
+  from = google_compute_network.vpc
+  to   = module.gcp_cloudrun.google_compute_network.vpc
+}
+
+moved {
+  from = google_compute_subnetwork.product
+  to   = module.gcp_cloudrun.google_compute_subnetwork.product
+}
+
+moved {
+  from = google_compute_subnetwork.admin
+  to   = module.gcp_cloudrun.google_compute_subnetwork.admin
+}
+
+moved {
+  from = google_vpc_access_connector.product
+  to   = module.gcp_cloudrun.google_vpc_access_connector.product
+}
+
+moved {
+  from = google_vpc_access_connector.admin
+  to   = module.gcp_cloudrun.google_vpc_access_connector.admin
+}
+
+moved {
+  from = google_compute_router.router
+  to   = module.gcp_cloudrun.google_compute_router.router
+}
+
+moved {
+  from = google_compute_address.nat_product
+  to   = module.gcp_cloudrun.google_compute_address.nat_product
+}
+
+moved {
+  from = google_compute_address.nat_admin
+  to   = module.gcp_cloudrun.google_compute_address.nat_admin
+}
+
+moved {
+  from = google_compute_router_nat.product
+  to   = module.gcp_cloudrun.google_compute_router_nat.product
+}
+
+moved {
+  from = google_compute_router_nat.admin
+  to   = module.gcp_cloudrun.google_compute_router_nat.admin
+}
+
+moved {
+  from = google_compute_firewall.deny_cross_plane
+  to   = module.gcp_cloudrun.google_compute_firewall.deny_cross_plane
+}
+
+moved {
+  from = google_compute_firewall.admin_internal
+  to   = module.gcp_cloudrun.google_compute_firewall.admin_internal
+}
+
+moved {
+  from = google_service_account.svc
+  to   = module.gcp_cloudrun.google_service_account.svc
+}
+
+moved {
+  from = google_artifact_registry_repository.images
+  to   = module.gcp_cloudrun.google_artifact_registry_repository.images
+}
+
+moved {
+  from = google_artifact_registry_repository_iam_member.pull
+  to   = module.gcp_cloudrun.google_artifact_registry_repository_iam_member.pull
+}
+
+moved {
+  from = google_project_iam_member.logging
+  to   = module.gcp_cloudrun.google_project_iam_member.logging
+}
+
+moved {
+  from = google_project_iam_member.metrics
+  to   = module.gcp_cloudrun.google_project_iam_member.metrics
+}
+
+moved {
+  from = google_cloud_run_v2_service_iam_member.admin_api_invokers
+  to   = module.gcp_cloudrun.google_cloud_run_v2_service_iam_member.admin_api_invokers
+}
+
+moved {
+  from = google_cloud_run_v2_service_iam_member.mcp_invokers
+  to   = module.gcp_cloudrun.google_cloud_run_v2_service_iam_member.mcp_invokers
+}
+
+moved {
+  from = google_secret_manager_secret.product
+  to   = module.gcp_cloudrun.google_secret_manager_secret.product
+}
+
+moved {
+  from = google_secret_manager_secret.admin
+  to   = module.gcp_cloudrun.google_secret_manager_secret.admin
+}
+
+moved {
+  from = google_secret_manager_secret_iam_member.product_access
+  to   = module.gcp_cloudrun.google_secret_manager_secret_iam_member.product_access
+}
+
+moved {
+  from = google_secret_manager_secret_iam_member.admin_access
+  to   = module.gcp_cloudrun.google_secret_manager_secret_iam_member.admin_access
+}
+
+moved {
+  from = google_secret_manager_secret_iam_member.mcp_access
+  to   = module.gcp_cloudrun.google_secret_manager_secret_iam_member.mcp_access
+}
+
+moved {
+  from = google_cloud_run_v2_service.web
+  to   = module.gcp_cloudrun.google_cloud_run_v2_service.web
+}
+
+moved {
+  from = google_cloud_run_v2_service.api
+  to   = module.gcp_cloudrun.google_cloud_run_v2_service.api
+}
+
+moved {
+  from = google_cloud_run_v2_service.admin_api
+  to   = module.gcp_cloudrun.google_cloud_run_v2_service.admin_api
+}
+
+moved {
+  from = google_cloud_run_v2_service.admin_web
+  to   = module.gcp_cloudrun.google_cloud_run_v2_service.admin_web
+}
+
+moved {
+  from = google_cloud_run_v2_service.mcp
+  to   = module.gcp_cloudrun.google_cloud_run_v2_service.mcp
+}

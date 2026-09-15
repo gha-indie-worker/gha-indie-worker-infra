@@ -1,32 +1,15 @@
 # Neon for `gha-indie-worker`
 
-Neon is 1:1 with the GitHub org: Neon org `org-misty-grass-10005930` holds **three** projects, one
-per role, exactly as the 2026-09-05 fleet provisioning pass created them for all 39 orgs.
+Neon remains 1:1 with the GitHub org. Provider-native inventory, project metadata, schema verification and GitOps documentation stay in this directory.
 
-| project | id | role | who may connect |
-|---|---|---|---|
-| canonical | `crimson-cell-39815049` | product data | web-server, api-server (product NAT address) |
-| auth | `fancy-brook-94928157` | shared-auth customer realm | web-server, api-server |
-| **admin** | `round-butterfly-64996380` | admin plane | admin-web-server, admin-api-server **only** (admin NAT address) |
+Terraform ownership moved without changing the managed Neon objects:
 
-## The admin project is provisioned but intentionally unreachable
+- child module: `modules/neon/projects`
+- production root/state: `environments/production/neon`
+- old Terraform root: `neon/`
 
-It was created with **public connections blocked and VPC connections blocked**. That is not a
-misconfiguration to "fix" — it is an empty provisioning target that stays closed until its private
-endpoint exists. Turning it on is a four-step acceptance, and all four must be evidenced:
+The three project roles remain `canonical` (product data), `auth` (customer auth realm) and `admin` (admin plane). The admin project remains intentionally closed until its private-networking acceptance is satisfied.
 
-1. Create the private endpoint / VPC endpoint and its private DNS.
-2. Connect from the **admin** network → must succeed.
-3. Connect from the **product** network → must be refused.
-4. Connect from the public internet → must be refused.
+Schema migrations do not come from this Terraform module. `dpm` remains the migration tool and the product schema authority remains outside this infrastructure root. Pull-request Neon branches remain provider-native and are managed by `.github/workflows/neon-preview.yml`.
 
-Neon private networking requires the **Scale** plan (or a provider-enabled trial); every Neon org in
-the fleet currently reports **Free**, so step 1 is blocked on a plan decision, not on code. Until
-then the admin plane uses the AWS RDS admin database and the Neon admin project stays closed.
-
-## Migrations do not come from here
-
-Neon never ingests schema from git. `dpm` is the only migration tool and the schema authority is
-`gha-indie-worker-orm-core`; this directory declares *infrastructure* (project, branches, roles,
-databases, endpoints) only. The preview workflow creates a `preview/pr-<n>` branch per PR and runs
-`dpm plan` — **plan only**; apply is human-gated, and no service runs DDL at boot.
+See `docs/terraform-layout-migration.md` before attaching the new root to existing state.
