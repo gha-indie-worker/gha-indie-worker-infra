@@ -40,12 +40,6 @@ variable "image_mcp" {
   description = "Full image ref for the MCP server, pinned by digest."
 }
 
-variable "admin_allowlist" {
-  type        = string
-  description = "Comma-separated super-admin UUIDs (GHA_INDIE_WORKER_ADMIN_ALLOWLIST)."
-  sensitive   = true
-}
-
 variable "min_instances_product" {
   type        = number
   default     = 0
