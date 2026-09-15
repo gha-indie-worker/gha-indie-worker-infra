@@ -6,6 +6,8 @@ source:
   commit: e8b849ab484f1ee06699b5af43c3ef9d6dde08b8
   checkout_dir: .ores/sources/gha-indie-worker-monorepo
 
+# Policy authority for the supervisor-owned Rust load balancer. Concrete listen
+# and backend socket addresses are runtime evidence, not static source identity.
 load_balancer:
   strategy: round-robin
   max_attempts: 2
@@ -14,6 +16,7 @@ load_balancer:
 
 services:
   api:
+    name: api
     runtime: host
     command: ["cargo", "run"]
     build:
@@ -26,6 +29,7 @@ services:
       timeout_ms: 1000
       retries: 30
   web:
+    name: web
     runtime: host
     command: ["cargo", "run"]
     build:
