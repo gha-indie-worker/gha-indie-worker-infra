@@ -105,7 +105,11 @@ terraform validate
 
 echo "==> terraform plan        (environments/$ROOT)"
 set +e
-terraform plan -input=false -detailed-exitcode -out="$PLAN_FILE" "${EXTRA[@]+"${EXTRA[@]}"}"
+if [[ ${#EXTRA[@]} -gt 0 ]]; then
+  terraform plan -input=false -detailed-exitcode -out="$PLAN_FILE" "${EXTRA[@]}"
+else
+  terraform plan -input=false -detailed-exitcode -out="$PLAN_FILE"
+fi
 PLAN_STATUS=$?
 set -e
 
