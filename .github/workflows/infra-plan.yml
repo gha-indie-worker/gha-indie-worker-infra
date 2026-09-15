@@ -37,8 +37,10 @@ jobs:
       - uses: opentofu/setup-opentofu@v1
         with:
           tofu_version: 1.9.0
-      - name: fmt
+      - name: fmt environment
         run: tofu -chdir=environments/production/${{ matrix.provider }} fmt -check -diff -recursive
+      - name: fmt module
+        run: tofu fmt -check -diff -recursive modules/${{ matrix.provider }}
       - name: init (no backend)
         run: tofu -chdir=environments/production/${{ matrix.provider }} init -backend=false -input=false
       - name: validate
