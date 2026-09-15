@@ -9,7 +9,7 @@ use std::{
 };
 
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
-const EXPECTED_MONOREPO: &str = "fa0723ca1e143f81d9926a4c8260d532905a9f26";
+const EXPECTED_MONOREPO: &str = "e8b849ab484f1ee06699b5af43c3ef9d6dde08b8";
 const STUB_API_PIN: &str = "90cfc8a86660d36683fc96d629af843c347e6667";
 const STUB_WEB_PIN: &str = "d99dbb64f3cb4434d023e7f7943a016b7c8c3bd4";
 
@@ -50,8 +50,15 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
         "schema_version: ores.compose.v1",
         "repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git",
         "checkout_dir: .ores/sources/gha-indie-worker-monorepo",
+        "load_balancer:",
+        "strategy: round-robin",
+        "max_attempts: 2",
+        "failover_on_missing_backend: true",
+        "failover_on_invalid_backend: true",
         "working_dir: apps/gha-indie-worker-api-server.rs",
         "working_dir: apps/gha-indie-worker-web-server.rs",
+        "http://127.0.0.1:8080/readyz",
+        "http://127.0.0.1:8081/readyz",
     ] {
         if !manifest.contains(required) {
             return Err(format!("compose contract missing {required:?}").into());
@@ -100,7 +107,7 @@ fn nested_pin(root: &Path, path: &str) -> Result<String, Box<dyn Error>> {
 fn doctor(root: &Path) -> Result<(), Box<dyn Error>> {
     validate(root)?;
 
-    for command in ["git", "cargo", "ores-compose", "cloudflared"] {
+    for command in ["git", "cargo", "curl", "ores-compose", "cloudflared"] {
         if !command_available(command) {
             return Err(format!("required command is unavailable: {command}").into());
         }
@@ -185,7 +192,7 @@ fn tunnel(root: &Path, mode: &str, config: &Path) -> Result<(), Box<dyn Error>> 
 
 fn usage() -> ! {
     eprintln!("usage: gha-indie-worker-dev-runtime <validate|bootstrap|doctor|tunnel> [laptop|codespace] [config-path]");
-    std::process::exit(2);
+    std::process::exit(2)
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
