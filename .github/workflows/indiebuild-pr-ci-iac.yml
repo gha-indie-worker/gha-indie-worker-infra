@@ -1,0 +1,37 @@
+name: indiebuild PR CI infrastructure contract
+
+on:
+  pull_request:
+    paths:
+      - "cloudflare/pr-gateway/**"
+      - "k8s/pr-gateway.yaml"
+      - "modules/neon/projects/**"
+      - "supabase/ci-control-plane/**"
+      - "docs/indiebuild-pr-ci.md"
+      - "tools/indiebuild-pr-ci-check/**"
+      - ".github/workflows/indiebuild-pr-ci-iac.yml"
+  push:
+    branches: [main]
+    paths:
+      - "cloudflare/pr-gateway/**"
+      - "k8s/pr-gateway.yaml"
+      - "modules/neon/projects/**"
+      - "supabase/ci-control-plane/**"
+      - "tools/indiebuild-pr-ci-check/**"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Rust contract checker
+        run: cargo run --locked --manifest-path tools/indiebuild-pr-ci-check/Cargo.toml
+      - name: Cloudflare Worker syntax
+        run: node --check cloudflare/pr-gateway/worker.js

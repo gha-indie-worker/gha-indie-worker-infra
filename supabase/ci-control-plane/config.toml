@@ -1,0 +1,13 @@
+[ci]
+status_context = "indiebuild.dev/ci"
+webhook_state = "stateless"
+create_project = false
+
+[supabase]
+canonical_project_ref = "mktabbhmldkewllyfizc"
+auth_project_ref = "qelemqszswrasjtgwfag"
+schema_namespace = "gha_indie_worker"
+
+[secrets]
+provider = "sealed-secrets"
+allow_in_supabase = false
