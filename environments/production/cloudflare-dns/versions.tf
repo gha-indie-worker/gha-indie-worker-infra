@@ -8,6 +8,4 @@ terraform {
   }
 }
 
-provider "cloudflare" {
-  # CLOUDFLARE_API_TOKEN from the environment (ores-sops); never committed.
-}
+provider "cloudflare" {}

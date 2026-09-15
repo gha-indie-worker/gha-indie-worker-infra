@@ -1,28 +1,40 @@
 # gha-indie-worker-infra
 
-Cloudflare Workers and Kubernetes manifests for `gha-indie-worker`. Cluster source of truth remains github.com/oresoftware/k8s-cluster.
+Canonical infrastructure repository for `gha-indie-worker`. Cluster source of truth remains `ORESoftware/k8s-cluster`.
 
+## Terraform topology
+
+Terraform follows the fleet modules/environments contract:
+
+| path | ownership |
+|---|---|
+| `modules/gcp/` | reusable GCP provider implementation |
+| `modules/cloudflare/` | reusable Cloudflare provider implementation |
+| `modules/neon/` | reusable Neon provider implementation |
+| `modules/supabase/` | admitted Supabase Terraform boundary; currently no Terraform-managed Supabase resources |
+| `environments/production/` | provider config, independent production state roots and module composition |
+| `environments/{preview,staging}/` | admitted environment namespaces; no long-lived state yet |
+
+Provider-native sources stay where their tools discover them: `cloudflare/edge-router/`, `neon/`, `supabase/`, and `k8s/`.
+
+The five pre-existing Terraform state histories remain separate. See `TERRAFORM_LAYOUT.md` and `docs/terraform-layout-migration.md` before the first apply from a new root.
+
+## Application checkout
+
+`_apps/gha-monorepo` is a pinned Git submodule for `gha-indie-worker/gha-indie-worker-monorepo`. Initialize the exact recorded revision with:
+
+```sh
+scripts/sync-apps.sh
+```
+
+Use `scripts/update-app-pin.sh` only to deliberately review and stage a newer monorepo pin. `dist/` and every other `_apps/*` child are ignored local/generated material. Terraform is forbidden from sourcing modules from `_apps/` or `dist/`; infrastructure plans must remain reproducible without the optional application checkout. See `docs/apps-checkout.md`.
 
 ## Database isolation tests
 
-Run `npm ci --ignore-scripts && npm test` in [`infra-isolation/`](infra-isolation/README.md)
-for the canonical/auth/admin infrastructure contract and adversarial tests.
-The dedicated GitHub Actions check is offline; live isolation acceptance requires
-fresh provider/AWS evidence and explicitly authorized read-only probes. Missing
-projects, private endpoints, or evidence remain blocked rather than passing.
+Run `npm ci --ignore-scripts && npm test` in `infra-isolation/` for the canonical/auth/admin infrastructure contract and adversarial tests. Live isolation acceptance requires fresh provider/AWS evidence and explicitly authorized read-only probes; missing projects, private endpoints or evidence remain blocked rather than passing.
 
-## Cloud edge and providers
+## Apply policy
 
-| directory | what it declares |
-|---|---|
-| `cloudflare/dns/` | DNS records for `indiebuild.dev` (terraform): `origin-hetzner` unproxied + one proxied record per host |
-| `cloudflare/edge-router/` | `router.config.json` — the subdomain contract; `wrangler.toml` is rendered from it |
-| `gcp/cloudrun/` | Cloud Run fallback services, the product/admin VPC split, IAM, Secret Manager containers |
-| `neon/` | the three Neon projects (canonical, auth, admin) — infrastructure only, never schema |
-| `supabase/` | per-project overlays (RLS, grants, Auth/Storage/Realtime); schema authority stays in orm-core |
-| `infra-isolation/` | the adversarial tests that prove the two planes cannot reach each other |
+Nothing applies on merge. CI formats, initializes without production state where appropriate, validates, and may produce reviewed plans. Human applies use `scripts/apply-terraform.sh <environment/root> --apply` against the existing state for that root.
 
-Nothing here applies on merge. `infra-plan.yml` formats, validates and runs the isolation tests;
-every apply is a human running `tofu apply` against a reviewed plan.
-
-See [`docs/planes.md`](docs/planes.md) for why the admin plane has no public fallback.
+See `docs/planes.md` for why the admin plane has no public fallback.

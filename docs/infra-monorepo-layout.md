@@ -1,11 +1,21 @@
 # Infrastructure monorepo layout
 
-Reusable infrastructure may live under `modules/`, but provider Git sync must always terminate at a provider-native entrypoint. Providers are never expected to discover the ORESoftware `modules/` convention by themselves.
+The canonical Terraform topology is:
 
-- **Supabase:** configure a Working directory that contains a child `supabase/` directory. Prefer `.` with root `supabase/`.
-- **Cloudflare:** configure each Worker/Pages Root directory to the directory containing its Wrangler/project config; include consumed `modules/cloudflare/` paths in build watch paths.
-- **Neon:** keep a `neon.ts` config-as-code entrypoint in the linked project root; it may import reusable policy from `modules/neon/`.
+```text
+modules/
+  cloudflare/{platform,dns}/
+  gcp/{platform,cloudrun}/
+  neon/projects/
+  supabase/
+environments/
+  preview/
+  staging/
+  production/{cloudflare-platform,cloudflare-dns,gcp-platform,gcp-cloudrun,neon}/
+```
 
-Recommended reusable roots are `modules/{cloudflare,supabase,neon}` plus `environments/{dev,staging,production}`. Keep state isolated per deploy/environment root. Path-filtered CI tests affected roots, while shared-module changes fan out to all consuming sync roots.
+`modules/` owns shared provider implementation. `environments/` owns stateful composition, provider configuration and environment values. Production keeps one root per pre-existing state boundary; module organization is NOT permission to merge states.
 
-A module is not deployable until a committed provider-native sync root can see it. Mirrors and sibling application monorepos are not provider deploy sources. This rollout does not connect providers or apply live infrastructure.
+Provider-native sources stay outside Terraform modules where their provider tools discover them: Supabase config/migrations/functions under `supabase/`, Neon inventory/schema verification under `neon/`, Cloudflare Worker routes under `cloudflare/edge-router/`, Kubernetes manifests under `k8s/`.
+
+The Supabase Terraform module is intentionally empty today: no reviewed Terraform-owned Supabase resources existed before this migration, so native Supabase desired state remains the authority instead of being duplicated.

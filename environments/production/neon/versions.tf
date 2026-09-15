@@ -9,5 +9,5 @@ terraform {
 }
 
 provider "neon" {
-  # NEON_API_KEY from the environment (ores-sops); never committed.
+  # NEON_API_KEY is provided by the operator/CI secret store.
 }

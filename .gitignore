@@ -10,9 +10,13 @@
 *.sqlite
 Cargo.lock
 
+# Generated/local application material. The one tracked app checkout is a gitlink,
+# not vendored source; every other _apps child and all dist output stay local.
+/dist/
+/_apps/*
+!/_apps/gha-monorepo
 
-# Terraform / OpenTofu working state. `tofu init` downloads provider binaries that are hundreds of
-# megabytes; committing one is an instant pre-receive rejection (GitHub's limit is 100 MB/file).
+# Terraform / OpenTofu working state. Provider downloads, plans and state are local.
 .terraform/
 .terraform.lock.hcl
 *.tfstate
@@ -20,24 +24,22 @@ Cargo.lock
 *.tfplan
 plan.tfplan
 crash.log
+crash.*.log
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
-# --- terraform ---
-crash.*.log
 *.tfvars
 !*.tfvars.example
 tfplan
-# .terraform.lock.hcl IS committed: it pins provider versions + checksums.
-# --- wrangler ---
+
+# Wrangler
 .wrangler/
 wrangler.rendered.toml
 
 # Local temporary directories and repository-owned worktrees
 tmp/
 temp/
-# Repository-local temporary data and authorized Git worktrees
 tmp
 temp
 tmp/worktrees

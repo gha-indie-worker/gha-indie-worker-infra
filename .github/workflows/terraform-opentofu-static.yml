@@ -1,0 +1,137 @@
+name: Terraform and OpenTofu static validation
+
+on:
+  pull_request:
+    paths:
+      - "modules/**"
+      - "environments/**"
+      - ".ores-infra.toml"
+      - "scripts/hcl-sanity.py"
+      - ".github/workflows/terraform-opentofu-static.yml"
+  push:
+    branches: [main]
+    paths:
+      - "modules/**"
+      - "environments/**"
+      - ".ores-infra.toml"
+      - "scripts/hcl-sanity.py"
+      - ".github/workflows/terraform-opentofu-static.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-opentofu-static-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+
+jobs:
+  terraform:
+    name: terraform (${{ matrix.root }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        root:
+          - gcp-platform
+          - gcp-cloudrun
+          - cloudflare-platform
+          - cloudflare-dns
+          - neon
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Install checksum-verified Terraform 1.9.8
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=1.9.8
+          archive="terraform_${version}_linux_amd64.zip"
+          base="https://releases.hashicorp.com/terraform/${version}"
+          work="${RUNNER_TEMP}/terraform-install"
+          mkdir -p "$work" "${RUNNER_TEMP}/bin"
+          curl --fail --silent --show-error --location "$base/$archive" --output "$work/$archive"
+          curl --fail --silent --show-error --location "$base/terraform_${version}_SHA256SUMS" --output "$work/SHA256SUMS"
+          (cd "$work" && grep "  ${archive}$" SHA256SUMS | sha256sum --check --strict -)
+          unzip -q "$work/$archive" -d "${RUNNER_TEMP}/bin"
+          echo "${RUNNER_TEMP}/bin" >> "$GITHUB_PATH"
+
+      - name: Terraform fmt
+        working-directory: environments/production/${{ matrix.root }}
+        run: terraform fmt -check -diff -recursive
+
+      - name: Terraform init without backend
+        working-directory: environments/production/${{ matrix.root }}
+        run: terraform init -backend=false -input=false
+
+      - name: Terraform validate
+        working-directory: environments/production/${{ matrix.root }}
+        run: terraform validate -no-color
+
+  opentofu:
+    name: opentofu (${{ matrix.root }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        root:
+          - gcp-platform
+          - gcp-cloudrun
+          - cloudflare-platform
+          - cloudflare-dns
+          - neon
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Install checksum-verified OpenTofu 1.9.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=1.9.0
+          archive="tofu_${version}_linux_amd64.zip"
+          base="https://github.com/opentofu/opentofu/releases/download/v${version}"
+          work="${RUNNER_TEMP}/opentofu-install"
+          mkdir -p "$work" "${RUNNER_TEMP}/bin"
+          curl --fail --silent --show-error --location "$base/$archive" --output "$work/$archive"
+          curl --fail --silent --show-error --location "$base/tofu_${version}_SHA256SUMS" --output "$work/SHA256SUMS"
+          (cd "$work" && grep "  ${archive}$" SHA256SUMS | sha256sum --check --strict -)
+          unzip -q "$work/$archive" -d "${RUNNER_TEMP}/bin"
+          echo "${RUNNER_TEMP}/bin" >> "$GITHUB_PATH"
+
+      - name: OpenTofu fmt
+        working-directory: environments/production/${{ matrix.root }}
+        run: tofu fmt -check -diff -recursive
+
+      - name: OpenTofu init without backend
+        working-directory: environments/production/${{ matrix.root }}
+        run: tofu init -backend=false -input=false
+
+      - name: OpenTofu validate
+        working-directory: environments/production/${{ matrix.root }}
+        run: tofu validate -no-color
+
+  repository-contracts:
+    name: offline repository contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: HCL sanity across modules and environments
+        run: |
+          set -euo pipefail
+          python3 scripts/hcl-sanity.py modules
+          python3 scripts/hcl-sanity.py environments
