@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+exec cargo run --locked --manifest-path "$root/tools/dev-runtime/Cargo.toml" -- tunnel "$@"

@@ -9,12 +9,18 @@
 !.env.example
 *.sqlite
 Cargo.lock
+!tools/indiebuild-pr-ci-check/Cargo.lock
+!tools/dev-runtime/Cargo.lock
 
 # Generated/local application material. The one tracked app checkout is a gitlink,
 # not vendored source; every other _apps child and all dist output stay local.
 /dist/
 /_apps/*
 !/_apps/gha-monorepo
+
+# ores-compose materialized source/session state and runtime-only tunnel material.
+/.ores/
+/.runtime/
 
 # Terraform / OpenTofu working state. Provider downloads, plans and state are local.
 .terraform/

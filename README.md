@@ -29,6 +29,12 @@ scripts/sync-apps.sh
 
 Use `scripts/update-app-pin.sh` only to deliberately review and stage a newer monorepo pin. `dist/` and every other `_apps/*` child are ignored local/generated material. Terraform is forbidden from sourcing modules from `_apps/` or `dist/`; infrastructure plans must remain reproducible without the optional application checkout. See `docs/apps-checkout.md`.
 
+## Laptop / Codespaces runtime contract
+
+This repository is the single `.ores-compose.yaml` authority. The manifest pins the same exact monorepo commit as `_apps/gha-monorepo`; laptop and Codespaces must not substitute a moving branch or a second service graph.
+
+Use `scripts/dev/bootstrap`, then `scripts/dev/doctor`. The doctor currently fails intentionally while the pinned API/web server revisions are print-and-exit stubs, so the Access-protected Cloudflare tunnel cannot be mistaken for a healthy runtime. When the listener work and upstream ores-compose source stack are promoted, `scripts/dev/tunnel` accepts only an external fail-closed config for `local.indiebuild.dev` or `codespace.indiebuild.dev`. See `docs/local-development.md`.
+
 ## Database isolation tests
 
 Run `npm ci --ignore-scripts && npm test` in `infra-isolation/` for the canonical/auth/admin infrastructure contract and adversarial tests. Live isolation acceptance requires fresh provider/AWS evidence and explicitly authorized read-only probes; missing projects, private endpoints or evidence remain blocked rather than passing.

@@ -1,0 +1,9 @@
+{
+  "name": "gha-indie-worker-infra",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-1-bookworm",
+  "remoteUser": "vscode",
+  "postCreateCommand": "cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate",
+  "containerEnv": {
+    "GHA_INDIE_WORKER_DEV_SURFACE": "codespace"
+  }
+}
