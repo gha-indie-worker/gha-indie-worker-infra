@@ -6,7 +6,7 @@
     "ghcr.io/jsburckhardt/devcontainer-features/just:1.0.0": {},
     "ghcr.io/devcontainers-extra/features/cloudflared:1.0.8": {}
   },
-  "postCreateCommand": "bash -lc 'cargo install --locked --git https://github.com/ORESoftware/ores-cli.git --rev 620cbbc3e1062396227483736285916c1adea3ca --bin oresc && cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate && oresc --no-json codespace edge status || test $? -eq 1'",
+  "postCreateCommand": "bash -lc 'cargo install --locked --git https://github.com/ORESoftware/ores-cli.git --rev 620cbbc3e1062396227483736285916c1adea3ca --bin oresc && cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate && oresc --no-json codespace edge status || test $? -eq 2'",
   "portsAttributes": {
     "8080": {
       "label": "Cloudflare Tunnel loopback origin",
