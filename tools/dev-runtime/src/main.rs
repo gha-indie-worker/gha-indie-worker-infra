@@ -9,7 +9,7 @@ use std::{
 };
 
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
-const EXPECTED_MONOREPO: &str = "ed76301ff9db6ba359570f58a00cc29ca90b6840";
+const EXPECTED_MONOREPO: &str = "608943d2eb0a7f21ce5a0303d426ca853e9dfdab";
 const STUB_API_PIN: &str = "90cfc8a86660d36683fc96d629af843c347e6667";
 const STUB_WEB_PIN: &str = "d99dbb64f3cb4434d023e7f7943a016b7c8c3bd4";
 
@@ -55,8 +55,15 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
         "max_attempts: 2",
         "failover_on_missing_backend: true",
         "failover_on_invalid_backend: true",
+        "max_concurrent_connections: 256",
+        "backend_connect_timeout_ms: 1500",
+        "max_proxy_duration_ms: 900000",
         "working_dir: apps/gha-indie-worker-api-server.rs",
         "working_dir: apps/gha-indie-worker-web-server.rs",
+        "readyz_path: /readyz",
+        "healthz_path: /healthz",
+        "timeout_ms: 500",
+        "retries: 30",
         "http://127.0.0.1:8080/readyz",
         "http://127.0.0.1:8081/readyz",
     ] {

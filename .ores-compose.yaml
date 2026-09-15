@@ -3,7 +3,7 @@ project: gha-indie-worker
 allow_lazy_start: false
 source:
   repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git
-  commit: ed76301ff9db6ba359570f58a00cc29ca90b6840
+  commit: 608943d2eb0a7f21ce5a0303d426ca853e9dfdab
   checkout_dir: .ores/sources/gha-indie-worker-monorepo
 
 # Policy authority for the supervisor-owned Rust load balancer. Concrete listen
@@ -13,6 +13,9 @@ load_balancer:
   max_attempts: 2
   failover_on_missing_backend: true
   failover_on_invalid_backend: true
+  max_concurrent_connections: 256
+  backend_connect_timeout_ms: 1500
+  max_proxy_duration_ms: 900000
 
 services:
   api:
@@ -23,11 +26,17 @@ services:
       - ["cargo", "build"]
     working_dir: apps/gha-indie-worker-api-server.rs
     replicas: 1
+    readiness:
+      readyz_path: /readyz
+      healthz_path: /healthz
+      interval_ms: 1000
+      timeout_ms: 500
+      retries: 30
     healthcheck:
       command: ["curl", "--fail", "--silent", "http://127.0.0.1:8080/readyz"]
       interval_ms: 1000
       timeout_ms: 1000
-      retries: 30
+      retries: 20
   web:
     name: web
     runtime: host
@@ -37,8 +46,14 @@ services:
     working_dir: apps/gha-indie-worker-web-server.rs
     replicas: 1
     depends_on: [api]
+    readiness:
+      readyz_path: /readyz
+      healthz_path: /healthz
+      interval_ms: 1000
+      timeout_ms: 500
+      retries: 30
     healthcheck:
       command: ["curl", "--fail", "--silent", "http://127.0.0.1:8081/readyz"]
       interval_ms: 1000
       timeout_ms: 1000
-      retries: 30
+      retries: 20
