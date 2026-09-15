@@ -49,5 +49,6 @@ jobs:
           grep -Fq 'codespace-edge-down:' Justfile
           grep -Fq 'codespace-edge-check:' Justfile
           grep -Fq 'onAutoForward' .devcontainer/devcontainer.json
-          grep -Fq 'external-origin connector model' docs/local-development.md
+          grep -Fq 'shared Codespaces edge diagnostic cluster' docs/local-development.md
+          grep -Fq 'starts its local `ores-compose` cluster and Rust edge' docs/local-development.md
           ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!*.lock'
