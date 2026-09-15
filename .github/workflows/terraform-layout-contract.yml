@@ -73,7 +73,7 @@ jobs:
           if [ -d terraform ] && find terraform -type f -name '*.tf' -print -quit | grep -q .; then
             echo 'legacy terraform/ roots are forbidden after the modules migration' >&2; exit 1
           fi
-          for legacy in gcp/cloudrun cloudflare/dns; do
+          for legacy in gcp/cloudrun cloudflare/dns cloudflare/laptop-tunnel; do
             if [ -d "$legacy" ] && find "$legacy" -type f -name '*.tf' -print -quit | grep -q .; then
               echo "legacy Terraform root still owns .tf files: $legacy" >&2; exit 1
             fi
