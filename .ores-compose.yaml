@@ -1,23 +1,53 @@
 schema_version: ores.compose.v1
 project: gha-indie-worker
 allow_lazy_start: false
-source:
-  repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git
-  commit: fa0723ca1e143f81d9926a4c8260d532905a9f26
-  checkout_dir: .ores/sources/gha-indie-worker-monorepo
 services:
   api:
     runtime: host
-    command: ["cargo", "run", "--locked"]
+    command:
+      - env
+      - GHA_INDIE_WORKER_API_BIND=127.0.0.1:18080
+      - cargo
+      - run
+      - --locked
     build:
       - ["cargo", "build", "--locked"]
-    working_dir: apps/gha-indie-worker-api-server.rs
+    working_dir: _apps/gha-monorepo/apps/gha-indie-worker-api-server.rs
     replicas: 1
+    healthcheck:
+      command: ["curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:18080/healthz"]
+      interval_ms: 250
+      timeout_ms: 1000
+      retries: 20
   web:
     runtime: host
-    command: ["cargo", "run", "--locked"]
+    command:
+      - env
+      - GHA_INDIE_WORKER_WEB_BIND=127.0.0.1:18081
+      - GHA_INDIE_WORKER_API_HTTP_BASE=http://127.0.0.1:18080
+      - cargo
+      - run
+      - --locked
     build:
       - ["cargo", "build", "--locked"]
-    working_dir: apps/gha-indie-worker-web-server.rs
+    working_dir: _apps/gha-monorepo/apps/gha-indie-worker-web-server.rs
     replicas: 1
     depends_on: [api]
+    healthcheck:
+      command: ["curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:18081/healthz"]
+      interval_ms: 250
+      timeout_ms: 1000
+      retries: 20
+  edge:
+    runtime: host
+    command: ["cargo", "run", "--locked", "--manifest-path", "tools/edge-lb/Cargo.toml"]
+    build:
+      - ["cargo", "build", "--locked", "--manifest-path", "tools/edge-lb/Cargo.toml"]
+    working_dir: .
+    replicas: 1
+    depends_on: [api, web]
+    healthcheck:
+      command: ["curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8080/readyz"]
+      interval_ms: 250
+      timeout_ms: 1000
+      retries: 20
