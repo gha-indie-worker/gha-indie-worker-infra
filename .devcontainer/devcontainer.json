@@ -2,7 +2,26 @@
   "name": "gha-indie-worker-infra",
   "image": "mcr.microsoft.com/devcontainers/rust:1-1-bookworm",
   "remoteUser": "vscode",
-  "postCreateCommand": "cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/jsburckhardt/devcontainer-features/just:1.0.0": {},
+    "ghcr.io/devcontainers-extra/features/cloudflared:1.0.8": {}
+  },
+  "secrets": {
+    "ORES_CLI_READ_TOKEN": {
+      "description": "Fine-grained GitHub token with read-only Contents access to private ORESoftware/ores-cli, used only to install oresc in this cross-org Codespace."
+    },
+    "TUNNEL_TOKEN": {
+      "description": "Cloudflare named-tunnel connector token consumed by oresc codespace edge up."
+    }
+  },
+  "postCreateCommand": "bash -euc 'if ! command -v oresc >/dev/null 2>&1; then test -n \"${ORES_CLI_READ_TOKEN:-}\" || { echo >&2 \"ORES_CLI_READ_TOKEN is required to install private ORESoftware/ores-cli in this cross-org Codespace\"; exit 78; }; GH_TOKEN=\"$ORES_CLI_READ_TOKEN\" gh auth setup-git >/dev/null; GH_TOKEN=\"$ORES_CLI_READ_TOKEN\" CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --locked --git https://github.com/ORESoftware/ores-cli.git --rev c854130ee147e9793a3af8736e90241630a5c934 --bin oresc; fi; cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate; just codespace-edge-check'",
+  "portsAttributes": {
+    "8080": {
+      "label": "Cloudflare Tunnel loopback origin",
+      "onAutoForward": "ignore"
+    }
+  },
   "containerEnv": {
     "GHA_INDIE_WORKER_DEV_SURFACE": "codespace"
   }
