@@ -3,7 +3,7 @@ project: gha-indie-worker
 allow_lazy_start: false
 source:
   repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git
-  commit: e4d89e6494624e272a737de11881b80d4db695ec
+  commit: ed76301ff9db6ba359570f58a00cc29ca90b6840
   checkout_dir: .ores/sources/gha-indie-worker-monorepo
 
 # Policy authority for the supervisor-owned Rust load balancer. Concrete listen
