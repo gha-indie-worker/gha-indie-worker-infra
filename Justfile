@@ -1,21 +1,21 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
-# Lifecycle behavior belongs to ORESoftware/ores-cli; these are intentionally thin wrappers.
+# `up` refreshes the shared implementation before launching it. The checkout is
+# outside this repository so ephemeral runtime code/state never pollutes git.
 codespace-edge-up:
-    @command -v oresc >/dev/null 2>&1 || { echo >&2 "oresc is required; install/update ORESoftware/ores-cli first"; exit 127; }
-    oresc --no-json codespace edge up
+    root="${ORES_CODESPACE_CLUSTER_DIR:-$HOME/.cache/ores/codespaces-cluster}"; mkdir -p "$(dirname "$root")"; if [[ -d "$root/.git" ]]; then git -C "$root" fetch --prune origin main && git -C "$root" checkout -q main && git -C "$root" merge --ff-only origin/main; else command -v gh >/dev/null; gh repo clone ORESoftware/codespaces-cluster "$root"; fi; just -f "$root/Justfile" codespace-edge-up
 
+# Status and down deliberately do not fetch: they inspect/stop the exact checkout
+# that owns the running local compose supervisor.
 codespace-edge-status:
-    @command -v oresc >/dev/null 2>&1 || { echo >&2 "oresc is required; install/update ORESoftware/ores-cli first"; exit 127; }
-    oresc --no-json codespace edge status
+    root="${ORES_CODESPACE_CLUSTER_DIR:-$HOME/.cache/ores/codespaces-cluster}"; test -f "$root/Justfile" || { echo >&2 "codespaces-cluster checkout is missing; run just codespace-edge-up first"; exit 2; }; just -f "$root/Justfile" codespace-edge-status
 
 codespace-edge-down:
-    @command -v oresc >/dev/null 2>&1 || { echo >&2 "oresc is required; install/update ORESoftware/ores-cli first"; exit 127; }
-    oresc --no-json codespace edge down
+    root="${ORES_CODESPACE_CLUSTER_DIR:-$HOME/.cache/ores/codespaces-cluster}"; test -f "$root/Justfile" || { echo >&2 "codespaces-cluster checkout is missing; edge is already locally stopped"; exit 0; }; just -f "$root/Justfile" codespace-edge-down
 
-# Read-only smoke check for a provisioned Codespace. Exit 2 means the edge runtime is installed but stopped.
 codespace-edge-check:
-    @command -v cloudflared >/dev/null 2>&1 || { echo >&2 "cloudflared is required; rebuild the Codespace"; exit 127; }
-    @command -v oresc >/dev/null 2>&1 || { echo >&2 "oresc is required; rebuild the Codespace with ORES_CLI_READ_TOKEN available"; exit 127; }
-    @oresc --no-json codespace edge status >/dev/null || test $? -eq 2
-    @echo "Codespace edge tooling is ready"
+    command -v just >/dev/null
+    command -v gh >/dev/null
+    command -v cargo >/dev/null
+    command -v cloudflared >/dev/null || { echo >&2 "cloudflared is required"; exit 127; }
+    @echo "Codespace edge wrapper prerequisites are ready"
