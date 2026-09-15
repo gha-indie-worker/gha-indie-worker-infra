@@ -10,7 +10,7 @@ use std::{
 
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
 const EXPECTED_MONOREPO: &str = "fa0723ca1e143f81d9926a4c8260d532905a9f26";
-const ORES_CLI_REV: &str = "620cbbc3a5595cfa90b242011b5c1a859928c297";
+const ORES_CLI_REV: &str = "3d65e4dbdeeed04bfa7d8f8d64a5681b41157a90";
 const STUB_API_PIN: &str = "90cfc8a86660d36683fc96d629af843c347e6667";
 const STUB_WEB_PIN: &str = "d99dbb64f3cb4434d023e7f7943a016b7c8c3bd4";
 
@@ -57,6 +57,7 @@ fn validate_devcontainer(root: &Path) -> Result<(), Box<dyn Error>> {
         "CARGO_NET_GIT_FETCH_WITH_CLI=true",
         "https://github.com/ORESoftware/ores-cli.git",
         revision.as_str(),
+        "just codespace-edge-check",
         "\"8080\"",
         "\"onAutoForward\": \"ignore\"",
     ] {
@@ -65,9 +66,15 @@ fn validate_devcontainer(root: &Path) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    for forbidden in ["https://x-access-token:", "ghp_", "github_pat_"] {
+    for forbidden in [
+        "https://x-access-token:",
+        "ghp_",
+        "github_pat_",
+        "*.app.github.dev",
+        "CF_TUNNEL_TOKEN",
+    ] {
         if devcontainer.contains(forbidden) {
-            return Err(format!("devcontainer contains credential-shaped material: {forbidden}").into());
+            return Err(format!("devcontainer contains credential-shaped or legacy ingress material: {forbidden}").into());
         }
     }
 
@@ -229,6 +236,7 @@ fn tunnel(root: &Path, mode: &str, config: &Path) -> Result<(), Box<dyn Error>> 
     let status = Command::new("cloudflared")
         .arg("tunnel")
         .arg("--config")
+        .arg(&config)
         .arg("run")
         .status()?;
     if !status.success() {
