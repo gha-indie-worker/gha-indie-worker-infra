@@ -9,7 +9,7 @@ use std::{
 };
 
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
-const EXPECTED_MONOREPO: &str = "fa0723ca1e143f81d9926a4c8260d532905a9f26";
+const EXPECTED_MONOREPO: &str = "608943d2eb0a7f21ce5a0303d426ca853e9dfdab";
 const ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
 const STUB_API_PIN: &str = "90cfc8a86660d36683fc96d629af843c347e6667";
 const STUB_WEB_PIN: &str = "d99dbb64f3cb4434d023e7f7943a016b7c8c3bd4";
@@ -74,7 +74,10 @@ fn validate_devcontainer(root: &Path) -> Result<(), Box<dyn Error>> {
         "CF_TUNNEL_TOKEN",
     ] {
         if devcontainer.contains(forbidden) {
-            return Err(format!("devcontainer contains credential-shaped or legacy ingress material: {forbidden}").into());
+            return Err(format!(
+                "devcontainer contains credential-shaped or legacy ingress material: {forbidden}"
+            )
+            .into());
         }
     }
 
@@ -87,15 +90,43 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
         "schema_version: ores.compose.v1",
         "repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git",
         "checkout_dir: .ores/sources/gha-indie-worker-monorepo",
+        "load_balancer:",
+        "strategy: round-robin",
+        "max_attempts: 2",
+        "failover_on_missing_backend: true",
+        "failover_on_invalid_backend: true",
         "working_dir: apps/gha-indie-worker-api-server.rs",
         "working_dir: apps/gha-indie-worker-web-server.rs",
+        "GHA_INDIE_WORKER_API_BIND=127.0.0.1:18090",
+        "GHA_INDIE_WORKER_WEB_BIND=127.0.0.1:18091",
+        "GHA_INDIE_WORKER_API_HTTP_BASE=http://127.0.0.1:18090",
+        "./target/debug/gha-indie-worker-api-server",
+        "./target/debug/gha-indie-worker-web-server",
+        "http://127.0.0.1:18090/readyz",
+        "http://127.0.0.1:18091/readyz",
     ] {
         if !manifest.contains(required) {
             return Err(format!("compose contract missing {required:?}").into());
         }
     }
-    if manifest.contains("token:") || manifest.contains("credentials:") || manifest.contains("../") {
-        return Err("compose manifest contains a credential-shaped or traversal field".into());
+
+    for forbidden in [
+        "token:",
+        "credentials:",
+        "../",
+        "readyz_path:",
+        "max_concurrent_connections:",
+        "backend_connect_timeout_ms:",
+        "max_proxy_duration_ms:",
+        "http://127.0.0.1:8080/readyz",
+    ] {
+        if manifest.contains(forbidden) {
+            return Err(format!("compose manifest contains stale, unsafe, or unsupported field {forbidden:?}").into());
+        }
+    }
+
+    if manifest.contains("command: [\"cargo\", \"run\"]") {
+        return Err("compose must supervise built server binaries rather than cargo run wrappers".into());
     }
 
     let compose_pin = manifest_commit(&manifest).ok_or("compose source commit is missing")?;
@@ -109,7 +140,11 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
         return Err("_apps/gha-monorepo must be a tracked mode-160000 gitlink".into());
     }
     if fields[2] != compose_pin {
-        return Err(format!("tracked monorepo gitlink {} != compose source pin {compose_pin}", fields[2]).into());
+        return Err(format!(
+            "tracked monorepo gitlink {} != compose source pin {compose_pin}",
+            fields[2]
+        )
+        .into());
     }
 
     validate_devcontainer(root)?;
@@ -156,7 +191,7 @@ fn nested_pin(root: &Path, path: &str) -> Result<String, Box<dyn Error>> {
 fn doctor(root: &Path) -> Result<(), Box<dyn Error>> {
     validate(root)?;
 
-    for command in ["git", "cargo", "ores-compose", "cloudflared", "just"] {
+    for command in ["git", "cargo", "curl", "ores-compose", "cloudflared", "just"] {
         if !command_available(command) {
             return Err(format!("required command is unavailable: {command}").into());
         }
@@ -181,7 +216,7 @@ fn doctor(root: &Path) -> Result<(), Box<dyn Error>> {
         .into());
     }
 
-    println!("local runtime doctor passed");
+    println!("local application backends are admitted on 127.0.0.1:18090 and 127.0.0.1:18091");
     Ok(())
 }
 
