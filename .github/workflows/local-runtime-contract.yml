@@ -1,0 +1,40 @@
+name: local runtime static contract
+
+on:
+  pull_request:
+    paths:
+      - ".ores-compose.yaml"
+      - ".gitmodules"
+      - "_apps/gha-monorepo"
+      - ".gitignore"
+      - "scripts/dev/**"
+      - "tools/dev-runtime/**"
+      - "cloudflare/laptop-ingress/**"
+      - "cloudflare/codespace-ingress/**"
+      - ".devcontainer/**"
+      - "docs/local-development.md"
+      - ".github/workflows/local-runtime-contract.yml"
+  push:
+    branches: [main]
+    paths:
+      - ".ores-compose.yaml"
+      - "_apps/gha-monorepo"
+      - "scripts/dev/**"
+      - "tools/dev-runtime/**"
+      - "cloudflare/codespace-ingress/**"
+      - ".devcontainer/**"
+
+permissions:
+  contents: read
+
+jobs:
+  static-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Exact source / gitlink parity
+        run: cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate
