@@ -1,0 +1,11 @@
+output "zone_id" { value = module.cloudflare_platform.zone_id }
+output "zone_name" { value = module.cloudflare_platform.zone_name }
+output "product_hostnames" { value = module.cloudflare_platform.product_hostnames }
+output "origin_hostnames" { value = module.cloudflare_platform.origin_hostnames }
+output "edge_router_inputs" { value = module.cloudflare_platform.edge_router_inputs }
+output "access_application_ids" { value = module.cloudflare_platform.access_application_ids }
+output "access_policy_ids" { value = module.cloudflare_platform.access_policy_ids }
+output "ruleset_ids" { value = module.cloudflare_platform.ruleset_ids }
+output "worker_routes_are_not_managed_here" { value = module.cloudflare_platform.worker_routes_are_not_managed_here }
+output "laptop_ingress" { value = module.cloudflare_platform.laptop_ingress }
+output "edge_router_access_verification" { value = module.cloudflare_platform.edge_router_access_verification }

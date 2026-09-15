@@ -1,0 +1,10 @@
+output "GCP_WORKLOAD_IDENTITY_PROVIDER" { value = module.gcp_platform.GCP_WORKLOAD_IDENTITY_PROVIDER }
+output "GCP_SERVICE_ACCOUNT" { value = module.gcp_platform.GCP_SERVICE_ACCOUNT }
+output "GCP_RUN_SERVICE_ACCOUNT" { value = module.gcp_platform.GCP_RUN_SERVICE_ACCOUNT }
+output "cloud_run_hosts" { value = module.gcp_platform.cloud_run_hosts }
+output "cloud_run_urls" { value = module.gcp_platform.cloud_run_urls }
+output "ingress_posture" { value = module.gcp_platform.ingress_posture }
+output "artifact_registry" { value = module.gcp_platform.artifact_registry }
+output "vpc_connectors" { value = module.gcp_platform.vpc_connectors }
+output "secret_ids" { value = module.gcp_platform.secret_ids }
+output "unpopulated_secrets_are_expected" { value = module.gcp_platform.unpopulated_secrets_are_expected }
