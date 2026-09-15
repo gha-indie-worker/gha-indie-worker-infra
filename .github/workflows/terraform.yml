@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
         with:
           terraform_version: 1.9.8
           terraform_wrapper: false
@@ -85,13 +85,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
         with:
           terraform_version: 1.9.8
           terraform_wrapper: false
       - name: Authenticate to Google Cloud
         if: matrix.root.provider == 'gcp'
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
@@ -116,7 +116,7 @@ jobs:
           TF_VAR_admin_allowlist: ${{ secrets.TF_VAR_ADMIN_ALLOWLIST }}
         run: terraform plan -no-color -lock=false -out=tfplan | tee plan.txt
       - name: Comment plan
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         with:
           script: |
             const fs = require('fs');
@@ -131,7 +131,7 @@ jobs:
               body: `### terraform plan — \`${{ matrix.root.name }}\`\n\n<details><summary>plan output</summary>\n\n\`\`\`terraform\n${body}\n\`\`\`\n\n</details>\n\n_Plan only. CI never applies._`,
             });
       - name: Upload plan
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: tfplan-${{ matrix.root.name }}
           path: environments/${{ matrix.root.path }}/tfplan
