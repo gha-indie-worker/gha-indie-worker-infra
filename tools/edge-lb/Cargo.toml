@@ -1,0 +1,9 @@
+[package]
+name = "gha-indie-worker-edge-lb"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Codespace/local edge proxy for the GHA Indie Worker compose stack"
+
+[lints.rust]
+unsafe_code = "forbid"
