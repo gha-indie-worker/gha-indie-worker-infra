@@ -69,7 +69,7 @@ resource "cloudflare_dns_record" "laptop_ingress" {
   content = var.laptop_tunnel_cname
   proxied = true
   ttl     = 1
-  comment = "managed by terraform/cloudflare — protected laptop gha-indie-worker / ores-compose tunnel"
+  comment = "managed by modules/cloudflare — protected laptop gha-indie-worker / ores-compose tunnel"
 }
 
 resource "cloudflare_zero_trust_access_application" "laptop_ingress" {
@@ -112,9 +112,9 @@ output "edge_router_access_verification" {
   value = {
     team_domain = var.access_team_domain
     audiences = {
-      admin       = cloudflare_zero_trust_access_application.admin["admin"].aud
-      admin-api   = cloudflare_zero_trust_access_application.admin["admin-api"].aud
-      __status    = cloudflare_zero_trust_access_application.router_status.aud
+      admin     = cloudflare_zero_trust_access_application.admin["admin"].aud
+      admin-api = cloudflare_zero_trust_access_application.admin["admin-api"].aud
+      __status  = cloudflare_zero_trust_access_application.router_status.aud
     }
   }
 }
