@@ -4,7 +4,7 @@ Canonical infrastructure repository for `gha-indie-worker`. Cluster source of tr
 
 ## Terraform topology
 
-Terraform now follows the fleet modules/environments contract:
+Terraform follows the fleet modules/environments contract:
 
 | path | ownership |
 |---|---|
@@ -18,6 +18,16 @@ Terraform now follows the fleet modules/environments contract:
 Provider-native sources stay where their tools discover them: `cloudflare/edge-router/`, `neon/`, `supabase/`, and `k8s/`.
 
 The five pre-existing Terraform state histories remain separate. See `TERRAFORM_LAYOUT.md` and `docs/terraform-layout-migration.md` before the first apply from a new root.
+
+## Application checkout
+
+`_apps/gha-monorepo` is a pinned Git submodule for `gha-indie-worker/gha-indie-worker-monorepo`. Initialize the exact recorded revision with:
+
+```sh
+scripts/sync-apps.sh
+```
+
+Use `scripts/update-app-pin.sh` only to deliberately review and stage a newer monorepo pin. `dist/` and every other `_apps/*` child are ignored local/generated material. Terraform is forbidden from sourcing modules from `_apps/` or `dist/`; infrastructure plans must remain reproducible without the optional application checkout. See `docs/apps-checkout.md`.
 
 ## Database isolation tests
 

@@ -1,0 +1,4 @@
+[submodule "_apps/gha-monorepo"]
+	path = _apps/gha-monorepo
+	url = https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git
+	branch = main

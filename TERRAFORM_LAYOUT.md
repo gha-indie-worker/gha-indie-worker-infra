@@ -29,3 +29,7 @@ Do not combine these state histories just because their modules now share a prov
 The new production roots include Terraform `moved` blocks for every managed root resource. Those blocks preserve addresses only after the new root is attached to the SAME state that belonged to its old root. Follow `docs/terraform-layout-migration.md`; never initialize a fresh production state and apply it as a shortcut.
 
 Run Terraform from a concrete root, e.g. `terraform -chdir=environments/production/gcp-platform plan` or use `scripts/apply-terraform.sh production/gcp-platform`.
+
+## Application checkout is not Terraform authority
+
+`_apps/gha-monorepo` is an optional, exact-revision Git submodule used when infra tooling needs to inspect application source. `dist/` is local/generated output. Neither directory participates in Terraform module or state ownership, and no `source =` under `modules/` or `environments/` may point at either location. This keeps plan/state behavior independent of submodule initialization and generated build output.

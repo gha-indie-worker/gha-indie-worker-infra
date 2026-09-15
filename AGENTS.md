@@ -29,6 +29,14 @@ Canonical `infra` repository for [`gha-indie-worker`](https://github.com/gha-ind
 - The admin plane is closed by four independent gates (Cloudflare Access, the edge Worker, Cloud Run internal ingress, network policy + firewall). Never relax one on the assumption that another still holds.
 - `infra-isolation/` is vendored and fail-closed. Only `contract.json` is org-specific and editable; never weaken a check to make it pass.
 
+## Application checkout boundary
+
+- `_apps/gha-monorepo` is a tracked gitlink to `gha-indie-worker/gha-indie-worker-monorepo`, pinned by the parent infra commit. Treat it as read-only input while doing infra work.
+- Initialize the recorded pin with `scripts/sync-apps.sh`; never make ordinary infra validation follow remote `main` implicitly.
+- Advance the pin only as a deliberate reviewable gitlink change, e.g. with `scripts/update-app-pin.sh`; make product changes in the monorepo itself, not through the submodule checkout.
+- `dist/` is generated/local output. `_apps/*` is ignored except for the one tracked monorepo gitlink. Do not commit generated app trees under either directory.
+- Terraform under `modules/` or `environments/` must never source from `_apps/` or `dist/`; state and plans must be reproducible without initializing the app submodule.
+
 ## Repository-local Git worktrees
 
 - Create or use a Git worktree only when the human operator explicitly authorizes it for the current task. Concurrency or a dirty checkout is not permission by itself.

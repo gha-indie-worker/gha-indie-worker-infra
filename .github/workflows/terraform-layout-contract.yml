@@ -6,8 +6,15 @@ on:
       - "modules/**"
       - "environments/**"
       - ".ores-infra.toml"
+      - ".gitignore"
+      - ".gitmodules"
+      - "_apps/gha-monorepo"
       - "TERRAFORM_LAYOUT.md"
       - "docs/terraform-layout-migration.md"
+      - "docs/apps-checkout.md"
+      - "scripts/check-apps-layout.sh"
+      - "scripts/sync-apps.sh"
+      - "scripts/update-app-pin.sh"
       - ".github/workflows/terraform-layout-contract.yml"
   push:
     branches: [main]
@@ -15,8 +22,15 @@ on:
       - "modules/**"
       - "environments/**"
       - ".ores-infra.toml"
+      - ".gitignore"
+      - ".gitmodules"
+      - "_apps/gha-monorepo"
       - "TERRAFORM_LAYOUT.md"
       - "docs/terraform-layout-migration.md"
+      - "docs/apps-checkout.md"
+      - "scripts/check-apps-layout.sh"
+      - "scripts/sync-apps.sh"
+      - "scripts/update-app-pin.sh"
       - ".github/workflows/terraform-layout-contract.yml"
 
 permissions:
@@ -30,6 +44,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          submodules: false
       - name: Check modules/environment ownership
         shell: bash
         run: |
@@ -75,3 +90,6 @@ jobs:
 
           test -f supabase/config.toml
           test -f cloudflare/edge-router/wrangler.toml
+      - name: Check application checkout boundary
+        shell: bash
+        run: scripts/check-apps-layout.sh
