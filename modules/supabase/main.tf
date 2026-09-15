@@ -41,7 +41,7 @@ resource "supabase_project" "managed" {
 
   organization_id         = var.organization_id
   name                    = each.value.name
-  database_password       = var.database_passwords[each.key]
+  database_password       = lookup(var.database_passwords, each.key, "")
   region                  = each.value.region
   instance_size           = each.value.instance_size
   legacy_api_keys_enabled = false
@@ -49,7 +49,7 @@ resource "supabase_project" "managed" {
   lifecycle {
     prevent_destroy = true
     precondition {
-      condition     = contains(keys(var.database_passwords), each.key) && length(var.database_passwords[each.key]) >= 16
+      condition     = try(length(var.database_passwords[each.key]) >= 16, false)
       error_message = "A >=16-character database password must be supplied for every managed Supabase project."
     }
   }
