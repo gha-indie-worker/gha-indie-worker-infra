@@ -10,6 +10,7 @@ use std::{
 
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
 const EXPECTED_MONOREPO: &str = "fa0723ca1e143f81d9926a4c8260d532905a9f26";
+const ORES_CLI_REV: &str = "620cbbc3a5595cfa90b242011b5c1a859928c297";
 const STUB_API_PIN: &str = "90cfc8a86660d36683fc96d629af843c347e6667";
 const STUB_WEB_PIN: &str = "d99dbb64f3cb4434d023e7f7943a016b7c8c3bd4";
 
@@ -44,6 +45,35 @@ fn manifest_commit(text: &str) -> Option<&str> {
         .find_map(|line| line.strip_prefix("commit:").map(str::trim))
 }
 
+fn validate_devcontainer(root: &Path) -> Result<(), Box<dyn Error>> {
+    let devcontainer = read(root, ".devcontainer/devcontainer.json")?;
+    let revision = format!("--rev {ORES_CLI_REV}");
+    for required in [
+        "ghcr.io/devcontainers/features/github-cli:1",
+        "ghcr.io/jsburckhardt/devcontainer-features/just:1.0.0",
+        "ghcr.io/devcontainers-extra/features/cloudflared:1.0.8",
+        "ORES_CLI_READ_TOKEN",
+        "TUNNEL_TOKEN",
+        "CARGO_NET_GIT_FETCH_WITH_CLI=true",
+        "https://github.com/ORESoftware/ores-cli.git",
+        revision.as_str(),
+        "\"8080\"",
+        "\"onAutoForward\": \"ignore\"",
+    ] {
+        if !devcontainer.contains(required) {
+            return Err(format!("devcontainer edge contract missing {required:?}").into());
+        }
+    }
+
+    for forbidden in ["https://x-access-token:", "ghp_", "github_pat_"] {
+        if devcontainer.contains(forbidden) {
+            return Err(format!("devcontainer contains credential-shaped material: {forbidden}").into());
+        }
+    }
+
+    Ok(())
+}
+
 fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
     let manifest = read(root, ".ores-compose.yaml")?;
     for required in [
@@ -75,7 +105,8 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
         return Err(format!("tracked monorepo gitlink {} != compose source pin {compose_pin}", fields[2]).into());
     }
 
-    println!("local compose static contract passed at {compose_pin}");
+    validate_devcontainer(root)?;
+    println!("local compose and Codespace edge contracts passed at {compose_pin}");
     Ok(())
 }
 
@@ -198,7 +229,6 @@ fn tunnel(root: &Path, mode: &str, config: &Path) -> Result<(), Box<dyn Error>> 
     let status = Command::new("cloudflared")
         .arg("tunnel")
         .arg("--config")
-        .arg(&config)
         .arg("run")
         .status()?;
     if !status.success() {
