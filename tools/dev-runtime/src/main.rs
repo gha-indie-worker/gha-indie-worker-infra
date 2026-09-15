@@ -80,7 +80,25 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
 }
 
 fn command_available(name: &str) -> bool {
-    Command::new(name).arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+    Command::new(name)
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+fn verify_edge_cli(root: &Path) -> Result<(), Box<dyn Error>> {
+    let status = Command::new("oresc")
+        .current_dir(root)
+        .args(["--no-json", "codespace", "edge", "status"])
+        .status()
+        .map_err(|error| format!("required command is unavailable: oresc ({error})"))?;
+
+    match status.code() {
+        Some(0 | 2) => Ok(()),
+        Some(code) => Err(format!("oresc codespace edge status failed with exit code {code}").into()),
+        None => Err("oresc codespace edge status terminated without an exit code".into()),
+    }
 }
 
 fn nested_pin(root: &Path, path: &str) -> Result<String, Box<dyn Error>> {
@@ -100,11 +118,12 @@ fn nested_pin(root: &Path, path: &str) -> Result<String, Box<dyn Error>> {
 fn doctor(root: &Path) -> Result<(), Box<dyn Error>> {
     validate(root)?;
 
-    for command in ["git", "cargo", "ores-compose", "cloudflared"] {
+    for command in ["git", "cargo", "ores-compose", "cloudflared", "just"] {
         if !command_available(command) {
             return Err(format!("required command is unavailable: {command}").into());
         }
     }
+    verify_edge_cli(root)?;
 
     let monorepo = root.join(MONOREPO_PATH);
     if !monorepo.join(".git").exists() && !monorepo.join(".gitmodules").exists() {
@@ -163,7 +182,12 @@ fn tunnel(root: &Path, mode: &str, config: &Path) -> Result<(), Box<dyn Error>> 
         "codespace" => "hostname: codespace.indiebuild.dev",
         _ => return Err("tunnel mode must be laptop or codespace".into()),
     };
-    for required in [expected_host, "service: http://127.0.0.1:8080", "service: http_status:404", "credentials-file:"] {
+    for required in [
+        expected_host,
+        "service: http://127.0.0.1:8080",
+        "service: http_status:404",
+        "credentials-file:",
+    ] {
         if !text.contains(required) {
             return Err(format!("tunnel config missing fail-closed field {required:?}").into());
         }
