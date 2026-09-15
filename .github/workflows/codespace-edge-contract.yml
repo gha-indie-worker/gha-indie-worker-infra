@@ -1,0 +1,53 @@
+name: Codespace edge contract
+
+on:
+  pull_request:
+    paths:
+      - '.devcontainer/**'
+      - '.ores-compose.yaml'
+      - 'Justfile'
+      - 'tools/dev-runtime/**'
+      - 'docs/local-development.md'
+      - '.github/workflows/codespace-edge-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.devcontainer/**'
+      - '.ores-compose.yaml'
+      - 'Justfile'
+      - 'tools/dev-runtime/**'
+      - 'docs/local-development.md'
+      - '.github/workflows/codespace-edge-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codespace-edge-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Compile and run static contract validator
+        run: cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate
+      - name: Check edge wrapper and ingress contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq -- '--rev c854130ee147e9793a3af8736e90241630a5c934' .devcontainer/devcontainer.json
+          grep -Fq 'just codespace-edge-check' .devcontainer/devcontainer.json
+          grep -Fq 'codespace-edge-up:' Justfile
+          grep -Fq 'codespace-edge-status:' Justfile
+          grep -Fq 'codespace-edge-down:' Justfile
+          grep -Fq 'codespace-edge-check:' Justfile
+          grep -Fq 'onAutoForward' .devcontainer/devcontainer.json
+          grep -Fq 'external-origin connector model' docs/local-development.md
+          ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!*.lock'
