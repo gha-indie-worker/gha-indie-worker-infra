@@ -19,5 +19,5 @@ module_directory = "modules/cloudflare"
 
 [providers.neon]
 working_directory = "."
-native_config = "neon.ts"
+native_config = "neon/config.json"
 module_directory = "modules/neon"
