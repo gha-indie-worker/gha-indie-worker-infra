@@ -3,7 +3,7 @@
 use std::{fs, path::PathBuf};
 
 const EXPECTED_ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
-const EXPECTED_ORES_COMPOSE_REV: &str = "c81058821fcdd9a19c145e8e685d21ef5b1d6673";
+const EXPECTED_ORES_COMPOSE_REV: &str = "8a01df4227a44b0b25741b7ef4a910ec4a4dc75f";
 const CODESPACES_CLUSTER_REV: &str = "9d1e9709fa2ba0fccdf920731cdfa5673a77e5f6";
 
 fn repo_root() -> PathBuf {
@@ -37,8 +37,6 @@ fn private_auth_is_scoped_to_network_bootstrap_only() {
     assert!(justfile.contains("GH_TOKEN=\"$token\" just codespace-edge-bootstrap"));
     assert!(justfile.contains("require_private_read"));
 
-    // Bootstrap credentials must not be exported into the recipe shell or
-    // prefixed onto either long-running controller lifecycle.
     assert!(!justfile.contains("export GH_TOKEN="));
     assert!(!justfile.contains("GH_TOKEN=\"$token\" ORES_CODESPACES_CLUSTER_"));
     assert!(!justfile.contains("GH_TOKEN=\"$token\" CODESPACES_CLUSTER_CONFIG="));
