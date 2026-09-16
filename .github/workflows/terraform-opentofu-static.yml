@@ -7,6 +7,7 @@ on:
       - "environments/**"
       - ".ores-infra.toml"
       - "scripts/check-terraform-layout.sh"
+      - "scripts/check-terraform-state-safety.sh"
       - "scripts/hcl-sanity.py"
       - ".github/workflows/terraform-opentofu-static.yml"
   push:
@@ -16,6 +17,7 @@ on:
       - "environments/**"
       - ".ores-infra.toml"
       - "scripts/check-terraform-layout.sh"
+      - "scripts/check-terraform-state-safety.sh"
       - "scripts/hcl-sanity.py"
       - ".github/workflows/terraform-opentofu-static.yml"
 
@@ -126,6 +128,8 @@ jobs:
           submodules: false
       - name: Check modules/environments contract
         run: bash scripts/check-terraform-layout.sh
+      - name: Check state-migration safety contract
+        run: bash scripts/check-terraform-state-safety.sh
       - name: HCL sanity across modules and environments
         run: |
           set -euo pipefail

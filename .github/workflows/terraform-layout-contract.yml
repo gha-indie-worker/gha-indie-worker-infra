@@ -13,6 +13,7 @@ on:
       - "docs/terraform-layout-migration.md"
       - "docs/apps-checkout.md"
       - "scripts/check-terraform-layout.sh"
+      - "scripts/check-terraform-state-safety.sh"
       - "scripts/check-apps-layout.sh"
       - "scripts/sync-apps.sh"
       - "scripts/update-app-pin.sh"
@@ -30,6 +31,7 @@ on:
       - "docs/terraform-layout-migration.md"
       - "docs/apps-checkout.md"
       - "scripts/check-terraform-layout.sh"
+      - "scripts/check-terraform-state-safety.sh"
       - "scripts/check-apps-layout.sh"
       - "scripts/sync-apps.sh"
       - "scripts/update-app-pin.sh"
@@ -50,6 +52,9 @@ jobs:
       - name: Check 15 Terraform layout invariants
         shell: bash
         run: bash scripts/check-terraform-layout.sh
+      - name: Check 15 second-wave state-safety invariants
+        shell: bash
+        run: bash scripts/check-terraform-state-safety.sh
       - name: Check application checkout boundary
         shell: bash
         run: bash scripts/check-apps-layout.sh
