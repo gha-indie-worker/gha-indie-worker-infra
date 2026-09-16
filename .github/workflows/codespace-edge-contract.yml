@@ -54,9 +54,10 @@ jobs:
           set -euo pipefail
 
           ores_cli_rev="$(tr -d '[:space:]' < config/ores-cli.rev)"
-          test "$ores_cli_rev" = 'c854130ee147e9793a3af8736e90241630a5c934'
+          test "$ores_cli_rev" = 'd37aa4c1a0b79a292a31e2f16db8622144b0831f'
           [[ "$ores_cli_rev" =~ ^[0-9a-f]{40}$ ]]
           grep -Fq -- "--rev $ores_cli_rev" .devcontainer/devcontainer.json
+          ! grep -Fq -- '--rev c854130ee147e9793a3af8736e90241630a5c934' .devcontainer/devcontainer.json
 
           ores_compose_rev="$(tr -d '[:space:]' < config/ores-compose.rev)"
           test "$ores_compose_rev" = '8a01df4227a44b0b25741b7ef4a910ec4a4dc75f'
@@ -81,7 +82,7 @@ jobs:
           grep -Fq '"onAutoForward": "ignore"' .devcontainer/devcontainer.json
 
           rev="$(tr -d '[:space:]' < config/codespaces-cluster.rev)"
-          test "$rev" = '9d1e9709fa2ba0fccdf920731cdfa5673a77e5f6'
+          test "$rev" = '8c494f4b038a766be06ff29df5a067b6d78c9134'
           [[ "$rev" =~ ^[0-9a-f]{40}$ ]]
 
           cfg=config/codespaces-cluster.toml
@@ -97,6 +98,9 @@ jobs:
           grep -Fq 'web: `127.0.0.1:18091`' docs/local-development.md
           grep -Fq 'Port `8080` is reserved exclusively' docs/local-development.md
           grep -Fq 'read-only Contents access limited to exactly those three repositories' docs/local-development.md
+          grep -Fq 'd37aa4c1a0b79a292a31e2f16db8622144b0831f' docs/local-development.md
+          grep -Fq '8a01df4227a44b0b25741b7ef4a910ec4a4dc75f' docs/local-development.md
+          grep -Fq '8c494f4b038a766be06ff29df5a067b6d78c9134' docs/local-development.md
 
           ! grep -Fq 'http://127.0.0.1:8080/readyz' .ores-compose.yaml
           ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!*.lock'
