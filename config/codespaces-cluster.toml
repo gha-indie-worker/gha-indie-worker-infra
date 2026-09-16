@@ -1,0 +1,22 @@
+schema = "ores.codespaces-cluster/v1"
+listen = "127.0.0.1:8080"
+max_body_bytes = 67108864
+max_response_bytes = 67108864
+
+[[routes]]
+name = "gha-api"
+prefix = "/api"
+upstream = "http://127.0.0.1:18090"
+strip_prefix = true
+required = true
+ready_path = "/readyz"
+health_path = "/healthz"
+
+[[routes]]
+name = "gha-web"
+prefix = "/"
+upstream = "http://127.0.0.1:18091"
+strip_prefix = false
+required = true
+ready_path = "/readyz"
+health_path = "/healthz"
