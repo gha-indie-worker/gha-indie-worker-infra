@@ -45,7 +45,7 @@ fn fresh_codespace_provisions_exact_private_toolchain() {
         &format!("--rev {ORES_CLI_REV}"),
         &format!("--rev {ORES_COMPOSE_REV}"),
         "gh repo view ORESoftware/codespaces-cluster --json name",
-        "GH_TOKEN=\"$ORES_CLI_READ_TOKEN\"",
+        r#"GH_TOKEN=\"$ORES_CLI_READ_TOKEN\""#,
         "\"onAutoForward\": \"ignore\"",
     ] {
         assert!(
