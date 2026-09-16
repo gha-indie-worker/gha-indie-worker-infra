@@ -59,7 +59,7 @@ jobs:
           grep -Fq -- "--rev $ores_cli_rev" .devcontainer/devcontainer.json
 
           ores_compose_rev="$(tr -d '[:space:]' < config/ores-compose.rev)"
-          test "$ores_compose_rev" = 'c81058821fcdd9a19c145e8e685d21ef5b1d6673'
+          test "$ores_compose_rev" = '8a01df4227a44b0b25741b7ef4a910ec4a4dc75f'
           [[ "$ores_compose_rev" =~ ^[0-9a-f]{40}$ ]]
           grep -Fq -- "--rev $ores_compose_rev" .devcontainer/devcontainer.json
 
