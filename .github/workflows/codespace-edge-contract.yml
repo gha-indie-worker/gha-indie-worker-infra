@@ -68,7 +68,7 @@ jobs:
           grep -Fq '"onAutoForward": "ignore"' .devcontainer/devcontainer.json
 
           rev="$(tr -d '[:space:]' < config/codespaces-cluster.rev)"
-          test "$rev" = 'd8d399ff92ae0b0e2bcbbc502df5543af0adc78c'
+          test "$rev" = '9d1e9709fa2ba0fccdf920731cdfa5673a77e5f6'
           [[ "$rev" =~ ^[0-9a-f]{40}$ ]]
 
           cfg=config/codespaces-cluster.toml
