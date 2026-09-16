@@ -4,7 +4,7 @@ use std::{fs, path::PathBuf};
 
 const ORES_CLI_REV: &str = "d37aa4c1a0b79a292a31e2f16db8622144b0831f";
 const ORES_COMPOSE_REV: &str = "9fbbaf4580b91c1445ec91f67ad3b31252094171";
-const CODESPACES_CLUSTER_REV: &str = "9d1e9709fa2ba0fccdf920731cdfa5673a77e5f6";
+const CODESPACES_CLUSTER_REV: &str = "8c494f4b038a766be06ff29df5a067b6d78c9134";
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -27,8 +27,6 @@ fn private_auth_is_scoped_to_network_bootstrap_only() {
     assert!(justfile.contains("GH_TOKEN=\"$token\" just codespace-edge-bootstrap"));
     assert!(justfile.contains("require_private_read"));
 
-    // Bootstrap credentials must not be exported into the recipe shell or
-    // prefixed onto either long-running controller lifecycle.
     assert!(!justfile.contains("export GH_TOKEN="));
     assert!(!justfile.contains("GH_TOKEN=\"$token\" ORES_CODESPACES_CLUSTER_"));
     assert!(!justfile.contains("GH_TOKEN=\"$token\" CODESPACES_CLUSTER_CONFIG="));
@@ -48,10 +46,7 @@ fn fresh_codespace_provisions_exact_private_toolchain() {
         r#"GH_TOKEN=\"$ORES_CLI_READ_TOKEN\""#,
         "\"onAutoForward\": \"ignore\"",
     ] {
-        assert!(
-            devcontainer.contains(required),
-            "devcontainer contract missing {required:?}"
-        );
+        assert!(devcontainer.contains(required), "devcontainer contract missing {required:?}");
     }
 
     for forbidden in [
@@ -94,6 +89,7 @@ fn docs_describe_the_same_private_repo_boundary() {
         "read-only Contents",
         "bootstrap",
         "d37aa4c1a0b79a292a31e2f16db8622144b0831f",
+        "8c494f4b038a766be06ff29df5a067b6d78c9134",
     ] {
         assert!(docs.contains(required), "docs missing {required:?}");
     }
