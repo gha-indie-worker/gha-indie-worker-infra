@@ -2,8 +2,8 @@
 
 use std::{fs, path::PathBuf};
 
-const ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
-const ORES_COMPOSE_REV: &str = "9fbbaf4580b91c1445ec91f67ad3b31252094171";
+const EXPECTED_ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
+const EXPECTED_ORES_COMPOSE_REV: &str = "8a01df4227a44b0b25741b7ef4a910ec4a4dc75f";
 const CODESPACES_CLUSTER_REV: &str = "9d1e9709fa2ba0fccdf920731cdfa5673a77e5f6";
 
 fn repo_root() -> PathBuf {
@@ -18,6 +18,16 @@ fn read(path: &str) -> String {
     fs::read_to_string(repo_root().join(path)).expect("contract file must be readable")
 }
 
+fn revision(path: &str) -> String {
+    let value = read(path).trim().to_string();
+    assert_eq!(value.len(), 40, "{path} must contain one full commit SHA");
+    assert!(
+        value.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "{path} must contain hex only"
+    );
+    value
+}
+
 #[test]
 fn private_auth_is_scoped_to_network_bootstrap_only() {
     let justfile = read("Justfile");
@@ -27,23 +37,35 @@ fn private_auth_is_scoped_to_network_bootstrap_only() {
     assert!(justfile.contains("GH_TOKEN=\"$token\" just codespace-edge-bootstrap"));
     assert!(justfile.contains("require_private_read"));
 
-    // Bootstrap credentials must not be exported into the recipe shell or
-    // prefixed onto either long-running controller lifecycle.
     assert!(!justfile.contains("export GH_TOKEN="));
     assert!(!justfile.contains("GH_TOKEN=\"$token\" ORES_CODESPACES_CLUSTER_"));
     assert!(!justfile.contains("GH_TOKEN=\"$token\" CODESPACES_CLUSTER_CONFIG="));
 }
 
 #[test]
+fn reviewed_tool_revisions_are_immutable_and_match_devcontainer() {
+    let ores_cli = revision("config/ores-cli.rev");
+    let ores_compose = revision("config/ores-compose.rev");
+    let devcontainer = read(".devcontainer/devcontainer.json");
+
+    assert_eq!(ores_cli, EXPECTED_ORES_CLI_REV);
+    assert_eq!(ores_compose, EXPECTED_ORES_COMPOSE_REV);
+    assert!(devcontainer.contains(&format!("--rev {ores_cli}")));
+    assert!(devcontainer.contains(&format!("--rev {ores_compose}")));
+}
+
+#[test]
 fn fresh_codespace_provisions_exact_private_toolchain() {
     let devcontainer = read(".devcontainer/devcontainer.json");
+    let ores_cli = revision("config/ores-cli.rev");
+    let ores_compose = revision("config/ores-compose.rev");
 
     for required in [
         "ORESoftware/ores-cli",
         "ORESoftware/ores-compose",
         "ORESoftware/codespaces-cluster",
-        &format!("--rev {ORES_CLI_REV}"),
-        &format!("--rev {ORES_COMPOSE_REV}"),
+        &format!("--rev {ores_cli}"),
+        &format!("--rev {ores_compose}"),
         "gh repo view ORESoftware/codespaces-cluster --json name",
         r#"GH_TOKEN=\"$ORES_CLI_READ_TOKEN\""#,
         "\"onAutoForward\": \"ignore\"",
