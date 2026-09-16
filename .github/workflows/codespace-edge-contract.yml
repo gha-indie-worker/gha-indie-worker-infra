@@ -6,6 +6,7 @@ on:
       - '.devcontainer/**'
       - '.ores-compose.yaml'
       - 'config/codespaces-cluster.toml'
+      - 'config/codespaces-cluster.rev'
       - 'Justfile'
       - 'tools/dev-runtime/**'
       - 'docs/local-development.md'
@@ -16,6 +17,7 @@ on:
       - '.devcontainer/**'
       - '.ores-compose.yaml'
       - 'config/codespaces-cluster.toml'
+      - 'config/codespaces-cluster.rev'
       - 'Justfile'
       - 'tools/dev-runtime/**'
       - 'docs/local-development.md'
@@ -38,23 +40,36 @@ jobs:
         with:
           persist-credentials: false
           submodules: false
-      - name: Compile and run static contract validator
+      - name: Compile and run Rust contract tests
+        run: cargo test --locked --manifest-path tools/dev-runtime/Cargo.toml
+      - name: Run static contract validator
         run: cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate
       - name: Check application and edge lifecycle contract
         shell: bash
         run: |
           set -euo pipefail
           grep -Fq -- '--rev c854130ee147e9793a3af8736e90241630a5c934' .devcontainer/devcontainer.json
+          grep -Fq -- '--rev 9fbbaf4580b91c1445ec91f67ad3b31252094171' .devcontainer/devcontainer.json
+          grep -Fq 'ORESoftware/codespaces-cluster' .devcontainer/devcontainer.json
+          grep -Fq 'gh repo view ORESoftware/codespaces-cluster --json name' .devcontainer/devcontainer.json
           grep -Fq 'just codespace-edge-check' .devcontainer/devcontainer.json
           grep -Fq 'codespace-edge-up:' Justfile
           grep -Fq 'codespace-edge-status:' Justfile
           grep -Fq 'codespace-edge-down:' Justfile
           grep -Fq 'codespace-edge-check:' Justfile
+          grep -Fq 'GH_TOKEN="$token" gh repo clone ORESoftware/codespaces-cluster' Justfile
+          grep -Fq 'GH_TOKEN="$token" git -C "$root" fetch --prune origin main' Justfile
+          grep -Fq 'GH_TOKEN="$token" just codespace-edge-bootstrap' Justfile
+          ! grep -Fq 'export GH_TOKEN=' Justfile
           grep -Fq 'ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app' Justfile
           grep -Fq 'ORES_CODESPACES_CLUSTER_READY_PORT=18091' Justfile
           grep -Fq 'CODESPACES_CLUSTER_CONFIG="$repo/config/codespaces-cluster.toml"' Justfile
           grep -Fq 'http://127.0.0.1:8080/api/readyz' Justfile
           grep -Fq '"onAutoForward": "ignore"' .devcontainer/devcontainer.json
+
+          rev="$(tr -d '[:space:]' < config/codespaces-cluster.rev)"
+          test "$rev" = 'd8d399ff92ae0b0e2bcbbc502df5543af0adc78c'
+          [[ "$rev" =~ ^[0-9a-f]{40}$ ]]
 
           cfg=config/codespaces-cluster.toml
           test -s "$cfg"
@@ -68,6 +83,7 @@ jobs:
           grep -Fq 'API: `127.0.0.1:18090`' docs/local-development.md
           grep -Fq 'web: `127.0.0.1:18091`' docs/local-development.md
           grep -Fq 'Port `8080` is reserved exclusively' docs/local-development.md
+          grep -Fq 'read-only Contents access limited to exactly those three repositories' docs/local-development.md
 
           ! grep -Fq 'http://127.0.0.1:8080/readyz' .ores-compose.yaml
           ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!*.lock'
