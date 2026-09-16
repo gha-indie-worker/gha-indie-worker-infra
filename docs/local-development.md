@@ -37,10 +37,12 @@ The edge's own `/healthz`, `/readyz`, and `/routes` endpoints remain control-pla
 A fresh/rebuilt devcontainer provisions the reviewed private tools needed by this lifecycle:
 
 - `ORESoftware/ores-cli@c854130ee147e9793a3af8736e90241630a5c934`, with the reviewed revision recorded in `config/ores-cli.rev`;
-- `ORESoftware/ores-compose@c81058821fcdd9a19c145e8e685d21ef5b1d6673`, with the reviewed revision recorded in `config/ores-compose.rev`;
+- `ORESoftware/ores-compose@8a01df4227a44b0b25741b7ef4a910ec4a4dc75f`, with the reviewed revision recorded in `config/ores-compose.rev`;
 - the shared `ORESoftware/codespaces-cluster` source is materialized later at the exact commit recorded in `config/codespaces-cluster.rev`.
 
 The three `config/*.rev` files are review authorities for private bootstrap/runtime tooling. They must contain exactly one full 40-hex commit SHA. The Rust dev-runtime validator, contract tests, devcontainer install commands, and Codespace edge workflow cross-check those values so a pin cannot move in only one surface.
+
+The pinned `ores-compose` revision is the merged lifecycle hardening that preserves exact source materialization while adding pre-network runtime/replica admission, checkout-path lifetime locking, dependency-safe reverse shutdown waves, and partial-start cleanup. A pin advance must point at a reviewed immutable commit and retain those invariants.
 
 All three repositories are private and cross-owner from `gha-indie-worker`. Configure `ORES_CLI_READ_TOKEN` as a fine-grained Codespaces secret with **read-only Contents access limited to exactly those three repositories**. The historical variable name is retained for compatibility even though its bootstrap scope now covers the three reviewed ORE tooling repositories. Configure `TUNNEL_TOKEN` separately for the pre-provisioned named Cloudflare tunnel.
 
