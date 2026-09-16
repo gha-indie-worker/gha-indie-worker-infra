@@ -5,6 +5,7 @@ on:
     paths:
       - '.devcontainer/**'
       - '.ores-compose.yaml'
+      - 'config/codespaces-cluster.toml'
       - 'Justfile'
       - 'tools/dev-runtime/**'
       - 'docs/local-development.md'
@@ -14,6 +15,7 @@ on:
     paths:
       - '.devcontainer/**'
       - '.ores-compose.yaml'
+      - 'config/codespaces-cluster.toml'
       - 'Justfile'
       - 'tools/dev-runtime/**'
       - 'docs/local-development.md'
@@ -38,7 +40,7 @@ jobs:
           submodules: false
       - name: Compile and run static contract validator
         run: cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate
-      - name: Check edge wrapper and ingress contract
+      - name: Check application and edge lifecycle contract
         shell: bash
         run: |
           set -euo pipefail
@@ -48,7 +50,24 @@ jobs:
           grep -Fq 'codespace-edge-status:' Justfile
           grep -Fq 'codespace-edge-down:' Justfile
           grep -Fq 'codespace-edge-check:' Justfile
-          grep -Fq 'onAutoForward' .devcontainer/devcontainer.json
-          grep -Fq 'shared Codespaces edge diagnostic cluster' docs/local-development.md
-          grep -Fq 'starts its local `ores-compose` cluster and Rust edge' docs/local-development.md
+          grep -Fq 'ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app' Justfile
+          grep -Fq 'ORES_CODESPACES_CLUSTER_READY_PORT=18091' Justfile
+          grep -Fq 'CODESPACES_CLUSTER_CONFIG="$repo/config/codespaces-cluster.toml"' Justfile
+          grep -Fq 'http://127.0.0.1:8080/api/readyz' Justfile
+          grep -Fq '"onAutoForward": "ignore"' .devcontainer/devcontainer.json
+
+          cfg=config/codespaces-cluster.toml
+          test -s "$cfg"
+          grep -Fq 'listen = "127.0.0.1:8080"' "$cfg"
+          grep -Fq 'prefix = "/api"' "$cfg"
+          grep -Fq 'upstream = "http://127.0.0.1:18090"' "$cfg"
+          grep -Fq 'prefix = "/"' "$cfg"
+          grep -Fq 'upstream = "http://127.0.0.1:18091"' "$cfg"
+          test "$(grep -Fc 'required = true' "$cfg")" -eq 2
+
+          grep -Fq 'API: `127.0.0.1:18090`' docs/local-development.md
+          grep -Fq 'web: `127.0.0.1:18091`' docs/local-development.md
+          grep -Fq 'Port `8080` is reserved exclusively' docs/local-development.md
+
+          ! grep -Fq 'http://127.0.0.1:8080/readyz' .ores-compose.yaml
           ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!*.lock'
