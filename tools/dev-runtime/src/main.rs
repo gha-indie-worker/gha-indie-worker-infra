@@ -13,6 +13,7 @@ const EXPECTED_MONOREPO: &str = "f5f481bec20774bc6cc2d8a2092c5c212cff1a03";
 const EXPECTED_API_PIN: &str = "040ebfb6b33eb67ef6e7272a5cc849378bda2e7c";
 const EXPECTED_WEB_PIN: &str = "4b4f98de3cac12a3f59b4d7201b32ff09e5cd631";
 const ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
+const ORES_COMPOSE_REV: &str = "9fbbaf4580b91c1445ec91f67ad3b31252094171";
 
 fn root() -> Result<PathBuf, Box<dyn Error>> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -41,7 +42,8 @@ fn output(root: &Path, program: &str, args: &[&str]) -> Result<String, Box<dyn E
 
 fn validate_devcontainer(root: &Path) -> Result<(), Box<dyn Error>> {
     let devcontainer = read(root, ".devcontainer/devcontainer.json")?;
-    let revision = format!("--rev {ORES_CLI_REV}");
+    let ores_cli_revision = format!("--rev {ORES_CLI_REV}");
+    let ores_compose_revision = format!("--rev {ORES_COMPOSE_REV}");
     for required in [
         "ghcr.io/devcontainers/features/github-cli:1",
         "ghcr.io/jsburckhardt/devcontainer-features/just:1.0.0",
@@ -50,10 +52,14 @@ fn validate_devcontainer(root: &Path) -> Result<(), Box<dyn Error>> {
         "TUNNEL_TOKEN",
         "CARGO_NET_GIT_FETCH_WITH_CLI=true",
         "https://github.com/ORESoftware/ores-cli.git",
-        revision.as_str(),
+        ores_cli_revision.as_str(),
+        "https://github.com/ORESoftware/ores-compose.git",
+        ores_compose_revision.as_str(),
+        "cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- bootstrap",
+        "cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- check",
         "just codespace-edge-check",
         "\"8080\"",
-        "\"onAutoForward\": \"ignore\"",
+        "\"onAutoForward\": \"notify\"",
     ] {
         if !devcontainer.contains(required) {
             return Err(format!("devcontainer edge contract missing {required:?}").into());
@@ -146,7 +152,7 @@ fn verify_edge_cli(root: &Path) -> Result<(), Box<dyn Error>> {
         .current_dir(root)
         .args(["--no-json", "codespace", "edge", "status"])
         .status()
-        .map_err(|error| format!("required command is unavailable: oresc ({error})"))?;
+        .map_err(|error| format!("could not run optional oresc edge status: {error}"))?;
 
     match status.code() {
         Some(0 | 2) => Ok(()),
@@ -172,12 +178,14 @@ fn nested_pin(root: &Path, path: &str) -> Result<String, Box<dyn Error>> {
 fn doctor(root: &Path) -> Result<(), Box<dyn Error>> {
     validate(root)?;
 
-    for command in ["git", "cargo", "ores-compose", "curl", "just"] {
+    for command in ["git", "cargo", "ores-compose", "curl"] {
         if !command_available(command) {
             return Err(format!("required command is unavailable: {command}").into());
         }
     }
-    verify_edge_cli(root)?;
+    if command_available("oresc") {
+        verify_edge_cli(root)?;
+    }
 
     let monorepo = root.join(MONOREPO_PATH);
     if !monorepo.join(".git").exists() && !monorepo.join(".gitmodules").exists() {
