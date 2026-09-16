@@ -11,6 +11,7 @@ use std::{
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
 const EXPECTED_MONOREPO: &str = "68de4b122d06621805bfb810367488bd171272c7";
 const ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
+const ORES_COMPOSE_REV: &str = "c81058821fcdd9a19c145e8e685d21ef5b1d6673";
 const STUB_API_PIN: &str = "90cfc8a86660d36683fc96d629af843c347e6667";
 const STUB_WEB_PIN: &str = "d99dbb64f3cb4434d023e7f7943a016b7c8c3bd4";
 
@@ -47,7 +48,8 @@ fn manifest_commit(text: &str) -> Option<&str> {
 
 fn validate_devcontainer(root: &Path) -> Result<(), Box<dyn Error>> {
     let devcontainer = read(root, ".devcontainer/devcontainer.json")?;
-    let revision = format!("--rev {ORES_CLI_REV}");
+    let ores_cli_revision = format!("--rev {ORES_CLI_REV}");
+    let ores_compose_revision = format!("--rev {ORES_COMPOSE_REV}");
     for required in [
         "ghcr.io/devcontainers/features/github-cli:1",
         "ghcr.io/jsburckhardt/devcontainer-features/just:1.0.0",
@@ -56,7 +58,9 @@ fn validate_devcontainer(root: &Path) -> Result<(), Box<dyn Error>> {
         "TUNNEL_TOKEN",
         "CARGO_NET_GIT_FETCH_WITH_CLI=true",
         "https://github.com/ORESoftware/ores-cli.git",
-        revision.as_str(),
+        ores_cli_revision.as_str(),
+        "https://github.com/ORESoftware/ores-compose.git",
+        ores_compose_revision.as_str(),
         "just codespace-edge-check",
         "\"8080\"",
         "\"onAutoForward\": \"ignore\"",
