@@ -9,10 +9,10 @@ use std::{
 };
 
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
-const EXPECTED_MONOREPO: &str = "fa0723ca1e143f81d9926a4c8260d532905a9f26";
+const EXPECTED_MONOREPO: &str = "f5f481bec20774bc6cc2d8a2092c5c212cff1a03";
+const EXPECTED_API_PIN: &str = "040ebfb6b33eb67ef6e7272a5cc849378bda2e7c";
+const EXPECTED_WEB_PIN: &str = "4b4f98de3cac12a3f59b4d7201b32ff09e5cd631";
 const ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
-const STUB_API_PIN: &str = "90cfc8a86660d36683fc96d629af843c347e6667";
-const STUB_WEB_PIN: &str = "d99dbb64f3cb4434d023e7f7943a016b7c8c3bd4";
 
 fn root() -> Result<PathBuf, Box<dyn Error>> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -37,12 +37,6 @@ fn output(root: &Path, program: &str, args: &[&str]) -> Result<String, Box<dyn E
         return Err(format!("{program} {:?} failed", args).into());
     }
     Ok(String::from_utf8(out.stdout)?.trim().to_string())
-}
-
-fn manifest_commit(text: &str) -> Option<&str> {
-    text.lines()
-        .map(str::trim)
-        .find_map(|line| line.strip_prefix("commit:").map(str::trim))
 }
 
 fn validate_devcontainer(root: &Path) -> Result<(), Box<dyn Error>> {
@@ -74,7 +68,10 @@ fn validate_devcontainer(root: &Path) -> Result<(), Box<dyn Error>> {
         "CF_TUNNEL_TOKEN",
     ] {
         if devcontainer.contains(forbidden) {
-            return Err(format!("devcontainer contains credential-shaped or legacy ingress material: {forbidden}").into());
+            return Err(format!(
+                "devcontainer contains credential-shaped or legacy ingress material: {forbidden}"
+            )
+            .into());
         }
     }
 
@@ -85,10 +82,14 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
     let manifest = read(root, ".ores-compose.yaml")?;
     for required in [
         "schema_version: ores.compose.v1",
-        "repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git",
-        "checkout_dir: .ores/sources/gha-indie-worker-monorepo",
-        "working_dir: apps/gha-indie-worker-api-server.rs",
-        "working_dir: apps/gha-indie-worker-web-server.rs",
+        "project: gha-indie-worker",
+        "working_dir: _apps/gha-monorepo/apps/gha-indie-worker-api-server.rs",
+        "working_dir: _apps/gha-monorepo/apps/gha-indie-worker-web-server.rs",
+        "GHA_INDIE_WORKER_API_BIND=127.0.0.1:18080",
+        "GHA_INDIE_WORKER_WEB_BIND=127.0.0.1:18081",
+        "tools/edge-lb/Cargo.toml",
+        "http://127.0.0.1:8080/readyz",
+        "depends_on: [api, web]",
     ] {
         if !manifest.contains(required) {
             return Err(format!("compose contract missing {required:?}").into());
@@ -97,10 +98,11 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
     if manifest.contains("token:") || manifest.contains("credentials:") || manifest.contains("../") {
         return Err("compose manifest contains a credential-shaped or traversal field".into());
     }
-
-    let compose_pin = manifest_commit(&manifest).ok_or("compose source commit is missing")?;
-    if compose_pin != EXPECTED_MONOREPO {
-        return Err(format!("compose source pin {compose_pin} != expected {EXPECTED_MONOREPO}").into());
+    if manifest.contains("repository:") || manifest.contains("checkout_dir:") {
+        return Err(
+            "compose manifest must execute from the verified _apps gitlink, not a floating source checkout"
+                .into(),
+        );
     }
 
     let tree = output(root, "git", &["ls-tree", "HEAD", MONOREPO_PATH])?;
@@ -108,12 +110,26 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
     if fields.len() < 4 || fields[0] != "160000" || fields[1] != "commit" {
         return Err("_apps/gha-monorepo must be a tracked mode-160000 gitlink".into());
     }
-    if fields[2] != compose_pin {
-        return Err(format!("tracked monorepo gitlink {} != compose source pin {compose_pin}", fields[2]).into());
+    if fields[2] != EXPECTED_MONOREPO {
+        return Err(format!(
+            "tracked monorepo gitlink {} != expected {EXPECTED_MONOREPO}",
+            fields[2]
+        )
+        .into());
+    }
+
+    for required_file in [
+        "tools/edge-lb/Cargo.toml",
+        "tools/edge-lb/Cargo.lock",
+        "tools/edge-lb/src/main.rs",
+    ] {
+        if !root.join(required_file).is_file() {
+            return Err(format!("required edge load-balancer file is missing: {required_file}").into());
+        }
     }
 
     validate_devcontainer(root)?;
-    println!("local compose and Codespace edge contracts passed at {compose_pin}");
+    println!("local compose and Codespace edge contracts passed at {EXPECTED_MONOREPO}");
     Ok(())
 }
 
@@ -156,7 +172,7 @@ fn nested_pin(root: &Path, path: &str) -> Result<String, Box<dyn Error>> {
 fn doctor(root: &Path) -> Result<(), Box<dyn Error>> {
     validate(root)?;
 
-    for command in ["git", "cargo", "ores-compose", "cloudflared", "just"] {
+    for command in ["git", "cargo", "ores-compose", "curl", "just"] {
         if !command_available(command) {
             return Err(format!("required command is unavailable: {command}").into());
         }
@@ -169,14 +185,23 @@ fn doctor(root: &Path) -> Result<(), Box<dyn Error>> {
     }
     let checked_out = output(&monorepo, "git", &["rev-parse", "HEAD"])?;
     if checked_out != EXPECTED_MONOREPO {
-        return Err(format!("initialized monorepo is {checked_out}; expected {EXPECTED_MONOREPO}").into());
+        return Err(format!(
+            "initialized monorepo is {checked_out}; expected {EXPECTED_MONOREPO}"
+        )
+        .into());
     }
 
     let api_pin = nested_pin(root, "apps/gha-indie-worker-api-server.rs")?;
     let web_pin = nested_pin(root, "apps/gha-indie-worker-web-server.rs")?;
-    if api_pin == STUB_API_PIN || web_pin == STUB_WEB_PIN {
+    if api_pin != EXPECTED_API_PIN {
         return Err(format!(
-            "runtime intentionally blocked: API/web pins still reference print-and-exit server stubs (api={api_pin}, web={web_pin})"
+            "API gitlink {api_pin} != compose-runnable pin {EXPECTED_API_PIN}"
+        )
+        .into());
+    }
+    if web_pin != EXPECTED_WEB_PIN {
+        return Err(format!(
+            "web gitlink {web_pin} != compose-runnable pin {EXPECTED_WEB_PIN}"
         )
         .into());
     }
@@ -207,8 +232,47 @@ fn bootstrap(root: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn compose_check(root: &Path) -> Result<(), Box<dyn Error>> {
+    doctor(root)?;
+    if !run(root, "ores-compose", &["check", ".ores-compose.yaml"])?.success() {
+        return Err("ores-compose check failed".into());
+    }
+    if !run(
+        root,
+        "cargo",
+        &[
+            "test",
+            "--locked",
+            "--manifest-path",
+            "tools/edge-lb/Cargo.toml",
+        ],
+    )?
+    .success()
+    {
+        return Err("edge load-balancer tests failed".into());
+    }
+    println!("compose and edge load-balancer checks passed");
+    Ok(())
+}
+
+fn up(root: &Path) -> Result<(), Box<dyn Error>> {
+    doctor(root)?;
+    let status = Command::new("ores-compose")
+        .current_dir(root)
+        .arg("up")
+        .arg(".ores-compose.yaml")
+        .status()?;
+    if !status.success() {
+        return Err("ores-compose up exited unsuccessfully".into());
+    }
+    Ok(())
+}
+
 fn tunnel(root: &Path, mode: &str, config: &Path) -> Result<(), Box<dyn Error>> {
     doctor(root)?;
+    if !command_available("cloudflared") {
+        return Err("required command is unavailable for tunnel mode: cloudflared".into());
+    }
     let config = config.canonicalize()?;
     let repo = root.canonicalize()?;
     if config.starts_with(&repo) {
@@ -246,7 +310,9 @@ fn tunnel(root: &Path, mode: &str, config: &Path) -> Result<(), Box<dyn Error>> 
 }
 
 fn usage() -> ! {
-    eprintln!("usage: gha-indie-worker-dev-runtime <validate|bootstrap|doctor|tunnel> [laptop|codespace] [config-path]");
+    eprintln!(
+        "usage: gha-indie-worker-dev-runtime <validate|bootstrap|doctor|check|up|tunnel> [laptop|codespace] [config-path]"
+    );
     std::process::exit(2);
 }
 
@@ -257,6 +323,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some("validate") if args.len() == 1 => validate(&root),
         Some("bootstrap") if args.len() == 1 => bootstrap(&root),
         Some("doctor") if args.len() == 1 => doctor(&root),
+        Some("check") if args.len() == 1 => compose_check(&root),
+        Some("up") if args.len() == 1 => up(&root),
         Some("tunnel") if args.len() == 3 => tunnel(&root, &args[1], Path::new(&args[2])),
         _ => usage(),
     }
