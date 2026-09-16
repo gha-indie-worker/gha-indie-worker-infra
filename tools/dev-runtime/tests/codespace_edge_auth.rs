@@ -4,7 +4,7 @@ use std::{fs, path::PathBuf};
 
 const ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
 const ORES_COMPOSE_REV: &str = "9fbbaf4580b91c1445ec91f67ad3b31252094171";
-const CODESPACES_CLUSTER_REV: &str = "d8d399ff92ae0b0e2bcbbc502df5543af0adc78c";
+const CODESPACES_CLUSTER_REV: &str = "9d1e9709fa2ba0fccdf920731cdfa5673a77e5f6";
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
