@@ -2,7 +2,7 @@
 
 use std::{fs, path::PathBuf};
 
-const ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
+const ORES_CLI_REV: &str = "d37aa4c1a0b79a292a31e2f16db8622144b0831f";
 const ORES_COMPOSE_REV: &str = "9fbbaf4580b91c1445ec91f67ad3b31252094171";
 const CODESPACES_CLUSTER_REV: &str = "9d1e9709fa2ba0fccdf920731cdfa5673a77e5f6";
 
@@ -60,10 +60,11 @@ fn fresh_codespace_provisions_exact_private_toolchain() {
         "github_pat_",
         "CF_TUNNEL_TOKEN",
         ".app.github.dev",
+        "c854130ee147e9793a3af8736e90241630a5c934",
     ] {
         assert!(
             !devcontainer.contains(forbidden),
-            "devcontainer contains forbidden credential/ingress material {forbidden:?}"
+            "devcontainer contains forbidden credential/ingress/stale-pin material {forbidden:?}"
         );
     }
 }
@@ -92,6 +93,7 @@ fn docs_describe_the_same_private_repo_boundary() {
         "ORESoftware/codespaces-cluster",
         "read-only Contents",
         "bootstrap",
+        "d37aa4c1a0b79a292a31e2f16db8622144b0831f",
     ] {
         assert!(docs.contains(required), "docs missing {required:?}");
     }
