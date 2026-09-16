@@ -2,9 +2,9 @@
 
 use std::{fs, path::PathBuf};
 
-const ORES_CLI_REV: &str = "d37aa4c1a0b79a292a31e2f16db8622144b0831f";
-const ORES_COMPOSE_REV: &str = "9fbbaf4580b91c1445ec91f67ad3b31252094171";
-const CODESPACES_CLUSTER_REV: &str = "8c494f4b038a766be06ff29df5a067b6d78c9134";
+const EXPECTED_ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
+const EXPECTED_ORES_COMPOSE_REV: &str = "8a01df4227a44b0b25741b7ef4a910ec4a4dc75f";
+const CODESPACES_CLUSTER_REV: &str = "9d1e9709fa2ba0fccdf920731cdfa5673a77e5f6";
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -16,6 +16,16 @@ fn repo_root() -> PathBuf {
 
 fn read(path: &str) -> String {
     fs::read_to_string(repo_root().join(path)).expect("contract file must be readable")
+}
+
+fn revision(path: &str) -> String {
+    let value = read(path).trim().to_string();
+    assert_eq!(value.len(), 40, "{path} must contain one full commit SHA");
+    assert!(
+        value.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "{path} must contain hex only"
+    );
+    value
 }
 
 #[test]
@@ -33,20 +43,37 @@ fn private_auth_is_scoped_to_network_bootstrap_only() {
 }
 
 #[test]
+fn reviewed_tool_revisions_are_immutable_and_match_devcontainer() {
+    let ores_cli = revision("config/ores-cli.rev");
+    let ores_compose = revision("config/ores-compose.rev");
+    let devcontainer = read(".devcontainer/devcontainer.json");
+
+    assert_eq!(ores_cli, EXPECTED_ORES_CLI_REV);
+    assert_eq!(ores_compose, EXPECTED_ORES_COMPOSE_REV);
+    assert!(devcontainer.contains(&format!("--rev {ores_cli}")));
+    assert!(devcontainer.contains(&format!("--rev {ores_compose}")));
+}
+
+#[test]
 fn fresh_codespace_provisions_exact_private_toolchain() {
     let devcontainer = read(".devcontainer/devcontainer.json");
+    let ores_cli = revision("config/ores-cli.rev");
+    let ores_compose = revision("config/ores-compose.rev");
 
     for required in [
         "ORESoftware/ores-cli",
         "ORESoftware/ores-compose",
         "ORESoftware/codespaces-cluster",
-        &format!("--rev {ORES_CLI_REV}"),
-        &format!("--rev {ORES_COMPOSE_REV}"),
+        &format!("--rev {ores_cli}"),
+        &format!("--rev {ores_compose}"),
         "gh repo view ORESoftware/codespaces-cluster --json name",
         r#"GH_TOKEN=\"$ORES_CLI_READ_TOKEN\""#,
         "\"onAutoForward\": \"ignore\"",
     ] {
-        assert!(devcontainer.contains(required), "devcontainer contract missing {required:?}");
+        assert!(
+            devcontainer.contains(required),
+            "devcontainer contract missing {required:?}"
+        );
     }
 
     for forbidden in [
@@ -55,11 +82,10 @@ fn fresh_codespace_provisions_exact_private_toolchain() {
         "github_pat_",
         "CF_TUNNEL_TOKEN",
         ".app.github.dev",
-        "c854130ee147e9793a3af8736e90241630a5c934",
     ] {
         assert!(
             !devcontainer.contains(forbidden),
-            "devcontainer contains forbidden credential/ingress/stale-pin material {forbidden:?}"
+            "devcontainer contains forbidden credential/ingress material {forbidden:?}"
         );
     }
 }
@@ -88,8 +114,6 @@ fn docs_describe_the_same_private_repo_boundary() {
         "ORESoftware/codespaces-cluster",
         "read-only Contents",
         "bootstrap",
-        "d37aa4c1a0b79a292a31e2f16db8622144b0831f",
-        "8c494f4b038a766be06ff29df5a067b6d78c9134",
     ] {
         assert!(docs.contains(required), "docs missing {required:?}");
     }

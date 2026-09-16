@@ -10,7 +10,8 @@ use std::{
 
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
 const EXPECTED_MONOREPO: &str = "68de4b122d06621805bfb810367488bd171272c7";
-const ORES_CLI_REV: &str = "d37aa4c1a0b79a292a31e2f16db8622144b0831f";
+const ORES_CLI_REV_PATH: &str = "config/ores-cli.rev";
+const ORES_COMPOSE_REV_PATH: &str = "config/ores-compose.rev";
 const STUB_API_PIN: &str = "90cfc8a86660d36683fc96d629af843c347e6667";
 const STUB_WEB_PIN: &str = "d99dbb64f3cb4434d023e7f7943a016b7c8c3bd4";
 
@@ -45,9 +46,20 @@ fn manifest_commit(text: &str) -> Option<&str> {
         .find_map(|line| line.strip_prefix("commit:").map(str::trim))
 }
 
+fn reviewed_revision(root: &Path, rel: &str) -> Result<String, Box<dyn Error>> {
+    let revision = read(root, rel)?.trim().to_string();
+    if revision.len() != 40 || !revision.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(format!("reviewed revision {rel} must contain one 40-hex commit SHA").into());
+    }
+    Ok(revision)
+}
+
 fn validate_devcontainer(root: &Path) -> Result<(), Box<dyn Error>> {
     let devcontainer = read(root, ".devcontainer/devcontainer.json")?;
-    let revision = format!("--rev {ORES_CLI_REV}");
+    let ores_cli_revision = reviewed_revision(root, ORES_CLI_REV_PATH)?;
+    let ores_compose_revision = reviewed_revision(root, ORES_COMPOSE_REV_PATH)?;
+    let ores_cli_arg = format!("--rev {ores_cli_revision}");
+    let ores_compose_arg = format!("--rev {ores_compose_revision}");
     for required in [
         "ghcr.io/devcontainers/features/github-cli:1",
         "ghcr.io/jsburckhardt/devcontainer-features/just:1.0.0",
@@ -56,7 +68,9 @@ fn validate_devcontainer(root: &Path) -> Result<(), Box<dyn Error>> {
         "TUNNEL_TOKEN",
         "CARGO_NET_GIT_FETCH_WITH_CLI=true",
         "https://github.com/ORESoftware/ores-cli.git",
-        revision.as_str(),
+        ores_cli_arg.as_str(),
+        "https://github.com/ORESoftware/ores-compose.git",
+        ores_compose_arg.as_str(),
         "just codespace-edge-check",
         "\"8080\"",
         "\"onAutoForward\": \"ignore\"",

@@ -36,15 +36,17 @@ The edge's own `/healthz`, `/readyz`, and `/routes` endpoints remain control-pla
 
 A fresh/rebuilt devcontainer provisions the reviewed private tools needed by this lifecycle:
 
-- `ORESoftware/ores-cli@d37aa4c1a0b79a292a31e2f16db8622144b0831f`;
-- `ORESoftware/ores-compose@9fbbaf4580b91c1445ec91f67ad3b31252094171`;
-- the shared `ORESoftware/codespaces-cluster` source is materialized later at exact commit `8c494f4b038a766be06ff29df5a067b6d78c9134`, recorded in `config/codespaces-cluster.rev`.
+- `ORESoftware/ores-cli@c854130ee147e9793a3af8736e90241630a5c934`, with the reviewed revision recorded in `config/ores-cli.rev`;
+- `ORESoftware/ores-compose@8a01df4227a44b0b25741b7ef4a910ec4a4dc75f`, with the reviewed revision recorded in `config/ores-compose.rev`;
+- the shared `ORESoftware/codespaces-cluster` source is materialized later at the exact commit recorded in `config/codespaces-cluster.rev`.
+
+The three `config/*.rev` files are review authorities for private bootstrap/runtime tooling. They must contain exactly one full 40-hex commit SHA. The Rust dev-runtime validator, contract tests, devcontainer install commands, and Codespace edge workflow cross-check those values so a pin cannot move in only one surface.
+
+The pinned `ores-compose` revision is the merged lifecycle hardening that preserves exact source materialization while adding pre-network runtime/replica admission, checkout-path lifetime locking, dependency-safe reverse shutdown waves, and partial-start cleanup. A pin advance must point at a reviewed immutable commit and retain those invariants.
 
 All three repositories are private and cross-owner from `gha-indie-worker`. Configure `ORES_CLI_READ_TOKEN` as a fine-grained Codespaces secret with **read-only Contents access limited to exactly those three repositories**. The historical variable name is retained for compatibility even though its bootstrap scope now covers the three reviewed ORE tooling repositories. Configure `TUNNEL_TOKEN` separately for the pre-provisioned named Cloudflare tunnel.
 
 `ORES_CLI_READ_TOKEN` is a bootstrap/network credential only. `just codespace-edge-up` injects it as `GH_TOKEN` only around a required private clone/fetch or missing-tool bootstrap operation. It is not exported into the recipe shell and is not inherited by the long-running application controller, shared Rust edge, `oresc` supervisor, or `cloudflared` connector.
-
-The pinned `oresc` revision enforces that boundary independently: before the `cloudflared --version` preflight, detached supervisor, and connector spawn it removes `ORES_CLI_READ_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, `TUNNEL_TOKEN`, and `CF_TUNNEL_TOKEN`, then re-adds only canonical `TUNNEL_TOKEN` and the per-run ownership marker at the child boundaries that require them. The pinned shared cluster revision applies the same control-plane/tunnel-secret removal before both the `ores-compose --help` preflight and the long-running `ores-compose up` process, preventing those credentials from reaching the application tree. It also bootstraps fallback `oresc` from the same secret-clean `d37aa4c1...` revision and pins its own GitHub Actions dependencies to immutable commit SHAs.
 
 The devcontainer also performs a read-only `gh repo view ORESoftware/codespaces-cluster` preflight so insufficient repository scope fails during rebuild rather than during first traffic activation.
 
