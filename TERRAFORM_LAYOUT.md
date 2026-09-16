@@ -28,6 +28,10 @@ Do not combine these state histories just because their modules now share a prov
 
 The new production roots include Terraform `moved` blocks for every managed root resource. Those blocks preserve addresses only after the new root is attached to the SAME state that belonged to its old root. Follow `docs/terraform-layout-migration.md`; never initialize a fresh production state and apply it as a shortcut.
 
+`bash scripts/check-terraform-layout.sh` enforces the base 15 topology invariants. `bash scripts/check-terraform-state-safety.sh` enforces a second independent 15-invariant layer over migration identity and state ownership. The second layer checks exact module labels and providers, one-source root composition, non-empty provider modules, local-only module sources, paired and unique move addresses, pure namespace moves, destination/resource correspondence, cross-root destination uniqueness, credential-literal rejection, preview/staging non-ownership, and the provider-native Supabase boundary.
+
+A change to `moved.tf` is not documentation-only. If a move is removed, duplicated, retargeted, or points at a resource that the child module no longer declares, CI must fail before a production state plan can be trusted.
+
 Run Terraform from a concrete root, e.g. `terraform -chdir=environments/production/gcp-platform plan` or use `scripts/apply-terraform.sh production/gcp-platform`.
 
 ## Application checkout is not Terraform authority
