@@ -4,18 +4,31 @@ The infra repository owns one application `.ores-compose.yaml`. Laptop and Codes
 
 ## Current application readiness
 
-The application source/materialization contract is exact, but the application runtime is intentionally **not declared healthy yet**. The pinned API and web server revisions currently print their configured bind/output and exit instead of maintaining listening HTTP servers. `scripts/dev/doctor` recognizes those exact stub pins and fails closed. Do not bypass the doctor by adding `sleep`, fake health checks or a moving branch reference.
+The pinned application monorepo now contains long-lived API and web server revisions. The application compose contract binds them only on loopback:
 
-This is separate from the shared Codespaces edge diagnostic cluster. `ORESoftware/codespaces-cluster` has its own small `.ores-compose.yaml` used to prove the common Cloudflare → tunnel → Rust `:8080` → path-routed local-service infrastructure independently of this repository's still-blocked application stack.
+- API: `127.0.0.1:18090` with `/healthz` and `/readyz`;
+- web: `127.0.0.1:18091` with `/healthz` and `/readyz`;
+- web reaches the API through `GHA_INDIE_WORKER_API_HTTP_BASE=http://127.0.0.1:18090`.
+
+Port `8080` is reserved exclusively for the shared `ORESoftware/codespaces-cluster` Rust edge. The application compose manifest must not claim it.
+
+`config/codespaces-cluster.toml` is this repository's trusted edge route table:
+
+- `/api/*` -> API on `127.0.0.1:18090`, with the `/api` prefix stripped;
+- all other application paths -> web on `127.0.0.1:18091`.
+
+The edge's own `/healthz`, `/readyz`, and `/routes` endpoints remain control-plane endpoints and are not shadowed by the web root route.
 
 ## Workflow
 
 1. `scripts/dev/bootstrap` initializes `_apps/gha-monorepo` and its tracked nested gitlinks at the recorded revisions. It uses checkout semantics only; it does not rebase/reset/force-push.
-2. `scripts/dev/doctor` verifies the infra gitlink, application compose source pin, required tools, initialized source and the known application-readiness blocker.
-3. For shared Codespace edge infrastructure, use `just codespace-edge-up`. The wrapper clones/fast-forwards `ORESoftware/codespaces-cluster`, starts its local `ores-compose` cluster and Rust edge on `127.0.0.1:8080`, waits for `/readyz`, and only then starts `oresc`/`cloudflared`.
-4. `just codespace-edge-status` reports both the shared local cluster and connector state. `just codespace-edge-down` stops the connector first, then gracefully stops the shared local `ores-compose` cluster. Status/down deliberately do not fetch or update the shared checkout while it owns a running supervisor.
-5. The GHA Indie Worker application stack remains governed by this repository's `.ores-compose.yaml` and `scripts/dev/doctor`. When its real API/web listeners are admitted, application routes can be added behind the shared Rust edge without weakening the existing doctor gate.
-6. For laptop development, copy the appropriate Cloudflare config outside the repository and run `scripts/dev/tunnel laptop /abs/config.yml` only if that legacy config-driven path is required.
+2. `scripts/dev/doctor` verifies the infra gitlink, application compose source pin, required tools, initialized source, and real application server pins.
+3. `just codespace-edge-up` clones or fast-forwards the shared `ORESoftware/codespaces-cluster` checkout, builds its Rust controller, then starts this repository's application compose stack first. The shared controller uses a separate `.ores/codespaces-cluster-app` state directory and waits for web readiness on port 18091.
+4. After the application is ready, the same command starts the shared Rust edge on `127.0.0.1:8080` with `CODESPACES_CLUSTER_CONFIG` pointing at this repository's route table. Only after edge `/readyz` passes does `oresc` start `cloudflared`.
+5. `just codespace-edge-status` reports the application supervisor, shared edge/connector state, and verifies `GET /api/readyz` through port 8080.
+6. `just codespace-edge-down` stops the Cloudflare connector and shared edge first, then stops the application compose supervisor. Shutdown attempts both layers even if one half reports an error.
+7. `status` and `down` deliberately do not fetch or mutate the shared checkout while it owns running supervisors.
+8. For laptop development, copy the appropriate Cloudflare config outside the repository and run `scripts/dev/tunnel laptop /abs/config.yml` only if that legacy config-driven path is required.
 
 `local.indiebuild.dev` and `codespace.indiebuild.dev` are Access-protected interactive surfaces. `hooks.indiebuild.dev` / `ci-laptop.indiebuild.dev` remain separate signed-machine/webhook surfaces; never weaken Access to make automation work.
 
@@ -29,4 +42,4 @@ Port 8080 stays private to the Codespace and is marked `onAutoForward: ignore`; 
 
 ## Secret boundary
 
-No tunnel token, GitHub bootstrap token, or credential JSON belongs in Git, `.ores-compose.yaml`, process arguments, Terraform variables committed to the repository, or devcontainer configuration. Real tunnel configs/credential files live outside the checkout. `.runtime/` is ignored for non-secret transient state, but the legacy config-driven tunnel wrapper still rejects a real config path inside the repository.
+No tunnel token, GitHub bootstrap token, or credential JSON belongs in Git, `.ores-compose.yaml`, `config/codespaces-cluster.toml`, process arguments, Terraform variables committed to the repository, or devcontainer configuration. Real tunnel configs/credential files live outside the checkout. `.runtime/` and `.ores/` are transient runtime state and must not become credential stores.
