@@ -7,6 +7,8 @@ on:
       - '.ores-compose.yaml'
       - 'config/codespaces-cluster.toml'
       - 'config/codespaces-cluster.rev'
+      - 'config/ores-cli.rev'
+      - 'config/ores-compose.rev'
       - 'Justfile'
       - 'tools/dev-runtime/**'
       - 'docs/local-development.md'
@@ -18,6 +20,8 @@ on:
       - '.ores-compose.yaml'
       - 'config/codespaces-cluster.toml'
       - 'config/codespaces-cluster.rev'
+      - 'config/ores-cli.rev'
+      - 'config/ores-compose.rev'
       - 'Justfile'
       - 'tools/dev-runtime/**'
       - 'docs/local-development.md'
@@ -48,8 +52,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq -- '--rev c854130ee147e9793a3af8736e90241630a5c934' .devcontainer/devcontainer.json
-          grep -Fq -- '--rev 9fbbaf4580b91c1445ec91f67ad3b31252094171' .devcontainer/devcontainer.json
+
+          ores_cli_rev="$(tr -d '[:space:]' < config/ores-cli.rev)"
+          test "$ores_cli_rev" = 'c854130ee147e9793a3af8736e90241630a5c934'
+          [[ "$ores_cli_rev" =~ ^[0-9a-f]{40}$ ]]
+          grep -Fq -- "--rev $ores_cli_rev" .devcontainer/devcontainer.json
+
+          ores_compose_rev="$(tr -d '[:space:]' < config/ores-compose.rev)"
+          test "$ores_compose_rev" = 'c81058821fcdd9a19c145e8e685d21ef5b1d6673'
+          [[ "$ores_compose_rev" =~ ^[0-9a-f]{40}$ ]]
+          grep -Fq -- "--rev $ores_compose_rev" .devcontainer/devcontainer.json
+
           grep -Fq 'ORESoftware/codespaces-cluster' .devcontainer/devcontainer.json
           grep -Fq 'gh repo view ORESoftware/codespaces-cluster --json name' .devcontainer/devcontainer.json
           grep -Fq 'just codespace-edge-check' .devcontainer/devcontainer.json
