@@ -4,7 +4,7 @@ use std::{fs, path::PathBuf};
 
 const EXPECTED_ORES_CLI_REV: &str = "d37aa4c1a0b79a292a31e2f16db8622144b0831f";
 const EXPECTED_ORES_COMPOSE_REV: &str = "8a01df4227a44b0b25741b7ef4a910ec4a4dc75f";
-const CODESPACES_CLUSTER_REV: &str = "8c494f4b038a766be06ff29df5a067b6d78c9134";
+const CODESPACES_CLUSTER_REV: &str = "367a68adf04bf853ff2923c234808cdc538ee21a";
 const STALE_ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
 
 fn repo_root() -> PathBuf {

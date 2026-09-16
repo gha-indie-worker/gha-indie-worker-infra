@@ -82,7 +82,7 @@ jobs:
           grep -Fq '"onAutoForward": "ignore"' .devcontainer/devcontainer.json
 
           rev="$(tr -d '[:space:]' < config/codespaces-cluster.rev)"
-          test "$rev" = '8c494f4b038a766be06ff29df5a067b6d78c9134'
+          test "$rev" = '367a68adf04bf853ff2923c234808cdc538ee21a'
           [[ "$rev" =~ ^[0-9a-f]{40}$ ]]
 
           cfg=config/codespaces-cluster.toml
@@ -100,7 +100,7 @@ jobs:
           grep -Fq 'read-only Contents access limited to exactly those three repositories' docs/local-development.md
           grep -Fq 'd37aa4c1a0b79a292a31e2f16db8622144b0831f' docs/local-development.md
           grep -Fq '8a01df4227a44b0b25741b7ef4a910ec4a4dc75f' docs/local-development.md
-          grep -Fq '8c494f4b038a766be06ff29df5a067b6d78c9134' docs/local-development.md
+          grep -Fq '367a68adf04bf853ff2923c234808cdc538ee21a' docs/local-development.md
 
           ! grep -Fq 'http://127.0.0.1:8080/readyz' .ores-compose.yaml
           ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!*.lock'
