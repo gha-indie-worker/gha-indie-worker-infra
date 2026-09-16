@@ -9,7 +9,7 @@ use std::{
 };
 
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
-const EXPECTED_MONOREPO: &str = "606b7be87393f5d9590396d3feedd900a461f9c4";
+const EXPECTED_MONOREPO: &str = "07278c0dac28bc4d26652025c01120d244ef7d34";
 const ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
 const STUB_API_PIN: &str = "90cfc8a86660d36683fc96d629af843c347e6667";
 const STUB_WEB_PIN: &str = "d99dbb64f3cb4434d023e7f7943a016b7c8c3bd4";
