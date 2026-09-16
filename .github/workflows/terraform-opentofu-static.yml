@@ -6,6 +6,7 @@ on:
       - "modules/**"
       - "environments/**"
       - ".ores-infra.toml"
+      - "scripts/check-terraform-layout.sh"
       - "scripts/hcl-sanity.py"
       - ".github/workflows/terraform-opentofu-static.yml"
   push:
@@ -14,6 +15,7 @@ on:
       - "modules/**"
       - "environments/**"
       - ".ores-infra.toml"
+      - "scripts/check-terraform-layout.sh"
       - "scripts/hcl-sanity.py"
       - ".github/workflows/terraform-opentofu-static.yml"
 
@@ -47,7 +49,6 @@ jobs:
         with:
           persist-credentials: false
           submodules: false
-
       - name: Install checksum-verified Terraform 1.9.8
         shell: bash
         run: |
@@ -62,15 +63,12 @@ jobs:
           (cd "$work" && grep "  ${archive}$" SHA256SUMS | sha256sum --check --strict -)
           unzip -q "$work/$archive" -d "${RUNNER_TEMP}/bin"
           echo "${RUNNER_TEMP}/bin" >> "$GITHUB_PATH"
-
       - name: Terraform fmt
         working-directory: environments/production/${{ matrix.root }}
         run: terraform fmt -check -diff -recursive
-
       - name: Terraform init without backend
         working-directory: environments/production/${{ matrix.root }}
         run: terraform init -backend=false -input=false
-
       - name: Terraform validate
         working-directory: environments/production/${{ matrix.root }}
         run: terraform validate -no-color
@@ -93,7 +91,6 @@ jobs:
         with:
           persist-credentials: false
           submodules: false
-
       - name: Install checksum-verified OpenTofu 1.9.0
         shell: bash
         run: |
@@ -108,15 +105,12 @@ jobs:
           (cd "$work" && grep "  ${archive}$" SHA256SUMS | sha256sum --check --strict -)
           unzip -q "$work/$archive" -d "${RUNNER_TEMP}/bin"
           echo "${RUNNER_TEMP}/bin" >> "$GITHUB_PATH"
-
       - name: OpenTofu fmt
         working-directory: environments/production/${{ matrix.root }}
         run: tofu fmt -check -diff -recursive
-
       - name: OpenTofu init without backend
         working-directory: environments/production/${{ matrix.root }}
         run: tofu init -backend=false -input=false
-
       - name: OpenTofu validate
         working-directory: environments/production/${{ matrix.root }}
         run: tofu validate -no-color
@@ -130,6 +124,8 @@ jobs:
         with:
           persist-credentials: false
           submodules: false
+      - name: Check modules/environments contract
+        run: bash scripts/check-terraform-layout.sh
       - name: HCL sanity across modules and environments
         run: |
           set -euo pipefail
