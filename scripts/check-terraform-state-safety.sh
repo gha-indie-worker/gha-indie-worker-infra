@@ -79,7 +79,9 @@ for i in "${!roots[@]}"; do
   # 25. Every move destination must correspond to a resource/data declared by the child module.
   mapfile -t declared_addresses < <(
     grep -R -h -E '^[[:space:]]*(resource|data)[[:space:]]+"[^\"]+"[[:space:]]+"[^\"]+"' "$module_dir" --include='*.tf' \
-      | sed -E 's/^[[:space:]]*(resource|data)[[:space:]]+"([^\"]+)"[[:space:]]+"([^\"]+)".*/\2.\3/' \
+      | sed -E \
+          -e 's/^[[:space:]]*resource[[:space:]]+"([^\"]+)"[[:space:]]+"([^\"]+)".*/\1.\2/' \
+          -e 's/^[[:space:]]*data[[:space:]]+"([^\"]+)"[[:space:]]+"([^\"]+)".*/data.\1.\2/' \
       | sort -u
   )
   for source in "${move_sources[@]}"; do
