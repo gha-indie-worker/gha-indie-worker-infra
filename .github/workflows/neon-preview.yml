@@ -5,7 +5,12 @@ name: neon-preview
 on:
   pull_request:
     types: [opened, reopened, synchronize, closed]
-    paths: ["neon/**", ".db-providers.json"]
+    paths:
+      - "neon/**"
+      - "modules/neon/**"
+      - "environments/production/neon/**"
+      - ".db-providers.json"
+      - ".github/workflows/neon-preview.yml"
 
 permissions:
   contents: read

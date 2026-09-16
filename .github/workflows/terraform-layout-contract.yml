@@ -12,6 +12,7 @@ on:
       - "TERRAFORM_LAYOUT.md"
       - "docs/terraform-layout-migration.md"
       - "docs/apps-checkout.md"
+      - "scripts/check-terraform-layout.sh"
       - "scripts/check-apps-layout.sh"
       - "scripts/sync-apps.sh"
       - "scripts/update-app-pin.sh"
@@ -28,6 +29,7 @@ on:
       - "TERRAFORM_LAYOUT.md"
       - "docs/terraform-layout-migration.md"
       - "docs/apps-checkout.md"
+      - "scripts/check-terraform-layout.sh"
       - "scripts/check-apps-layout.sh"
       - "scripts/sync-apps.sh"
       - "scripts/update-app-pin.sh"
@@ -45,51 +47,9 @@ jobs:
         with:
           persist-credentials: false
           submodules: false
-      - name: Check modules/environment ownership
+      - name: Check 15 Terraform layout invariants
         shell: bash
-        run: |
-          set -euo pipefail
-          test -f .ores-infra.toml
-          grep -Eq '^modules_dir[[:space:]]*=[[:space:]]*"modules"[[:space:]]*$' .ores-infra.toml
-          grep -Eq '^environments_dir[[:space:]]*=[[:space:]]*"environments"[[:space:]]*$' .ores-infra.toml
-
-          for dir in modules/gcp modules/cloudflare modules/neon modules/supabase environments/preview environments/staging environments/production; do
-            test -d "$dir" || { echo "missing required layout directory: $dir" >&2; exit 1; }
-          done
-
-          if grep -R -n -E '^[[:space:]]*backend[[:space:]]+"' modules --include='*.tf'; then
-            echo 'backend blocks are forbidden in child modules' >&2; exit 1
-          fi
-          if grep -R -n -E '^[[:space:]]*provider[[:space:]]+"' modules --include='*.tf'; then
-            echo 'provider configuration belongs in environment roots, not child modules' >&2; exit 1
-          fi
-          if find modules -type f \( -name '*.tfvars' -o -name '*.tfstate' -o -name '*.tfstate.*' \) -print -quit | grep -q .; then
-            echo 'environment values/state must not live in child modules' >&2; exit 1
-          fi
-          if git ls-files | grep -E '(^|/)\.terraform/|\.tfstate($|\.)' >/dev/null; then
-            echo 'Terraform state or .terraform data is committed' >&2; exit 1
-          fi
-
-          if [ -d terraform ] && find terraform -type f -name '*.tf' -print -quit | grep -q .; then
-            echo 'legacy terraform/ roots are forbidden after the modules migration' >&2; exit 1
-          fi
-          for legacy in gcp/cloudrun cloudflare/dns cloudflare/laptop-tunnel; do
-            if [ -d "$legacy" ] && find "$legacy" -type f -name '*.tf' -print -quit | grep -q .; then
-              echo "legacy Terraform root still owns .tf files: $legacy" >&2; exit 1
-            fi
-          done
-          if find neon -maxdepth 1 -type f -name '*.tf' -print -quit | grep -q .; then
-            echo 'Neon Terraform belongs under modules/neon + environments, not the native neon root' >&2; exit 1
-          fi
-
-          for root in gcp-platform gcp-cloudrun cloudflare-platform cloudflare-dns neon; do
-            test -f "environments/production/$root/main.tf"
-            test -f "environments/production/$root/versions.tf"
-            grep -Eq 'source[[:space:]]*=[[:space:]]*"\.\./\.\./\.\./modules/' "environments/production/$root/main.tf"
-          done
-
-          test -f supabase/config.toml
-          test -f cloudflare/edge-router/wrangler.toml
+        run: bash scripts/check-terraform-layout.sh
       - name: Check application checkout boundary
         shell: bash
-        run: scripts/check-apps-layout.sh
+        run: bash scripts/check-apps-layout.sh

@@ -5,14 +5,18 @@ on:
     paths:
       - "cloudflare/edge-router/**"
       - "cloudflare/laptop-ingress/**"
-      - "terraform/cloudflare/**"
+      - "modules/cloudflare/**"
+      - "environments/production/cloudflare-platform/**"
+      - "environments/production/cloudflare-dns/**"
       - ".github/workflows/edge-router.yml"
   push:
     branches: [main]
     paths:
       - "cloudflare/edge-router/**"
       - "cloudflare/laptop-ingress/**"
-      - "terraform/cloudflare/**"
+      - "modules/cloudflare/**"
+      - "environments/production/cloudflare-platform/**"
+      - "environments/production/cloudflare-dns/**"
       - ".github/workflows/edge-router.yml"
   workflow_dispatch:
 
@@ -83,7 +87,7 @@ jobs:
         working-directory: cloudflare/edge-router
         run: |
           if grep -q 'REPLACE\.a\.run\.app' router.config.json; then
-            echo "::error::router.config.json still has *-REPLACE.a.run.app placeholders; apply gcp/cloudrun and update the fallback hosts first"
+            echo "::error::router.config.json still has *-REPLACE.a.run.app placeholders; apply environments/production/gcp-cloudrun and update the fallback hosts first"
             exit 1
           fi
 
