@@ -23,7 +23,7 @@ The edge's own `/healthz`, `/readyz`, and `/routes` endpoints remain control-pla
 
 1. `scripts/dev/bootstrap` initializes `_apps/gha-monorepo` and its tracked nested gitlinks at the recorded revisions. It uses checkout semantics only; it does not rebase/reset/force-push.
 2. `scripts/dev/doctor` verifies the infra gitlink, application compose source pin, required tools, initialized source, and real application server pins.
-3. `just codespace-edge-up` clones or fast-forwards the shared `ORESoftware/codespaces-cluster` checkout, builds its Rust controller, then starts this repository's application compose stack first. The shared controller uses a separate `.ores/codespaces-cluster-app` state directory and waits for web readiness on port 18091.
+3. `just codespace-edge-up` materializes the exact reviewed shared edge revision from `config/codespaces-cluster.rev` only when that checkout/object is missing, builds its Rust controller, then starts this repository's application compose stack first. The shared controller uses a separate `.ores/codespaces-cluster-app` state directory and waits for web readiness on port 18091.
 4. After the application is ready, the same command starts the shared Rust edge on `127.0.0.1:8080` with `CODESPACES_CLUSTER_CONFIG` pointing at this repository's route table. Only after edge `/readyz` passes does `oresc` start `cloudflared`.
 5. `just codespace-edge-status` reports the application supervisor, shared edge/connector state, and verifies `GET /api/readyz` through port 8080.
 6. `just codespace-edge-down` stops the Cloudflare connector and shared edge first, then stops the application compose supervisor. Shutdown attempts both layers even if one half reports an error.
@@ -34,9 +34,17 @@ The edge's own `/healthz`, `/readyz`, and `/routes` endpoints remain control-pla
 
 ## Codespace bootstrap
 
-The devcontainer installs reviewed private `ORESoftware/ores-cli` revision `c854130ee147e9793a3af8736e90241630a5c934`. That revision contains the external-origin connector behavior consumed by the shared full lifecycle.
+A fresh/rebuilt devcontainer provisions the reviewed private tools needed by this lifecycle:
 
-Because `ORESoftware/ores-cli` is private and cross-owner, configure `ORES_CLI_READ_TOKEN` as a fine-grained Codespaces secret with read-only Contents access to that repository. Configure `TUNNEL_TOKEN` separately for the pre-provisioned named Cloudflare tunnel. The bootstrap token is used only for Git/Cargo installation and must not become application configuration.
+- `ORESoftware/ores-cli@c854130ee147e9793a3af8736e90241630a5c934`;
+- `ORESoftware/ores-compose@9fbbaf4580b91c1445ec91f67ad3b31252094171`;
+- the shared `ORESoftware/codespaces-cluster` source is materialized later at the exact commit recorded in `config/codespaces-cluster.rev`.
+
+All three repositories are private and cross-owner from `gha-indie-worker`. Configure `ORES_CLI_READ_TOKEN` as a fine-grained Codespaces secret with **read-only Contents access limited to exactly those three repositories**. The historical variable name is retained for compatibility even though its bootstrap scope now covers the three reviewed ORE tooling repositories. Configure `TUNNEL_TOKEN` separately for the pre-provisioned named Cloudflare tunnel.
+
+`ORES_CLI_READ_TOKEN` is a bootstrap/network credential only. `just codespace-edge-up` injects it as `GH_TOKEN` only around a required private clone/fetch or missing-tool bootstrap operation. It is not exported into the recipe shell and is not inherited by the long-running application controller, shared Rust edge, `oresc` supervisor, or `cloudflared` connector.
+
+The devcontainer also performs a read-only `gh repo view ORESoftware/codespaces-cluster` preflight so insufficient repository scope fails during rebuild rather than during first traffic activation.
 
 Port 8080 stays private to the Codespace and is marked `onAutoForward: ignore`; Cloudflare connects to loopback from `cloudflared` inside the same Codespace rather than proxying a `*.app.github.dev` URL.
 
