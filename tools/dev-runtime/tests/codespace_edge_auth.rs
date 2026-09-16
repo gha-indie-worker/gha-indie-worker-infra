@@ -2,9 +2,10 @@
 
 use std::{fs, path::PathBuf};
 
-const EXPECTED_ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
+const EXPECTED_ORES_CLI_REV: &str = "d37aa4c1a0b79a292a31e2f16db8622144b0831f";
 const EXPECTED_ORES_COMPOSE_REV: &str = "8a01df4227a44b0b25741b7ef4a910ec4a4dc75f";
-const CODESPACES_CLUSTER_REV: &str = "9d1e9709fa2ba0fccdf920731cdfa5673a77e5f6";
+const CODESPACES_CLUSTER_REV: &str = "8c494f4b038a766be06ff29df5a067b6d78c9134";
+const STALE_ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -52,6 +53,7 @@ fn reviewed_tool_revisions_are_immutable_and_match_devcontainer() {
     assert_eq!(ores_compose, EXPECTED_ORES_COMPOSE_REV);
     assert!(devcontainer.contains(&format!("--rev {ores_cli}")));
     assert!(devcontainer.contains(&format!("--rev {ores_compose}")));
+    assert!(!devcontainer.contains(STALE_ORES_CLI_REV));
 }
 
 #[test]
@@ -82,10 +84,11 @@ fn fresh_codespace_provisions_exact_private_toolchain() {
         "github_pat_",
         "CF_TUNNEL_TOKEN",
         ".app.github.dev",
+        STALE_ORES_CLI_REV,
     ] {
         assert!(
             !devcontainer.contains(forbidden),
-            "devcontainer contains forbidden credential/ingress material {forbidden:?}"
+            "devcontainer contains forbidden credential/ingress/stale-pin material {forbidden:?}"
         );
     }
 }
@@ -114,6 +117,9 @@ fn docs_describe_the_same_private_repo_boundary() {
         "ORESoftware/codespaces-cluster",
         "read-only Contents",
         "bootstrap",
+        EXPECTED_ORES_CLI_REV,
+        EXPECTED_ORES_COMPOSE_REV,
+        CODESPACES_CLUSTER_REV,
     ] {
         assert!(docs.contains(required), "docs missing {required:?}");
     }
