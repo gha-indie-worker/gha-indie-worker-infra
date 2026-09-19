@@ -12,7 +12,29 @@
   ],
   "$defs": {
     "Sha40": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-    "Repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+    "Sha40OrEmpty": {
+      "oneOf": [
+        { "$ref": "#/$defs/Sha40" },
+        { "const": "" }
+      ]
+    },
+    "Repo": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 201,
+      "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    },
+    "Profile": {
+      "enum": [
+        "rust-verify",
+        "node-verify",
+        "python-verify",
+        "flutter-verify",
+        "playwright",
+        "puppeteer",
+        "browser-e2e"
+      ]
+    },
     "RunId": { "type": "string", "minLength": 1, "maxLength": 128 },
     "HostedRun": {
       "type": "object",
@@ -20,8 +42,23 @@
       "properties": {
         "id": { "type": "integer", "minimum": 1 },
         "name": { "type": "string", "maxLength": 256 },
-        "status": { "type": "string", "maxLength": 64 },
-        "conclusion": { "type": ["string", "null"], "maxLength": 64 },
+        "status": {
+          "enum": ["queued", "in_progress", "completed", "requested", "waiting", "pending"]
+        },
+        "conclusion": {
+          "enum": [
+            "success",
+            "failure",
+            "neutral",
+            "cancelled",
+            "skipped",
+            "timed_out",
+            "action_required",
+            "stale",
+            "startup_failure",
+            null
+          ]
+        },
         "headSha": { "$ref": "#/$defs/Sha40" },
         "jobsAvailable": { "type": "boolean" },
         "stepful": { "type": ["boolean", "null"] }
@@ -33,7 +70,12 @@
       "unevaluatedProperties": false,
       "properties": {
         "available": { "type": "boolean" },
-        "queryError": { "type": ["string", "null"], "maxLength": 128 },
+        "queryError": {
+          "oneOf": [
+            { "const": "workflow-runs-query-failed" },
+            { "type": "null" }
+          ]
+        },
         "totalMatchingRuns": { "type": "integer", "minimum": 0 },
         "inspectedRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
         "stepfulRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
@@ -70,7 +112,7 @@
       "properties": {
         "event": { "const": "cohort_started" },
         "runId": { "$ref": "#/$defs/RunId" },
-        "cohort": { "type": "string", "minLength": 1 },
+        "cohort": { "type": "string", "minLength": 1, "maxLength": 4096 },
         "cohortSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "mode": { "const": "advisory" },
         "entryCount": { "type": "integer", "minimum": 1, "maximum": 100 }
@@ -85,8 +127,8 @@
         "runId": { "$ref": "#/$defs/RunId" },
         "repo": { "$ref": "#/$defs/Repo" },
         "pullRequest": { "type": "integer", "minimum": 1 },
-        "profile": { "type": "string", "minLength": 1 },
-        "headSha": { "type": "string" },
+        "profile": { "$ref": "#/$defs/Profile" },
+        "headSha": { "$ref": "#/$defs/Sha40OrEmpty" },
         "reason": { "type": "string", "minLength": 1, "maxLength": 256 }
       },
       "required": ["event", "runId", "repo", "pullRequest", "profile", "headSha", "reason"]
@@ -99,7 +141,7 @@
         "runId": { "$ref": "#/$defs/RunId" },
         "repo": { "$ref": "#/$defs/Repo" },
         "pullRequest": { "type": "integer", "minimum": 1 },
-        "profile": { "type": "string", "minLength": 1 },
+        "profile": { "$ref": "#/$defs/Profile" },
         "headSha": { "$ref": "#/$defs/Sha40" }
       },
       "required": ["event", "runId", "repo", "pullRequest", "profile", "headSha"]
@@ -112,9 +154,9 @@
         "runId": { "$ref": "#/$defs/RunId" },
         "repo": { "$ref": "#/$defs/Repo" },
         "pullRequest": { "type": "integer", "minimum": 1 },
-        "profile": { "type": "string", "minLength": 1 },
+        "profile": { "$ref": "#/$defs/Profile" },
         "headSha": { "$ref": "#/$defs/Sha40" },
-        "jobId": { "type": "string", "minLength": 1 },
+        "jobId": { "type": "string", "minLength": 1, "maxLength": 256 },
         "status": { "enum": ["succeeded", "failed", "error", "cancelled", "timeout"] },
         "afterHeadSha": {
           "oneOf": [
@@ -122,7 +164,12 @@
             { "type": "null" }
           ]
         },
-        "afterHeadQueryError": { "type": ["string", "null"], "maxLength": 128 },
+        "afterHeadQueryError": {
+          "oneOf": [
+            { "enum": ["invalid-after-head-sha", "pr-recheck-failed"] },
+            { "type": "null" }
+          ]
+        },
         "cliExit": { "type": "integer", "minimum": 0, "maximum": 255 },
         "stale": { "type": "boolean" },
         "nativeGitHubActions": { "$ref": "#/$defs/NativeGitHubActions" }
