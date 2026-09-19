@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gha-indie-worker/gha-indie-worker-infra/cohorts/laptop-ci-wave-1-receipt.schema.json",
+  "title": "IndieBuild laptop CI wave receipt event",
+  "description": "Append-only NDJSON event schema for advisory exact-head cohort execution. A receipt is evidence, not merge authority; authoritative promotion additionally requires an App-owned GitHub Check Run bound to the same head SHA.",
+  "oneOf": [
+    { "$ref": "#/$defs/CohortStarted" },
+    { "$ref": "#/$defs/EntryRefused" },
+    { "$ref": "#/$defs/EntryAdmitted" },
+    { "$ref": "#/$defs/EntryFinished" },
+    { "$ref": "#/$defs/CohortFinished" }
+  ],
+  "$defs": {
+    "Sha40": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "Repo": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    },
+    "Base": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event": { "type": "string" },
+        "runId": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "required": ["event", "runId"]
+    },
+    "CohortStarted": {
+      "allOf": [
+        { "$ref": "#/$defs/Base" },
+        {
+          "type": "object",
+          "properties": {
+            "event": { "const": "cohort_started" },
+            "cohort": { "type": "string", "minLength": 1 },
+            "cohortSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "mode": { "const": "advisory" },
+            "entryCount": { "type": "integer", "minimum": 1, "maximum": 100 }
+          },
+          "required": ["cohort", "cohortSha256", "mode", "entryCount"]
+        }
+      ]
+    },
+    "EntryRefused": {
+      "allOf": [
+        { "$ref": "#/$defs/Base" },
+        {
+          "type": "object",
+          "properties": {
+            "event": { "const": "entry_refused" },
+            "repo": { "$ref": "#/$defs/Repo" },
+            "pullRequest": { "type": "integer", "minimum": 1 },
+            "profile": { "type": "string", "minLength": 1 },
+            "headSha": { "type": "string" },
+            "reason": { "type": "string", "minLength": 1, "maxLength": 256 }
+          },
+          "required": ["repo", "pullRequest", "profile", "headSha", "reason"]
+        }
+      ]
+    },
+    "EntryAdmitted": {
+      "allOf": [
+        { "$ref": "#/$defs/Base" },
+        {
+          "type": "object",
+          "properties": {
+            "event": { "const": "entry_admitted" },
+            "repo": { "$ref": "#/$defs/Repo" },
+            "pullRequest": { "type": "integer", "minimum": 1 },
+            "profile": { "type": "string", "minLength": 1 },
+            "headSha": { "$ref": "#/$defs/Sha40" }
+          },
+          "required": ["repo", "pullRequest", "profile", "headSha"]
+        }
+      ]
+    },
+    "EntryFinished": {
+      "allOf": [
+        { "$ref": "#/$defs/Base" },
+        {
+          "type": "object",
+          "properties": {
+            "event": { "const": "entry_finished" },
+            "repo": { "$ref": "#/$defs/Repo" },
+            "pullRequest": { "type": "integer", "minimum": 1 },
+            "profile": { "type": "string", "minLength": 1 },
+            "headSha": { "$ref": "#/$defs/Sha40" },
+            "jobId": { "type": "string", "minLength": 1 },
+            "status": { "enum": ["succeeded", "failed", "error", "cancelled", "timeout"] },
+            "afterHeadSha": { "$ref": "#/$defs/Sha40" },
+            "cliExit": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "stale": { "type": "boolean" }
+          },
+          "required": ["repo", "pullRequest", "profile", "headSha", "jobId", "status", "afterHeadSha", "cliExit", "stale"]
+        }
+      ]
+    },
+    "CohortFinished": {
+      "allOf": [
+        { "$ref": "#/$defs/Base" },
+        {
+          "type": "object",
+          "properties": {
+            "event": { "const": "cohort_finished" },
+            "attempted": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "failures": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "success": { "type": "boolean" }
+          },
+          "required": ["attempted", "failures", "success"]
+        }
+      ]
+    }
+  }
+}
