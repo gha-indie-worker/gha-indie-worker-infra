@@ -17,14 +17,18 @@
       "completed",
       "success"
     ],
-    "patStatusContext": "indiebuild.dev/ci-advisory"
+    "patStatusContext": "indiebuild.dev/ci-advisory",
+    "requiresDeliveredTerminalVerdict": true,
+    "requiresCrashReconciliation": true
   },
   "prerequisites": [
     "ORESoftware/ores-compose#150",
     "ORESoftware/ores-compose#152",
+    "ORESoftware/ores-compose#154",
     "gha-indie-worker/gha-indie-worker.rs#73",
     "gha-indie-worker/gha-indie-worker.rs#74",
     "gha-indie-worker/gha-indie-worker.rs#77",
+    "gha-indie-worker/gha-indie-worker.rs#78",
     "gha-indie-worker/gha-indie-worker-infra#46"
   ],
   "allowedOwners": [
