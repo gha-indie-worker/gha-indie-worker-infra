@@ -49,6 +49,9 @@ jobs:
           jq -e '.entries | length == 30' "$file" >/dev/null
           jq -e '[.entries[].repo | split("/")[0]] | unique | length >= 10' "$file" >/dev/null
           jq -e '[.entries[] | (.repo + "#" + (.pullRequest|tostring))] | length == (unique | length)' "$file" >/dev/null
+          jq -e 'all(.entries[]; (.repo | test("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")))' "$file" >/dev/null
+          jq -e 'all(.entries[]; (.pullRequest | type == "number") and (.pullRequest >= 1) and (.pullRequest == floor))' "$file" >/dev/null
+          jq -e '(.allowedOwners | length) == (.allowedOwners | unique | length)' "$file" >/dev/null
 
           jq -e '
             ["rust-verify","node-verify","python-verify","flutter-verify","playwright","puppeteer","browser-e2e"] as $allowed
@@ -62,16 +65,24 @@ jobs:
           jq -e '.promotionEvidence.patStatusContext == "indiebuild.dev/ci-advisory"' "$file" >/dev/null
           jq -e '.promotionEvidence.requiresDeliveredTerminalVerdict == true' "$file" >/dev/null
           jq -e '.promotionEvidence.requiresCrashReconciliation == true' "$file" >/dev/null
+          jq -e '.promotionEvidence.requiresExactHead == true' "$file" >/dev/null
+          jq -e '.promotionEvidence.requiresStrictSuccessConclusion == true' "$file" >/dev/null
+          jq -e '.promotionEvidence.allowsPatFallback == false' "$file" >/dev/null
           jq -e '.promotionEvidence.requiredBindings == ["repository","pullRequest","headSha","context","appId","completed","success"]' "$file" >/dev/null
 
-          for required in \
-            'ORESoftware/ores-compose#154' \
-            'gha-indie-worker/gha-indie-worker.rs#77' \
-            'gha-indie-worker/gha-indie-worker.rs#78' \
-            'gha-indie-worker/gha-indie-worker-infra#46'
-          do
-            jq -e --arg required "$required" '.prerequisites | index($required) != null' "$file" >/dev/null
-          done
+          jq -e '.promotionBlockers | length == 7' "$file" >/dev/null
+          jq -e '[.promotionBlockers[].ref] | length == (unique | length)' "$file" >/dev/null
+          jq -e 'all(.promotionBlockers[]; (.kind == "pull_request" or .kind == "issue") and (.requiredState == "merged" or .requiredState == "closed") and (.capability | type == "string" and length > 0))' "$file" >/dev/null
+          jq -e 'all(.promotionBlockers[]; if .kind == "pull_request" then .requiredState == "merged" else .requiredState == "closed" end)' "$file" >/dev/null
+          jq -e '. as $root | all(.promotionBlockers[]; $root.prerequisites | index(.ref) != null)' "$file" >/dev/null
+
+          jq -e 'any(.promotionBlockers[]; .ref == "ORESoftware/ores-compose#154" and .kind == "pull_request" and .requiredState == "merged")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker.rs#73" and .kind == "pull_request" and .requiredState == "merged")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker.rs#74" and .kind == "pull_request" and .requiredState == "merged")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker.rs#77" and .kind == "issue" and .requiredState == "closed")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker.rs#78" and .kind == "issue" and .requiredState == "closed")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker-infra#46" and .kind == "issue" and .requiredState == "closed")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "ORESoftware/ores-gh-bots#58" and .kind == "pull_request" and .requiredState == "merged")' "$file" >/dev/null
 
       - name: Receipt schema trust invariants
         run: |
