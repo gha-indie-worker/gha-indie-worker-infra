@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 # Operator-side driver for cohorts/laptop-ci-wave-1.json.
 #
@@ -70,13 +71,33 @@ fi
 }
 
 [[ -f "$COHORT_FILE" ]] || { echo "cohort not found: $COHORT_FILE" >&2; exit 2; }
+[[ ! -L "$COHORT_FILE" ]] || { echo "refusing symlinked cohort: $COHORT_FILE" >&2; exit 2; }
+if [[ -e "$RECEIPT_DIR" && -L "$RECEIPT_DIR" ]]; then
+  echo "refusing symlinked receipt directory: $RECEIPT_DIR" >&2
+  exit 2
+fi
+mkdir -p "$RECEIPT_DIR"
+[[ -d "$RECEIPT_DIR" && ! -L "$RECEIPT_DIR" ]] || {
+  echo "receipt path is not a real directory: $RECEIPT_DIR" >&2
+  exit 2
+}
+chmod 700 "$RECEIPT_DIR" 2>/dev/null || true
 
-schema="$($JQ_BIN -r '.schemaVersion // empty' "$COHORT_FILE")"
+# Snapshot the operator-owned cohort exactly once. Every admission decision and
+# the digest below is made from these same bytes, so an editor/process cannot
+# swap entries between the initial validation and later submission.
+COHORT_INPUT="$(mktemp "$RECEIPT_DIR/.cohort-snapshot.XXXXXX")"
+cleanup() { rm -f "$COHORT_INPUT"; }
+trap cleanup EXIT HUP INT TERM
+cp -- "$COHORT_FILE" "$COHORT_INPUT"
+chmod 600 "$COHORT_INPUT" 2>/dev/null || true
+
+schema="$($JQ_BIN -r '.schemaVersion // empty' "$COHORT_INPUT")"
 [[ "$schema" == "indiebuild.cohort.v1" ]] || {
   echo "unsupported cohort schema: ${schema:-<missing>}" >&2
   exit 2
 }
-mode="$($JQ_BIN -r '.mode // empty' "$COHORT_FILE")"
+mode="$($JQ_BIN -r '.mode // empty' "$COHORT_INPUT")"
 [[ "$mode" == "advisory" ]] || {
   echo "wave runner currently refuses non-advisory cohort mode: ${mode:-<missing>}" >&2
   exit 2
@@ -86,7 +107,22 @@ mode="$($JQ_BIN -r '.mode // empty' "$COHORT_FILE")"
 # worker performs its own fixed-profile allowlist admission too.
 allowed_profiles='["rust-verify","node-verify","python-verify","flutter-verify","playwright","puppeteer","browser-e2e"]'
 
-entry_count="$($JQ_BIN '.entries | length' "$COHORT_FILE")"
+$JQ_BIN -e '
+  (.entries | type) == "array" and
+  (.allowedOwners | type) == "array" and
+  all(.entries[];
+    ((.repo | type) == "string") and
+    (.repo | test("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")) and
+    ((.pullRequest | type) == "number") and
+    (.pullRequest >= 1) and (.pullRequest == floor) and
+    ((.profile | type) == "string")) and
+  all(.allowedOwners[]; (type == "string") and test("^[A-Za-z0-9_.-]+$"))
+' "$COHORT_INPUT" >/dev/null || {
+  echo "cohort contains malformed owner/repository/PR/profile fields" >&2
+  exit 2
+}
+
+entry_count="$($JQ_BIN '.entries | length' "$COHORT_INPUT")"
 (( entry_count > 0 && entry_count <= 100 )) || {
   echo "cohort entry count is outside 1..100: $entry_count" >&2
   exit 2
@@ -96,17 +132,18 @@ entry_count="$($JQ_BIN '.entries | length' "$COHORT_FILE")"
 duplicate="$($JQ_BIN -r '
   [.entries[] | (.repo + "#" + (.pullRequest|tostring))]
   | group_by(.)[] | select(length > 1) | .[0]
-' "$COHORT_FILE" | head -n1)"
+' "$COHORT_INPUT" | head -n1)"
 [[ -z "$duplicate" ]] || { echo "duplicate cohort entry: $duplicate" >&2; exit 2; }
 
-mkdir -p "$RECEIPT_DIR"
-chmod 700 "$RECEIPT_DIR" 2>/dev/null || true
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 receipt="$RECEIPT_DIR/laptop-ci-wave-1-$run_id.ndjson"
-: >"$receipt"
+if ! ( set -o noclobber; : >"$receipt" ) 2>/dev/null; then
+  echo "refusing to overwrite existing receipt path: $receipt" >&2
+  exit 2
+fi
 chmod 600 "$receipt" 2>/dev/null || true
 
-cohort_digest="$(sha256sum "$COHORT_FILE" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$COHORT_FILE" | awk '{print $1}')"
+cohort_digest="$(sha256sum "$COHORT_INPUT" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$COHORT_INPUT" | awk '{print $1}')"
 $JQ_BIN -cn \
   --arg event "cohort_started" \
   --arg runId "$run_id" \
@@ -164,9 +201,7 @@ hosted_actions_summary() {
   fi
 
   total_matching="$($JQ_BIN -r '.total_count // 0' <<<"$runs_json")"
-  tmp="$RECEIPT_DIR/.hosted-actions-$run_id-$$-${RANDOM:-0}.ndjson"
-  : >"$tmp"
-  chmod 600 "$tmp" 2>/dev/null || true
+  tmp="$(mktemp "$RECEIPT_DIR/.hosted-actions.XXXXXX")"
 
   while IFS=$'\t' read -r workflow_id workflow_name workflow_status workflow_conclusion workflow_head; do
     [[ -n "$workflow_id" ]] || continue
@@ -174,14 +209,23 @@ hosted_actions_summary() {
     # to the immutable SHA admitted for this cohort entry.
     [[ "$workflow_head" == "$head_sha" ]] || continue
 
-    local jobs_json jobs_status jobs_available stepful
+    local jobs_json jobs_status jobs_available stepful jobs_total jobs_seen
     set +e
     jobs_json="$($GH_BIN api "repos/$repo/actions/runs/$workflow_id/jobs?per_page=100" 2>/dev/null)"
     jobs_status=$?
     set -e
     if (( jobs_status == 0 )); then
-      jobs_available=true
-      stepful="$($JQ_BIN -r 'any(.jobs[]?; ((.steps // []) | length) > 0)' <<<"$jobs_json")"
+      jobs_total="$($JQ_BIN -r '.total_count // (.jobs | length)' <<<"$jobs_json")"
+      jobs_seen="$($JQ_BIN -r '(.jobs // []) | length' <<<"$jobs_json")"
+      if [[ "$jobs_total" =~ ^[0-9]+$ && "$jobs_seen" =~ ^[0-9]+$ ]] && (( jobs_total == jobs_seen )); then
+        jobs_available=true
+        stepful="$($JQ_BIN -r 'any(.jobs[]?; ((.steps // []) | length) > 0)' <<<"$jobs_json")"
+      else
+        # Incomplete pagination is unavailable evidence; never classify a run
+        # from only the first subset of its jobs.
+        jobs_available=false
+        stepful=null
+      fi
     else
       jobs_available=false
       stepful=null
@@ -248,7 +292,7 @@ while IFS=$'\t' read -r repo pr profile; do
   fi
 
   owner="${repo%%/*}"
-  if ! $JQ_BIN -e --arg owner "$owner" '.allowedOwners | index($owner) != null' "$COHORT_FILE" >/dev/null; then
+  if ! $JQ_BIN -e --arg owner "$owner" '.allowedOwners | index($owner) != null' "$COHORT_INPUT" >/dev/null; then
     record_refusal "$repo" "$pr" "$profile" "" "owner-not-allowed:$owner"
     failures=$((failures + 1))
     (( CONTINUE_ON_FAILURE )) || break
@@ -288,7 +332,9 @@ while IFS=$'\t' read -r repo pr profile; do
   [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]] || reason="invalid-head-sha"
 
   if [[ -n "$reason" ]]; then
-    record_refusal "$repo" "$pr" "$profile" "$head_sha" "$reason"
+    safe_head="$head_sha"
+    [[ "$safe_head" =~ ^[0-9a-f]{40}$ ]] || safe_head=""
+    record_refusal "$repo" "$pr" "$profile" "$safe_head" "$reason"
     failures=$((failures + 1))
     (( CONTINUE_ON_FAILURE )) || break
     continue
@@ -310,13 +356,26 @@ while IFS=$'\t' read -r repo pr profile; do
   verify_status=$?
   set -e
 
-  # Verify the CLI's own receipt is pinned to the SHA we admitted. If it emits
-  # malformed/non-JSON output, that is a failed evidence event even if the
-  # process exit code happened to be zero.
+  # Verify the CLI's own receipt is pinned to the SHA we admitted and carries a
+  # bounded terminal status. A syntactically valid `status: failed` is still a
+  # cohort failure even if a buggy CLI exits zero.
   emitted_head="$($JQ_BIN -r '.headSha // empty' <<<"$verify_json" 2>/dev/null || true)"
   emitted_job="$($JQ_BIN -r '.jobId // empty' <<<"$verify_json" 2>/dev/null || true)"
   emitted_status="$($JQ_BIN -r '.status // empty' <<<"$verify_json" 2>/dev/null || true)"
-  if [[ "$emitted_head" != "$head_sha" || -z "$emitted_job" || -z "$emitted_status" ]]; then
+  receipt_job="$emitted_job"
+  receipt_status="$emitted_status"
+  worker_receipt_valid=true
+  [[ "$emitted_head" == "$head_sha" ]] || worker_receipt_valid=false
+  [[ -n "$emitted_job" && ${#emitted_job} -le 256 ]] || worker_receipt_valid=false
+  case "$emitted_status" in
+    succeeded|failed|error|cancelled|timeout) ;;
+    *) worker_receipt_valid=false ;;
+  esac
+  if [[ "$worker_receipt_valid" != true ]]; then
+    verify_status=1
+    receipt_job="invalid-worker-receipt"
+    receipt_status="error"
+  elif [[ "$emitted_status" != "succeeded" ]]; then
     verify_status=1
   fi
 
@@ -350,7 +409,7 @@ while IFS=$'\t' read -r repo pr profile; do
   $JQ_BIN -cn \
     --arg event "entry_finished" --arg runId "$run_id" --arg repo "$repo" \
     --argjson pullRequest "$pr" --arg profile "$profile" --arg headSha "$head_sha" \
-    --arg jobId "$emitted_job" --arg status "$emitted_status" \
+    --arg jobId "$receipt_job" --arg status "$receipt_status" \
     --arg afterHeadSha "$after_head" --arg afterHeadQueryError "$after_head_query_error" \
     --argjson cliExit "$verify_status" --argjson stale "$stale" \
     --argjson nativeGitHubActions "$native_github_actions" \
@@ -374,7 +433,7 @@ while IFS=$'\t' read -r repo pr profile; do
     failures=$((failures + 1))
     (( CONTINUE_ON_FAILURE )) || break
   fi
-done < <($JQ_BIN -r '.entries[] | [.repo, (.pullRequest|tostring), .profile] | @tsv' "$COHORT_FILE")
+done < <($JQ_BIN -r '.entries[] | [.repo, (.pullRequest|tostring), .profile] | @tsv' "$COHORT_INPUT")
 
 if [[ -n "$ONLY_ENTRY" && "$ran" -eq 0 ]]; then
   echo "entry not found in cohort: $ONLY_ENTRY" >&2
