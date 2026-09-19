@@ -50,15 +50,14 @@ jobs:
           jq -e '[.entries[].repo | split("/")[0]] | unique | length >= 10' "$file" >/dev/null
           jq -e '[.entries[] | (.repo + "#" + (.pullRequest|tostring))] | length == (unique | length)' "$file" >/dev/null
           jq -e 'all(.entries[]; (.repo | test("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")))' "$file" >/dev/null
-          jq -e 'all(.entries[]; (.pullRequest | type == "number") and (.pullRequest >= 1) and (.pullRequest == floor))' "$file" >/dev/null
+          jq -e 'all(.entries[]; ((.pullRequest | type) == "number") and (.pullRequest >= 1) and (.pullRequest == floor))' "$file" >/dev/null
           jq -e '(.allowedOwners | length) == (.allowedOwners | unique | length)' "$file" >/dev/null
 
           jq -e '
             ["rust-verify","node-verify","python-verify","flutter-verify","playwright","puppeteer","browser-e2e"] as $allowed
-            | all(.entries[]; (.profile as $p | $allowed | index($p) != null))
+            | all(.entries[]; .profile as $p | ($allowed | index($p)) != null)
           ' "$file" >/dev/null
-
-          jq -e '. as $root | all(.entries[]; (.repo | split("/")[0]) as $owner | ($root.allowedOwners | index($owner) != null))' "$file" >/dev/null
+          jq -e '. as $root | all(.entries[]; (.repo | split("/")[0]) as $owner | ($root.allowedOwners | index($owner)) != null)' "$file" >/dev/null
 
           jq -e '.promotionEvidence.context == "indiebuild.dev/ci"' "$file" >/dev/null
           jq -e '.promotionEvidence.reporter == "github-app-check-run"' "$file" >/dev/null
@@ -72,9 +71,9 @@ jobs:
 
           jq -e '.promotionBlockers | length == 7' "$file" >/dev/null
           jq -e '[.promotionBlockers[].ref] | length == (unique | length)' "$file" >/dev/null
-          jq -e 'all(.promotionBlockers[]; (.kind == "pull_request" or .kind == "issue") and (.requiredState == "merged" or .requiredState == "closed") and (.capability | type == "string" and length > 0))' "$file" >/dev/null
+          jq -e 'all(.promotionBlockers[]; (.kind == "pull_request" or .kind == "issue") and (.requiredState == "merged" or .requiredState == "closed") and ((.capability | type) == "string") and ((.capability | length) > 0))' "$file" >/dev/null
           jq -e 'all(.promotionBlockers[]; if .kind == "pull_request" then .requiredState == "merged" else .requiredState == "closed" end)' "$file" >/dev/null
-          jq -e '. as $root | all(.promotionBlockers[]; $root.prerequisites | index(.ref) != null)' "$file" >/dev/null
+          jq -e '.promotionBlockers as $blockers | .prerequisites as $prereqs | all($blockers[]; .ref as $ref | ($prereqs | index($ref)) != null)' "$file" >/dev/null
 
           jq -e 'any(.promotionBlockers[]; .ref == "ORESoftware/ores-compose#154" and .kind == "pull_request" and .requiredState == "merged")' "$file" >/dev/null
           jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker.rs#73" and .kind == "pull_request" and .requiredState == "merged")' "$file" >/dev/null
@@ -89,8 +88,11 @@ jobs:
           set -euo pipefail
           schema=cohorts/laptop-ci-wave-1-receipt.schema.json
           jq -e '.["$schema"] == "https://json-schema.org/draft/2020-12/schema"' "$schema" >/dev/null
+          jq -e '.["$defs"].EntryRefused.properties.headSha.["$ref"] == "#/$defs/Sha40OrEmpty"' "$schema" >/dev/null
+          jq -e '.["$defs"].EntryAdmitted.properties.profile.["$ref"] == "#/$defs/Profile"' "$schema" >/dev/null
           jq -e '.["$defs"].EntryAdmitted.properties.headSha.["$ref"] == "#/$defs/Sha40"' "$schema" >/dev/null
           jq -e '.["$defs"].EntryFinished.properties.headSha.["$ref"] == "#/$defs/Sha40"' "$schema" >/dev/null
+          jq -e '.["$defs"].EntryFinished.properties.jobId.maxLength == 256' "$schema" >/dev/null
           jq -e '.["$defs"].EntryFinished.properties.stale.type == "boolean"' "$schema" >/dev/null
           jq -e '.["$defs"].EntryFinished.properties.nativeGitHubActions.["$ref"] == "#/$defs/NativeGitHubActions"' "$schema" >/dev/null
           jq -e '.["$defs"].NativeGitHubActions.properties.zeroStepRuns.type == "integer"' "$schema" >/dev/null
