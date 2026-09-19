@@ -53,7 +53,7 @@
     { "repo": "ORESoftware/ores-compose", "pullRequest": 150, "profile": "rust-verify" },
     { "repo": "ORESoftware/ores-gh-bots", "pullRequest": 58, "profile": "node-verify" },
     { "repo": "ORESoftware/ores-cli", "pullRequest": 406, "profile": "rust-verify" },
-    { "repo": "ORESoftware/ores-middleware", "pullRequest": 238, "profile": "rust-verify" },
+    { "repo": "ORESoftware/ores-middleware", "pullRequest": 243, "profile": "rust-verify" },
 
     { "repo": "canonical-cloud/canonical-orm-core", "pullRequest": 22, "profile": "rust-verify" },
     { "repo": "canonical-cloud/canonical-api-server.rs", "pullRequest": 76, "profile": "rust-verify" },
