@@ -114,7 +114,7 @@ $JQ_BIN -e '
     ((.repo | type) == "string") and
     (.repo | test("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")) and
     ((.pullRequest | type) == "number") and
-    (.pullRequest >= 1) and (.pullRequest == floor) and
+    (.pullRequest >= 1) and ((.pullRequest | floor) == .pullRequest) and
     ((.profile | type) == "string")) and
   all(.allowedOwners[]; (type == "string") and test("^[A-Za-z0-9_.-]+$"))
 ' "$COHORT_INPUT" >/dev/null || {
@@ -205,8 +205,6 @@ hosted_actions_summary() {
 
   while IFS=$'\t' read -r workflow_id workflow_name workflow_status workflow_conclusion workflow_head; do
     [[ -n "$workflow_id" ]] || continue
-    # Do not trust query filtering alone: independently bind every retained run
-    # to the immutable SHA admitted for this cohort entry.
     [[ "$workflow_head" == "$head_sha" ]] || continue
 
     local jobs_json jobs_status jobs_available stepful jobs_total jobs_seen
@@ -221,8 +219,6 @@ hosted_actions_summary() {
         jobs_available=true
         stepful="$($JQ_BIN -r 'any(.jobs[]?; ((.steps // []) | length) > 0)' <<<"$jobs_json")"
       else
-        # Incomplete pagination is unavailable evidence; never classify a run
-        # from only the first subset of its jobs.
         jobs_available=false
         stepful=null
       fi
@@ -299,9 +295,6 @@ while IFS=$'\t' read -r repo pr profile; do
     continue
   fi
 
-  # Fetch all admission facts in one API response so SHA/fork/state/draft are
-  # observations of the same PR state. Read failures are attributable refusals,
-  # not reasons to abort the remainder of a --continue-on-failure cohort.
   set +e
   pr_json="$($GH_BIN api "repos/$repo/pulls/$pr" 2>/dev/null)"
   pr_query_status=$?
@@ -356,9 +349,6 @@ while IFS=$'\t' read -r repo pr profile; do
   verify_status=$?
   set -e
 
-  # Verify the CLI's own receipt is pinned to the SHA we admitted and carries a
-  # bounded terminal status. A syntactically valid `status: failed` is still a
-  # cohort failure even if a buggy CLI exits zero.
   emitted_head="$($JQ_BIN -r '.headSha // empty' <<<"$verify_json" 2>/dev/null || true)"
   emitted_job="$($JQ_BIN -r '.jobId // empty' <<<"$verify_json" 2>/dev/null || true)"
   emitted_status="$($JQ_BIN -r '.status // empty' <<<"$verify_json" 2>/dev/null || true)"
@@ -379,8 +369,6 @@ while IFS=$'\t' read -r repo pr profile; do
     verify_status=1
   fi
 
-  # A force-push or an unreadable PR after execution makes the result historical
-  # / unverifiable evidence only. Never fabricate an after-head from the old SHA.
   after_head=""
   after_head_query_error=""
   stale=true
@@ -402,8 +390,6 @@ while IFS=$'\t' read -r repo pr profile; do
     after_head_query_error="pr-recheck-failed"
   fi
 
-  # Compare only with hosted runs that GitHub itself binds to the exact SHA we
-  # admitted. Query failure is evidence-unavailable, not a local job failure.
   native_github_actions="$(hosted_actions_summary "$repo" "$head_sha")"
 
   $JQ_BIN -cn \
