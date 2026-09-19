@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "indiebuild.cohort.v1",
+  "name": "laptop-ci-wave-1",
+  "description": "Advisory exact-head local IndieBuild trial: 30 open PRs across 16 GitHub organizations.",
+  "mode": "advisory",
+  "headPolicy": "resolve-current-open-same-repository-head-at-submit",
+  "forkPolicy": "deny",
+  "promotionEvidence": {
+    "context": "indiebuild.dev/ci",
+    "reporter": "github-app-check-run",
+    "requiredBindings": [
+      "repository",
+      "pullRequest",
+      "headSha",
+      "context",
+      "appId",
+      "completed",
+      "success"
+    ],
+    "patStatusContext": "indiebuild.dev/ci-advisory"
+  },
+  "prerequisites": [
+    "ORESoftware/ores-compose#150",
+    "ORESoftware/ores-compose#152",
+    "gha-indie-worker/gha-indie-worker.rs#73",
+    "gha-indie-worker/gha-indie-worker.rs#74",
+    "gha-indie-worker/gha-indie-worker.rs#77",
+    "gha-indie-worker/gha-indie-worker-infra#46"
+  ],
+  "allowedOwners": [
+    "ORESoftware",
+    "canonical-cloud",
+    "ClaimGraph",
+    "chapter-publishing",
+    "shared-auth",
+    "zed-pkg",
+    "gha-indie-worker",
+    "ores-chat",
+    "ores-rate-limit",
+    "opto-sync",
+    "memebank",
+    "elenkos-systems",
+    "embedded-alerts",
+    "sonus-auris",
+    "asia-major-eateries",
+    "hypesiege"
+  ],
+  "entries": [
+    { "repo": "ORESoftware/ores-compose", "pullRequest": 150, "profile": "rust-verify" },
+    { "repo": "ORESoftware/ores-gh-bots", "pullRequest": 58, "profile": "node-verify" },
+    { "repo": "ORESoftware/ores-cli", "pullRequest": 406, "profile": "rust-verify" },
+    { "repo": "ORESoftware/ores-middleware", "pullRequest": 238, "profile": "rust-verify" },
+
+    { "repo": "canonical-cloud/canonical-orm-core", "pullRequest": 22, "profile": "rust-verify" },
+    { "repo": "canonical-cloud/canonical-api-server.rs", "pullRequest": 76, "profile": "rust-verify" },
+    { "repo": "canonical-cloud/canonical-cli", "pullRequest": 47, "profile": "rust-verify" },
+
+    { "repo": "ClaimGraph/claimgraph-api-server.rs", "pullRequest": 19, "profile": "rust-verify" },
+    { "repo": "ClaimGraph/claimgraph-admin-api-server.rs", "pullRequest": 11, "profile": "rust-verify" },
+    { "repo": "ClaimGraph/claimgraph-web-server.rs", "pullRequest": 20, "profile": "rust-verify" },
+
+    { "repo": "chapter-publishing/cp-admin-api-server.rs", "pullRequest": 11, "profile": "rust-verify" },
+    { "repo": "chapter-publishing/cp-admin-web-server.rs", "pullRequest": 7, "profile": "rust-verify" },
+
+    { "repo": "shared-auth/shared-auth-flutter", "pullRequest": 23, "profile": "flutter-verify" },
+    { "repo": "zed-pkg/zed-cli", "pullRequest": 466, "profile": "rust-verify" },
+
+    { "repo": "gha-indie-worker/gha-indie-worker.rs", "pullRequest": 73, "profile": "rust-verify" },
+    { "repo": "gha-indie-worker/gha-indie-worker.rs", "pullRequest": 74, "profile": "rust-verify" },
+    { "repo": "gha-indie-worker/gha-indie-worker-cli", "pullRequest": 14, "profile": "rust-verify" },
+    { "repo": "gha-indie-worker/gha-indie-worker-api-server.rs", "pullRequest": 32, "profile": "rust-verify" },
+
+    { "repo": "ores-chat/ores-chat-web-server.rs", "pullRequest": 14, "profile": "rust-verify" },
+    { "repo": "ores-rate-limit/ores-rl-lambdas", "pullRequest": 10, "profile": "rust-verify" },
+    { "repo": "opto-sync/opto-sync-lib-core", "pullRequest": 19, "profile": "rust-verify" },
+    { "repo": "memebank/memebank-admin-api-server.rs", "pullRequest": 5, "profile": "rust-verify" },
+    { "repo": "elenkos-systems/elenkos-admin-api-server.rs", "pullRequest": 5, "profile": "rust-verify" },
+    { "repo": "embedded-alerts/eal-admin-web-server.rs", "pullRequest": 4, "profile": "rust-verify" },
+    { "repo": "sonus-auris/sonus-auris-lib-core", "pullRequest": 25, "profile": "rust-verify" },
+
+    { "repo": "asia-major-eateries/ame-flutter", "pullRequest": 2, "profile": "flutter-verify" },
+    { "repo": "asia-major-eateries/ame-web-server.rs", "pullRequest": 3, "profile": "rust-verify" },
+
+    { "repo": "hypesiege/hypesiege-admin-api-server.rs", "pullRequest": 9, "profile": "rust-verify" },
+    { "repo": "hypesiege/hypesiege-cli", "pullRequest": 21, "profile": "rust-verify" },
+    { "repo": "hypesiege/hypesiege-mcp-server.rs", "pullRequest": 24, "profile": "rust-verify" }
+  ]
+}
