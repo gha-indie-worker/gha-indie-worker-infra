@@ -9,6 +9,8 @@ set -euo pipefail
 # - only same-repository, open, non-draft heads are admitted;
 # - the exact head SHA is recorded before `giw verify` submits work;
 # - the PR head is re-read after the job; a moved head makes the receipt stale;
+# - hosted Actions evidence is queried for that exact same SHA and distinguishes
+#   stepful runs from zero-step runner/admission failures;
 # - the cohort chooses only fixed worker profiles; PRs cannot supply commands;
 # - Wave 1 is advisory until the worker publishes App-owned authoritative checks.
 
@@ -18,17 +20,19 @@ RECEIPT_DIR="${RECEIPT_DIR:-$ROOT_DIR/.indiebuild/receipts}"
 GIW_BIN="${GIW_BIN:-giw}"
 GH_BIN="${GH_BIN:-gh}"
 JQ_BIN="${JQ_BIN:-jq}"
+HOSTED_RUN_LIMIT="${HOSTED_RUN_LIMIT:-10}"
 
 usage() {
   cat <<'EOF'
 usage: scripts/run-laptop-ci-wave-1.sh [--dry-run] [--entry REPO#PR] [--continue-on-failure]
 
 Environment:
-  COHORT_FILE   cohort JSON (default: cohorts/laptop-ci-wave-1.json)
-  RECEIPT_DIR   output directory (default: .indiebuild/receipts)
-  GIW_BIN       giw executable (default: giw)
-  GH_BIN        GitHub CLI executable (default: gh)
-  JQ_BIN        jq executable (default: jq)
+  COHORT_FILE       cohort JSON (default: cohorts/laptop-ci-wave-1.json)
+  RECEIPT_DIR       output directory (default: .indiebuild/receipts)
+  GIW_BIN           giw executable (default: giw)
+  GH_BIN            GitHub CLI executable (default: gh)
+  JQ_BIN            jq executable (default: jq)
+  HOSTED_RUN_LIMIT  max same-SHA hosted runs inspected per PR (default: 10; max: 20)
 
 This command intentionally runs entries serially. Parallel execution belongs in
 the worker scheduler, where resource limits and queue evidence are authoritative.
@@ -59,6 +63,10 @@ done
 if (( ! DRY_RUN )); then
   command -v "$GIW_BIN" >/dev/null 2>&1 || { echo "required tool not found: $GIW_BIN" >&2; exit 2; }
 fi
+[[ "$HOSTED_RUN_LIMIT" =~ ^[0-9]+$ ]] && (( HOSTED_RUN_LIMIT >= 1 && HOSTED_RUN_LIMIT <= 20 )) || {
+  echo "HOSTED_RUN_LIMIT must be an integer from 1 to 20" >&2
+  exit 2
+}
 
 [[ -f "$COHORT_FILE" ]] || { echo "cohort not found: $COHORT_FILE" >&2; exit 2; }
 
@@ -107,6 +115,104 @@ $JQ_BIN -cn \
   --argjson entryCount "$entry_count" \
   '{event:$event,runId:$runId,cohort:$cohort,cohortSha256:$cohortSha256,mode:$mode,entryCount:$entryCount}' \
   >>"$receipt"
+
+# Summarize GitHub-hosted pull-request workflow runs for one immutable head.
+# A red run with zero executable steps is deliberately kept separate from a
+# stepful non-success run; the former is runner/admission/infrastructure
+# evidence and must never be presented as a code-test failure.
+hosted_actions_summary() {
+  local repo="$1"
+  local head_sha="$2"
+  local runs_json query_status total_matching tmp
+
+  set +e
+  runs_json="$($GH_BIN api "repos/$repo/actions/runs?head_sha=$head_sha&event=pull_request&per_page=$HOSTED_RUN_LIMIT" 2>/dev/null)"
+  query_status=$?
+  set -e
+  if (( query_status != 0 )); then
+    $JQ_BIN -cn '{
+      available:false,
+      queryError:"workflow-runs-query-failed",
+      totalMatchingRuns:0,
+      inspectedRuns:0,
+      stepfulRuns:0,
+      zeroStepRuns:0,
+      jobsUnavailableRuns:0,
+      completedStepfulRuns:0,
+      successfulStepfulRuns:0,
+      nonSuccessStepfulRuns:0,
+      truncated:false,
+      runs:[]
+    }'
+    return 0
+  fi
+
+  total_matching="$($JQ_BIN -r '.total_count // 0' <<<"$runs_json")"
+  tmp="$RECEIPT_DIR/.hosted-actions-$run_id-$$-${RANDOM:-0}.ndjson"
+  : >"$tmp"
+  chmod 600 "$tmp" 2>/dev/null || true
+
+  while IFS=$'\t' read -r workflow_id workflow_name workflow_status workflow_conclusion workflow_head; do
+    [[ -n "$workflow_id" ]] || continue
+    # Do not trust query filtering alone: independently bind every retained run
+    # to the immutable SHA admitted for this cohort entry.
+    [[ "$workflow_head" == "$head_sha" ]] || continue
+
+    local jobs_json jobs_status jobs_available stepful
+    set +e
+    jobs_json="$($GH_BIN api "repos/$repo/actions/runs/$workflow_id/jobs?per_page=100" 2>/dev/null)"
+    jobs_status=$?
+    set -e
+    if (( jobs_status == 0 )); then
+      jobs_available=true
+      stepful="$($JQ_BIN -r 'any(.jobs[]?; ((.steps // []) | length) > 0)' <<<"$jobs_json")"
+    else
+      jobs_available=false
+      stepful=null
+    fi
+
+    $JQ_BIN -cn \
+      --argjson id "$workflow_id" \
+      --arg name "$workflow_name" \
+      --arg status "$workflow_status" \
+      --arg conclusion "$workflow_conclusion" \
+      --arg headSha "$workflow_head" \
+      --argjson jobsAvailable "$jobs_available" \
+      --argjson stepful "$stepful" \
+      '{
+        id:$id,
+        name:$name,
+        status:$status,
+        conclusion:(if $conclusion == "" then null else $conclusion end),
+        headSha:$headSha,
+        jobsAvailable:$jobsAvailable,
+        stepful:$stepful
+      }' >>"$tmp"
+  done < <($JQ_BIN -r --argjson limit "$HOSTED_RUN_LIMIT" '
+    .workflow_runs[:$limit][]?
+    | [(.id|tostring), (.name // ""), (.status // ""), (.conclusion // ""), (.head_sha // "")]
+    | @tsv
+  ' <<<"$runs_json")
+
+  $JQ_BIN -sc --argjson totalMatchingRuns "$total_matching" --argjson limit "$HOSTED_RUN_LIMIT" '
+    . as $runs
+    | {
+        available:true,
+        queryError:null,
+        totalMatchingRuns:$totalMatchingRuns,
+        inspectedRuns:($runs|length),
+        stepfulRuns:([$runs[] | select(.jobsAvailable == true and .stepful == true)]|length),
+        zeroStepRuns:([$runs[] | select(.jobsAvailable == true and .stepful == false)]|length),
+        jobsUnavailableRuns:([$runs[] | select(.jobsAvailable == false)]|length),
+        completedStepfulRuns:([$runs[] | select(.jobsAvailable == true and .stepful == true and .status == "completed")]|length),
+        successfulStepfulRuns:([$runs[] | select(.jobsAvailable == true and .stepful == true and .status == "completed" and .conclusion == "success")]|length),
+        nonSuccessStepfulRuns:([$runs[] | select(.jobsAvailable == true and .stepful == true and .status == "completed" and .conclusion != "success")]|length),
+        truncated:($totalMatchingRuns > $limit),
+        runs:$runs
+      }
+  ' "$tmp"
+  rm -f "$tmp"
+}
 
 failures=0
 ran=0
@@ -191,13 +297,30 @@ while IFS=$'\t' read -r repo pr profile; do
   stale=false
   [[ "$after_head" == "$head_sha" ]] || stale=true
 
+  # Compare only with hosted runs that GitHub itself binds to the exact SHA we
+  # admitted. Query failure is evidence-unavailable, not a local job failure.
+  native_github_actions="$(hosted_actions_summary "$repo" "$head_sha")"
+
   $JQ_BIN -cn \
     --arg event "entry_finished" --arg runId "$run_id" --arg repo "$repo" \
     --argjson pullRequest "$pr" --arg profile "$profile" --arg headSha "$head_sha" \
     --arg jobId "$emitted_job" --arg status "$emitted_status" --arg afterHeadSha "$after_head" \
     --argjson cliExit "$verify_status" --argjson stale "$stale" \
-    '{event:$event,runId:$runId,repo:$repo,pullRequest:$pullRequest,profile:$profile,headSha:$headSha,jobId:$jobId,status:$status,afterHeadSha:$afterHeadSha,cliExit:$cliExit,stale:$stale}' \
-    >>"$receipt"
+    --argjson nativeGitHubActions "$native_github_actions" \
+    '{
+      event:$event,
+      runId:$runId,
+      repo:$repo,
+      pullRequest:$pullRequest,
+      profile:$profile,
+      headSha:$headSha,
+      jobId:$jobId,
+      status:$status,
+      afterHeadSha:$afterHeadSha,
+      cliExit:$cliExit,
+      stale:$stale,
+      nativeGitHubActions:$nativeGitHubActions
+    }' >>"$receipt"
 
   if (( verify_status != 0 )) || [[ "$stale" == true ]]; then
     failures=$((failures + 1))
