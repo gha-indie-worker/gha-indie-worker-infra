@@ -55,14 +55,6 @@ jobs:
             | all(.entries[]; (.profile as $p | $allowed | index($p) != null))
           ' "$file" >/dev/null
 
-          jq -e '
-            all(.entries[];
-              (.repo | split("/")[0]) as $owner
-              | .allowedOwners? // empty
-            )
-          ' "$file" >/dev/null 2>&1 || true
-          # The expression above cannot reference the root from all(); perform
-          # the owner subset check explicitly with a captured root instead.
           jq -e '. as $root | all(.entries[]; (.repo | split("/")[0]) as $owner | ($root.allowedOwners | index($owner) != null))' "$file" >/dev/null
 
           jq -e '.promotionEvidence.context == "indiebuild.dev/ci"' "$file" >/dev/null
