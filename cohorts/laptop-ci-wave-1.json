@@ -19,8 +19,55 @@
     ],
     "patStatusContext": "indiebuild.dev/ci-advisory",
     "requiresDeliveredTerminalVerdict": true,
-    "requiresCrashReconciliation": true
+    "requiresCrashReconciliation": true,
+    "requiresExactHead": true,
+    "requiresStrictSuccessConclusion": true,
+    "allowsPatFallback": false
   },
+  "promotionBlockers": [
+    {
+      "ref": "ORESoftware/ores-compose#154",
+      "kind": "pull_request",
+      "requiredState": "merged",
+      "capability": "service environment isolation with env_clear for build, service, and healthcheck subprocesses"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker.rs#73",
+      "kind": "pull_request",
+      "requiredState": "merged",
+      "capability": "exact object-id checkout"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker.rs#74",
+      "kind": "pull_request",
+      "requiredState": "merged",
+      "capability": "pull-request intake and GitHub reporting baseline"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker.rs#77",
+      "kind": "issue",
+      "requiredState": "closed",
+      "capability": "server-side GitHub App installation resolution and app-required reporting"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker.rs#78",
+      "kind": "issue",
+      "requiredState": "closed",
+      "capability": "durable reconciliation of orphaned checks and undelivered terminal verdicts"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker-infra#46",
+      "kind": "issue",
+      "requiredState": "closed",
+      "capability": "current ores.compose.v1 worker plus Cloudflare Tunnel topology"
+    },
+    {
+      "ref": "ORESoftware/ores-gh-bots#58",
+      "kind": "pull_request",
+      "requiredState": "merged",
+      "capability": "transactional provider evidence and strict App-bound CI success semantics"
+    }
+  ],
   "prerequisites": [
     "ORESoftware/ores-compose#150",
     "ORESoftware/ores-compose#152",
@@ -29,7 +76,8 @@
     "gha-indie-worker/gha-indie-worker.rs#74",
     "gha-indie-worker/gha-indie-worker.rs#77",
     "gha-indie-worker/gha-indie-worker.rs#78",
-    "gha-indie-worker/gha-indie-worker-infra#46"
+    "gha-indie-worker/gha-indie-worker-infra#46",
+    "ORESoftware/ores-gh-bots#58"
   ],
   "allowedOwners": [
     "ORESoftware",
