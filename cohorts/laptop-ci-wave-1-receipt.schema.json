@@ -116,12 +116,18 @@
         "headSha": { "$ref": "#/$defs/Sha40" },
         "jobId": { "type": "string", "minLength": 1 },
         "status": { "enum": ["succeeded", "failed", "error", "cancelled", "timeout"] },
-        "afterHeadSha": { "$ref": "#/$defs/Sha40" },
+        "afterHeadSha": {
+          "oneOf": [
+            { "$ref": "#/$defs/Sha40" },
+            { "type": "null" }
+          ]
+        },
+        "afterHeadQueryError": { "type": ["string", "null"], "maxLength": 128 },
         "cliExit": { "type": "integer", "minimum": 0, "maximum": 255 },
         "stale": { "type": "boolean" },
         "nativeGitHubActions": { "$ref": "#/$defs/NativeGitHubActions" }
       },
-      "required": ["event", "runId", "repo", "pullRequest", "profile", "headSha", "jobId", "status", "afterHeadSha", "cliExit", "stale", "nativeGitHubActions"]
+      "required": ["event", "runId", "repo", "pullRequest", "profile", "headSha", "jobId", "status", "afterHeadSha", "afterHeadQueryError", "cliExit", "stale", "nativeGitHubActions"]
     },
     "CohortFinished": {
       "type": "object",
