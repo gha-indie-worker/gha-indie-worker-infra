@@ -8,7 +8,8 @@ set -euo pipefail
 # - GitHub is queried immediately before submission for one coherent PR state;
 # - only same-repository, open, non-draft heads are admitted;
 # - the exact head SHA is recorded before `giw verify` submits work;
-# - the PR head is re-read after the job; a moved head makes the receipt stale;
+# - the PR head is re-read after the job; a moved or unreadable head makes the
+#   receipt stale and therefore unusable as current-head evidence;
 # - hosted Actions evidence is queried for that exact same SHA and distinguishes
 #   stepful runs from zero-step runner/admission failures;
 # - the cohort chooses only fixed worker profiles; PRs cannot supply commands;
@@ -115,6 +116,21 @@ $JQ_BIN -cn \
   --argjson entryCount "$entry_count" \
   '{event:$event,runId:$runId,cohort:$cohort,cohortSha256:$cohortSha256,mode:$mode,entryCount:$entryCount}' \
   >>"$receipt"
+
+record_refusal() {
+  local repo="$1"
+  local pr="$2"
+  local profile="$3"
+  local head_sha="$4"
+  local reason="$5"
+  echo "$repo#$pr: refused ($reason)" >&2
+  $JQ_BIN -cn \
+    --arg event "entry_refused" --arg runId "$run_id" --arg repo "$repo" \
+    --argjson pullRequest "$pr" --arg profile "$profile" --arg headSha "$head_sha" \
+    --arg reason "$reason" \
+    '{event:$event,runId:$runId,repo:$repo,pullRequest:$pullRequest,profile:$profile,headSha:$headSha,reason:$reason}' \
+    >>"$receipt"
+}
 
 # Summarize GitHub-hosted pull-request workflow runs for one immutable head.
 # A red run with zero executable steps is deliberately kept separate from a
@@ -225,7 +241,7 @@ while IFS=$'\t' read -r repo pr profile; do
   ran=$((ran + 1))
 
   if ! $JQ_BIN -e --arg p "$profile" --argjson allowed "$allowed_profiles" '$allowed | index($p) != null' <<< '{}' >/dev/null; then
-    echo "$key: profile $profile is not operator-approved" >&2
+    record_refusal "$repo" "$pr" "$profile" "" "profile-not-operator-approved:$profile"
     failures=$((failures + 1))
     (( CONTINUE_ON_FAILURE )) || break
     continue
@@ -233,16 +249,36 @@ while IFS=$'\t' read -r repo pr profile; do
 
   owner="${repo%%/*}"
   if ! $JQ_BIN -e --arg owner "$owner" '.allowedOwners | index($owner) != null' "$COHORT_FILE" >/dev/null; then
-    echo "$key: owner $owner is not in allowedOwners" >&2
+    record_refusal "$repo" "$pr" "$profile" "" "owner-not-allowed:$owner"
     failures=$((failures + 1))
     (( CONTINUE_ON_FAILURE )) || break
     continue
   fi
 
   # Fetch all admission facts in one API response so SHA/fork/state/draft are
-  # observations of the same PR state.
-  pr_json="$($GH_BIN api "repos/$repo/pulls/$pr")"
-  observed="$($JQ_BIN -r '[.head.sha, (.head.repo.full_name // ""), .state, (.draft|tostring)] | @tsv' <<<"$pr_json")"
+  # observations of the same PR state. Read failures are attributable refusals,
+  # not reasons to abort the remainder of a --continue-on-failure cohort.
+  set +e
+  pr_json="$($GH_BIN api "repos/$repo/pulls/$pr" 2>/dev/null)"
+  pr_query_status=$?
+  set -e
+  if (( pr_query_status != 0 )); then
+    record_refusal "$repo" "$pr" "$profile" "" "pr-query-failed"
+    failures=$((failures + 1))
+    (( CONTINUE_ON_FAILURE )) || break
+    continue
+  fi
+
+  set +e
+  observed="$($JQ_BIN -r '[.head.sha, (.head.repo.full_name // ""), .state, (.draft|tostring)] | @tsv' <<<"$pr_json" 2>/dev/null)"
+  observed_status=$?
+  set -e
+  if (( observed_status != 0 )); then
+    record_refusal "$repo" "$pr" "$profile" "" "invalid-pr-response"
+    failures=$((failures + 1))
+    (( CONTINUE_ON_FAILURE )) || break
+    continue
+  fi
   IFS=$'\t' read -r head_sha head_repo state draft <<<"$observed"
 
   reason=""
@@ -252,13 +288,7 @@ while IFS=$'\t' read -r repo pr profile; do
   [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]] || reason="invalid-head-sha"
 
   if [[ -n "$reason" ]]; then
-    echo "$key: refused ($reason)" >&2
-    $JQ_BIN -cn \
-      --arg event "entry_refused" --arg runId "$run_id" --arg repo "$repo" \
-      --argjson pullRequest "$pr" --arg profile "$profile" --arg headSha "$head_sha" \
-      --arg reason "$reason" \
-      '{event:$event,runId:$runId,repo:$repo,pullRequest:$pullRequest,profile:$profile,headSha:$headSha,reason:$reason}' \
-      >>"$receipt"
+    record_refusal "$repo" "$pr" "$profile" "$head_sha" "$reason"
     failures=$((failures + 1))
     (( CONTINUE_ON_FAILURE )) || break
     continue
@@ -290,12 +320,28 @@ while IFS=$'\t' read -r repo pr profile; do
     verify_status=1
   fi
 
-  # A force-push during execution makes the result historical evidence only.
-  # It must never be confused with a verdict for the PR's new head.
-  after_json="$($GH_BIN api "repos/$repo/pulls/$pr")"
-  after_head="$($JQ_BIN -r '.head.sha // empty' <<<"$after_json")"
-  stale=false
-  [[ "$after_head" == "$head_sha" ]] || stale=true
+  # A force-push or an unreadable PR after execution makes the result historical
+  # / unverifiable evidence only. Never fabricate an after-head from the old SHA.
+  after_head=""
+  after_head_query_error=""
+  stale=true
+  set +e
+  after_json="$($GH_BIN api "repos/$repo/pulls/$pr" 2>/dev/null)"
+  after_query_status=$?
+  set -e
+  if (( after_query_status == 0 )); then
+    after_head="$($JQ_BIN -r '.head.sha // empty' <<<"$after_json" 2>/dev/null || true)"
+    if [[ "$after_head" =~ ^[0-9a-f]{40}$ ]]; then
+      if [[ "$after_head" == "$head_sha" ]]; then
+        stale=false
+      fi
+    else
+      after_head_query_error="invalid-after-head-sha"
+      after_head=""
+    fi
+  else
+    after_head_query_error="pr-recheck-failed"
+  fi
 
   # Compare only with hosted runs that GitHub itself binds to the exact SHA we
   # admitted. Query failure is evidence-unavailable, not a local job failure.
@@ -304,7 +350,8 @@ while IFS=$'\t' read -r repo pr profile; do
   $JQ_BIN -cn \
     --arg event "entry_finished" --arg runId "$run_id" --arg repo "$repo" \
     --argjson pullRequest "$pr" --arg profile "$profile" --arg headSha "$head_sha" \
-    --arg jobId "$emitted_job" --arg status "$emitted_status" --arg afterHeadSha "$after_head" \
+    --arg jobId "$emitted_job" --arg status "$emitted_status" \
+    --arg afterHeadSha "$after_head" --arg afterHeadQueryError "$after_head_query_error" \
     --argjson cliExit "$verify_status" --argjson stale "$stale" \
     --argjson nativeGitHubActions "$native_github_actions" \
     '{
@@ -316,7 +363,8 @@ while IFS=$'\t' read -r repo pr profile; do
       headSha:$headSha,
       jobId:$jobId,
       status:$status,
-      afterHeadSha:$afterHeadSha,
+      afterHeadSha:(if $afterHeadSha == "" then null else $afterHeadSha end),
+      afterHeadQueryError:(if $afterHeadQueryError == "" then null else $afterHeadQueryError end),
       cliExit:$cliExit,
       stale:$stale,
       nativeGitHubActions:$nativeGitHubActions
