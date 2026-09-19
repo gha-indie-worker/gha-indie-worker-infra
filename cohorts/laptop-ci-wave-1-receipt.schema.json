@@ -14,6 +14,56 @@
     "Sha40": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "Repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
     "RunId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "HostedRun": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string", "maxLength": 256 },
+        "status": { "type": "string", "maxLength": 64 },
+        "conclusion": { "type": ["string", "null"], "maxLength": 64 },
+        "headSha": { "$ref": "#/$defs/Sha40" },
+        "jobsAvailable": { "type": "boolean" },
+        "stepful": { "type": ["boolean", "null"] }
+      },
+      "required": ["id", "name", "status", "conclusion", "headSha", "jobsAvailable", "stepful"]
+    },
+    "NativeGitHubActions": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "properties": {
+        "available": { "type": "boolean" },
+        "queryError": { "type": ["string", "null"], "maxLength": 128 },
+        "totalMatchingRuns": { "type": "integer", "minimum": 0 },
+        "inspectedRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "stepfulRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "zeroStepRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "jobsUnavailableRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "completedStepfulRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "successfulStepfulRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "nonSuccessStepfulRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "truncated": { "type": "boolean" },
+        "runs": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/HostedRun" }
+        }
+      },
+      "required": [
+        "available",
+        "queryError",
+        "totalMatchingRuns",
+        "inspectedRuns",
+        "stepfulRuns",
+        "zeroStepRuns",
+        "jobsUnavailableRuns",
+        "completedStepfulRuns",
+        "successfulStepfulRuns",
+        "nonSuccessStepfulRuns",
+        "truncated",
+        "runs"
+      ]
+    },
     "CohortStarted": {
       "type": "object",
       "unevaluatedProperties": false,
@@ -68,9 +118,10 @@
         "status": { "enum": ["succeeded", "failed", "error", "cancelled", "timeout"] },
         "afterHeadSha": { "$ref": "#/$defs/Sha40" },
         "cliExit": { "type": "integer", "minimum": 0, "maximum": 255 },
-        "stale": { "type": "boolean" }
+        "stale": { "type": "boolean" },
+        "nativeGitHubActions": { "$ref": "#/$defs/NativeGitHubActions" }
       },
-      "required": ["event", "runId", "repo", "pullRequest", "profile", "headSha", "jobId", "status", "afterHeadSha", "cliExit", "stale"]
+      "required": ["event", "runId", "repo", "pullRequest", "profile", "headSha", "jobId", "status", "afterHeadSha", "cliExit", "stale", "nativeGitHubActions"]
     },
     "CohortFinished": {
       "type": "object",
