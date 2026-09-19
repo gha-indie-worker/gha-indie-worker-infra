@@ -55,13 +55,13 @@
     { "repo": "ORESoftware/ores-cli", "pullRequest": 406, "profile": "rust-verify" },
     { "repo": "ORESoftware/ores-middleware", "pullRequest": 243, "profile": "rust-verify" },
 
-    { "repo": "canonical-cloud/canonical-orm-core", "pullRequest": 22, "profile": "rust-verify" },
+    { "repo": "canonical-cloud/canonical-api-server.rs", "pullRequest": 77, "profile": "rust-verify" },
     { "repo": "canonical-cloud/canonical-api-server.rs", "pullRequest": 76, "profile": "rust-verify" },
     { "repo": "canonical-cloud/canonical-cli", "pullRequest": 47, "profile": "rust-verify" },
 
-    { "repo": "ClaimGraph/claimgraph-api-server.rs", "pullRequest": 19, "profile": "rust-verify" },
-    { "repo": "ClaimGraph/claimgraph-admin-api-server.rs", "pullRequest": 11, "profile": "rust-verify" },
-    { "repo": "ClaimGraph/claimgraph-web-server.rs", "pullRequest": 20, "profile": "rust-verify" },
+    { "repo": "ClaimGraph/claimgraph-api-server.rs", "pullRequest": 18, "profile": "rust-verify" },
+    { "repo": "ClaimGraph/claimgraph-mcp-server.rs", "pullRequest": 5, "profile": "rust-verify" },
+    { "repo": "ClaimGraph/claimgraph-web-server.rs", "pullRequest": 18, "profile": "rust-verify" },
 
     { "repo": "chapter-publishing/cp-admin-api-server.rs", "pullRequest": 11, "profile": "rust-verify" },
     { "repo": "chapter-publishing/cp-admin-web-server.rs", "pullRequest": 7, "profile": "rust-verify" },
@@ -74,13 +74,13 @@
     { "repo": "gha-indie-worker/gha-indie-worker-cli", "pullRequest": 14, "profile": "rust-verify" },
     { "repo": "gha-indie-worker/gha-indie-worker-api-server.rs", "pullRequest": 32, "profile": "rust-verify" },
 
-    { "repo": "ores-chat/ores-chat-web-server.rs", "pullRequest": 14, "profile": "rust-verify" },
+    { "repo": "ores-chat/ores-chat-mcp-server.rs", "pullRequest": 10, "profile": "rust-verify" },
     { "repo": "ores-rate-limit/ores-rl-lambdas", "pullRequest": 10, "profile": "rust-verify" },
     { "repo": "opto-sync/opto-sync-lib-core", "pullRequest": 19, "profile": "rust-verify" },
     { "repo": "memebank/memebank-admin-api-server.rs", "pullRequest": 5, "profile": "rust-verify" },
     { "repo": "elenkos-systems/elenkos-admin-api-server.rs", "pullRequest": 5, "profile": "rust-verify" },
     { "repo": "embedded-alerts/eal-admin-web-server.rs", "pullRequest": 4, "profile": "rust-verify" },
-    { "repo": "sonus-auris/sonus-auris-lib-core", "pullRequest": 25, "profile": "rust-verify" },
+    { "repo": "sonus-auris/sonus-auris-api-server.rs", "pullRequest": 80, "profile": "rust-verify" },
 
     { "repo": "asia-major-eateries/ame-flutter", "pullRequest": 2, "profile": "flutter-verify" },
     { "repo": "asia-major-eateries/ame-web-server.rs", "pullRequest": 3, "profile": "rust-verify" },
