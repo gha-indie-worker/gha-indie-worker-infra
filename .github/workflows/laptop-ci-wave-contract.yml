@@ -50,7 +50,7 @@ jobs:
           jq -e '[.entries[].repo | split("/")[0]] | unique | length >= 10' "$file" >/dev/null
           jq -e '[.entries[] | (.repo + "#" + (.pullRequest|tostring))] | length == (unique | length)' "$file" >/dev/null
           jq -e 'all(.entries[]; (.repo | test("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")))' "$file" >/dev/null
-          jq -e 'all(.entries[]; ((.pullRequest | type) == "number") and (.pullRequest >= 1) and (.pullRequest == floor))' "$file" >/dev/null
+          jq -e 'all(.entries[]; ((.pullRequest | type) == "number") and (.pullRequest >= 1) and ((.pullRequest | floor) == .pullRequest))' "$file" >/dev/null
           jq -e '(.allowedOwners | length) == (.allowedOwners | unique | length)' "$file" >/dev/null
 
           jq -e '
