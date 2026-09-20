@@ -48,26 +48,36 @@ resource "cloudflare_ruleset" "api_rate_limit" {
 }
 
 # ---- custom firewall ----------------------------------------------------------
-# A managed challenge on the human-facing hosts. `cf.client.bot` is Cloudflare's
-# KNOWN-bot signal, so this challenges catalogued crawlers as well as scrapers —
-# which is why robots.txt, sitemaps and /.well-known stay exempt. If marketing
-# pages need to be indexed, widen bot_challenge_exempt_expression rather than
-# disabling the rule; see README.md.
+# One zone entry-point ruleset owns this phase. The laptop CI rule is therefore
+# composed into the same ordered rule list as the human-host bot challenge.
+#
+# `ci-laptop.indiebuild.dev` is a webhook ingress, not a public worker API. The
+# tunnel still terminates at loopback:8100, but Cloudflare blocks every request
+# except the exact GitHub webhook POST before it can reach the tunnel. HMAC at
+# the worker remains an independent second authentication boundary.
 
 resource "cloudflare_ruleset" "zone_firewall_custom" {
-  count = var.enable_bot_challenge ? 1 : 0
+  count = (var.enable_bot_challenge || var.enable_laptop_ci_webhook_path_guard) ? 1 : 0
 
   zone_id = local.zone_id
   name    = "gha-indie-worker custom firewall"
   kind    = "zone"
   phase   = "http_request_firewall_custom"
 
-  rules = [{
-    ref         = "challenge_known_bots_on_human_hosts"
-    description = "Managed challenge for known bots on the human-facing hosts"
-    expression  = "(${local.human_hosts_expr}) and (cf.client.bot) and not (${var.bot_challenge_exempt_expression})"
-    action      = "managed_challenge"
-  }]
+  rules = concat(
+    var.enable_laptop_ci_webhook_path_guard ? [{
+      ref         = "block_laptop_ci_non_webhook_requests"
+      description = "Expose only POST /webhooks/github on the opportunistic laptop CI hostname"
+      expression  = "(http.host eq \"${var.laptop_ci_webhook_hostname}\") and ((http.request.uri.path ne \"/webhooks/github\") or (http.request.method ne \"POST\"))"
+      action      = "block"
+    }] : [],
+    var.enable_bot_challenge ? [{
+      ref         = "challenge_known_bots_on_human_hosts"
+      description = "Managed challenge for known bots on the human-facing hosts"
+      expression  = "(${local.human_hosts_expr}) and (cf.client.bot) and not (${var.bot_challenge_exempt_expression})"
+      action      = "managed_challenge"
+    }] : []
+  )
 }
 
 # ---- cache rules ---------------------------------------------------------------
