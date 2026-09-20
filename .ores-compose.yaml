@@ -5,7 +5,7 @@ source:
   repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git
   # Exact head of gha-indie-worker-monorepo#9. Keep this pinned; when #9 lands
   # with a different merge SHA, advance this pin explicitly in the same review.
-  commit: 3f4644873bfbcad8f3363463de69e72901d03cac
+  commit: 7b2b282b2c309077ffe06c1627b3a96f34cae317
   checkout_dir: .ores/sources/gha-indie-worker-monorepo
 
 # Policy authority for service selection. Port 8080 is intentionally NOT owned
