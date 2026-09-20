@@ -61,6 +61,7 @@ api_block="$(service_block api "$PROD")"
 web_block="$(service_block web "$PROD")"
 
 grep -Fq 'commit: 7843f373202f082f18c9a8175496ad4a4b2ed317' "$PROD" || fail "production monorepo source pin drifted from reviewed #9 head"
+[[ "$worker_block" == *'INDIEBUILD_WORKER_SHA: "5a127f89e6751f1830900dc60082896bc561964d"'* ]] || fail "production worker pin drifted from the #79/#80-hardened #74 head"
 [[ "$worker_block" == *'BUILD_SERVER_REPORTING_MODE: "app-required"'* ]] || fail "production worker is not app-required"
 [[ "$worker_block" == *'HOST: "127.0.0.1"'* ]] || fail "production worker is not loopback-bound"
 [[ "$worker_block" == *'BUILD_SERVER_WORK_ROOT: INDIEBUILD_WORK_ROOT'* ]] || fail "durable worker work root is not an explicit required binding"
@@ -151,7 +152,7 @@ fi
 [[ ! -e "$PROBE_OUTPUT_DIR/process-side-effect" ]] || fail "missing secret allowed a service side effect"
 
 echo "laptop CI isolation acceptance: PASS"
-echo "- production source pin and trusted phase-scrub wrappers are fixed"
+echo "- production source and hardened worker pins are fixed"
 echo "- private provenance checkout path is required only by the worker service"
 echo "- production credential families are scoped to the intended service blocks"
 echo "- worker/tunnel/sibling environments isolated across build, service and healthcheck"
