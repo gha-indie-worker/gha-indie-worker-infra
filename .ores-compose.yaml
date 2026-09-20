@@ -5,7 +5,7 @@ source:
   repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git
   # Exact head of gha-indie-worker-monorepo#9. Keep this pinned; when #9 lands
   # with a different merge SHA, advance this pin explicitly in the same review.
-  commit: 7b2b282b2c309077ffe06c1627b3a96f34cae317
+  commit: b599977c766a9b9209a8d554d506f8639be5a08b
   checkout_dir: .ores/sources/gha-indie-worker-monorepo
 
 # Policy authority for service selection. Port 8080 is intentionally NOT owned
@@ -102,7 +102,9 @@ services:
     working_dir: .
     replicas: 1
     healthcheck:
-      command: ["curl", "--fail", "--silent", "http://127.0.0.1:8100/readyz"]
+      # Until ores-compose has phase-scoped env, use a trusted wrapper that
+      # unsets worker secrets before exec'ing curl.
+      command: ["bash", "scripts/ci-worker-healthcheck.sh"]
       interval_ms: 3000
       timeout_ms: 2000
       retries: 20
@@ -127,7 +129,8 @@ services:
     replicas: 1
     depends_on: [ci-worker]
     healthcheck:
-      command: ["curl", "--fail", "--silent", "http://127.0.0.1:18096/ready"]
+      # Same phase-scoping mitigation: the wrapper drops TUNNEL_TOKEN before curl.
+      command: ["bash", "scripts/cloudflared-healthcheck.sh"]
       interval_ms: 3000
       timeout_ms: 2000
       retries: 20
