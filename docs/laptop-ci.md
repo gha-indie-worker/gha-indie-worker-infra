@@ -27,7 +27,7 @@ export INDIEBUILD_WORKER_AUTH_SECRET='...'
 export INDIEBUILD_CLOUDFLARE_TUNNEL_TOKEN='...'
 ```
 
-`INDIEBUILD_WORK_ROOT` must be an absolute, operator-owned persistent directory outside the materialized monorepo checkout. The worker stores build logs and durable authoritative-report intents there so a source refresh or worker restart cannot erase reconciliation state.
+`INDIEBUILD_WORK_ROOT` must be an absolute, operator-owned persistent directory outside the materialized monorepo checkout. The trusted worker launcher enforces that rule, canonicalizes the path, applies `umask 077`, and refuses startup when required App/webhook/auth inputs are empty or the App key is not a readable regular file. The worker stores build logs and durable authoritative-report intents there so a source refresh or worker restart cannot erase reconciliation state.
 
 The private-key binding is a **path**, not PEM contents. `gha-indie-worker.rs` reads that file once at startup and never passes its contents into a tested job.
 
@@ -35,7 +35,7 @@ The private-key binding is a **path**, not PEM contents. `gha-indie-worker.rs` r
 
 The production `.ores-compose.yaml` is intentionally reproducible and currently pins:
 
-- the monorepo source adapter from `gha-indie-worker/gha-indie-worker-monorepo#9`;
+- monorepo source-adapter head `gha-indie-worker/gha-indie-worker-monorepo#9@6920419b1096be46932b889f3a28fc13cf090342`;
 - split worker commit `be8f6aac3eb6e1d1f76d613e3082ca2114ceb2bf`;
 - provenance workspace commit `ORESoftware/k8s-cluster@5cfac43c6900898f36f588d044ca34083da1c726`.
 
@@ -71,7 +71,7 @@ ores-compose plan .ores-compose.yaml
 ores-compose up .ores-compose.yaml
 ```
 
-The trusted monorepo bootstrap reconstructs the split worker in its immutable source-provenance workspace and builds `dd-build-server` at the pinned SHA. The worker binds only `127.0.0.1:8100`; `cloudflared` connects outward from the same laptop.
+The trusted monorepo bootstrap reconstructs the split worker in its immutable source-provenance workspace and builds `dd-build-server` at the pinned SHA. The trusted launcher checks runtime inputs before `exec`-ing that binary. The worker binds only `127.0.0.1:8100`; `cloudflared` connects outward from the same laptop.
 
 For an operator shutdown:
 
