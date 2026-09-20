@@ -35,7 +35,7 @@ The private-key binding is a **path**, not PEM contents. `gha-indie-worker.rs` r
 
 The production `.ores-compose.yaml` is intentionally reproducible and currently pins:
 
-- monorepo source-adapter head `gha-indie-worker/gha-indie-worker-monorepo#9@6920419b1096be46932b889f3a28fc13cf090342`;
+- monorepo source-adapter head `gha-indie-worker/gha-indie-worker-monorepo#9@3f4644873bfbcad8f3363463de69e72901d03cac`;
 - split worker commit `be8f6aac3eb6e1d1f76d613e3082ca2114ceb2bf`;
 - provenance workspace commit `ORESoftware/k8s-cluster@5cfac43c6900898f36f588d044ca34083da1c726`.
 
