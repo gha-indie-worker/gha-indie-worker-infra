@@ -9,7 +9,7 @@ use std::{
 };
 
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
-const EXPECTED_MONOREPO: &str = "68de4b122d06621805bfb810367488bd171272c7";
+const EXPECTED_MONOREPO: &str = "b599977c766a9b9209a8d554d506f8639be5a08b";
 const ORES_CLI_REV_PATH: &str = "config/ores-cli.rev";
 const ORES_COMPOSE_REV_PATH: &str = "config/ores-compose.rev";
 const STUB_API_PIN: &str = "90cfc8a86660d36683fc96d629af843c347e6667";
@@ -111,13 +111,25 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
         "failover_on_invalid_backend: true",
         "working_dir: apps/gha-indie-worker-api-server.rs",
         "working_dir: apps/gha-indie-worker-web-server.rs",
-        "GHA_INDIE_WORKER_API_BIND=127.0.0.1:18090",
-        "GHA_INDIE_WORKER_WEB_BIND=127.0.0.1:18091",
-        "GHA_INDIE_WORKER_API_HTTP_BASE=http://127.0.0.1:18090",
+        "GHA_INDIE_WORKER_API_BIND: \"127.0.0.1:18090\"",
+        "GHA_INDIE_WORKER_WEB_BIND: \"127.0.0.1:18091\"",
+        "GHA_INDIE_WORKER_API_HTTP_BASE: \"http://127.0.0.1:18090\"",
         "./target/debug/gha-indie-worker-api-server",
         "./target/debug/gha-indie-worker-web-server",
         "http://127.0.0.1:18090/readyz",
         "http://127.0.0.1:18091/readyz",
+        "BUILD_SERVER_REPORTING_MODE: \"app-required\"",
+        "BUILD_SERVER_WORK_ROOT: INDIEBUILD_WORK_ROOT",
+        "INDIEBUILD_WORKER_SHA: \"be8f6aac3eb6e1d1f76d613e3082ca2114ceb2bf\"",
+        "BUILD_SERVER_GITHUB_APP_PRIVATE_KEY_PATH: INDIEBUILD_GITHUB_APP_PRIVATE_KEY_PATH",
+        "BUILD_SERVER_GITHUB_WEBHOOK_SECRET: INDIEBUILD_GITHUB_WEBHOOK_SECRET",
+        "BUILD_SERVER_AUTH_SECRET: INDIEBUILD_WORKER_AUTH_SECRET",
+        "scripts/bootstrap-ci-worker.sh",
+        "scripts/run-ci-worker.sh",
+        "scripts/ci-worker-healthcheck.sh",
+        "TUNNEL_TOKEN: INDIEBUILD_CLOUDFLARE_TUNNEL_TOKEN",
+        "scripts/cloudflared-healthcheck.sh",
+        "127.0.0.1:18096",
     ] {
         if !manifest.contains(required) {
             return Err(format!("compose contract missing {required:?}").into());
@@ -133,6 +145,8 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
         "backend_connect_timeout_ms:",
         "max_proxy_duration_ms:",
         "http://127.0.0.1:8080/readyz",
+        "--token",
+        "CF_TUNNEL_TOKEN",
     ] {
         if manifest.contains(forbidden) {
             return Err(format!("compose manifest contains stale, unsafe, or unsupported field {forbidden:?}").into());
