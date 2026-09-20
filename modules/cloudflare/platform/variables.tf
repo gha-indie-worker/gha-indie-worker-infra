@@ -164,6 +164,23 @@ variable "bot_challenge_exempt_expression" {
   default     = "http.request.uri.path in {\"/robots.txt\" \"/sitemap.xml\"} or starts_with(http.request.uri.path, \"/.well-known/\")"
 }
 
+variable "enable_laptop_ci_webhook_path_guard" {
+  description = "Block every public request to laptop_ci_webhook_hostname except POST /webhooks/github."
+  type        = bool
+  default     = false
+}
+
+variable "laptop_ci_webhook_hostname" {
+  description = "Public laptop CI hostname protected by the exact webhook-only WAF rule."
+  type        = string
+  default     = "ci-laptop.indiebuild.dev"
+
+  validation {
+    condition     = can(regex("^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$", var.laptop_ci_webhook_hostname))
+    error_message = "laptop_ci_webhook_hostname must be a lowercase DNS hostname."
+  }
+}
+
 variable "immutable_asset_path" {
   description = "Wildcard path whose responses are content-addressed and may be cached forever."
   type        = string
