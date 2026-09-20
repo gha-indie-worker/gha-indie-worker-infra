@@ -85,6 +85,10 @@ The Terraform resource is opt-in. In the production Cloudflare platform root, se
 
 Terraform owns the remotely managed tunnel and `ci-laptop.indiebuild.dev` DNS record. `cloudflared` consumes the generated tunnel token at runtime; the token is not stored in the compose manifest or placed on its command line.
 
+## Current verification limitation
+
+Fresh hosted and self-hosted workflow attempts made while hardening this path are presently failing at GitHub Actions startup **before any job is allocated** (`jobs=[]`). Treat those runs as infrastructure non-evidence: they are neither source passes nor source failures. The laptop acceptance below is the next executable boundary; do not promote based on static review alone.
+
 ## Evidence promotion
 
 The worker runs in `app-required` mode and writes the authoritative context `indiebuild.dev/ci`. A result is not merge-authoritative merely because that context exists.
