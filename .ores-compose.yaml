@@ -1,4 +1,5 @@
 schema_version: ores.compose.v1
+# ores-compose-nano-id: svaBNfKA08dfDm5-3SU2G
 project: gha-indie-worker
 allow_lazy_start: false
 source:
