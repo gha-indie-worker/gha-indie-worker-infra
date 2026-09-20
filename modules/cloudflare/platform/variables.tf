@@ -176,8 +176,13 @@ variable "laptop_ci_webhook_hostname" {
   default     = "ci-laptop.indiebuild.dev"
 
   validation {
-    condition     = can(regex("^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$", var.laptop_ci_webhook_hostname))
-    error_message = "laptop_ci_webhook_hostname must be a lowercase DNS hostname."
+    # Terraform uses RE2-style regex semantics. Use ordinary capturing groups,
+    # bound the total DNS name, and bound each label to 63 characters.
+    condition = length(var.laptop_ci_webhook_hostname) <= 253 && can(regex(
+      "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+      var.laptop_ci_webhook_hostname
+    ))
+    error_message = "laptop_ci_webhook_hostname must be a lowercase DNS hostname with labels of 1-63 characters."
   }
 }
 
