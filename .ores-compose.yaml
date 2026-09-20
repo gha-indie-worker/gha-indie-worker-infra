@@ -5,7 +5,7 @@ source:
   repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git
   # Exact head of gha-indie-worker-monorepo#9. Keep this pinned; when #9 lands
   # with a different merge SHA, advance this pin explicitly in the same review.
-  commit: cb0e8fc278bc826a15f967c1abbc38f82bb7d1d9
+  commit: 6920419b1096be46932b889f3a28fc13cf090342
   checkout_dir: .ores/sources/gha-indie-worker-monorepo
 
 # Policy authority for service selection. Port 8080 is intentionally NOT owned
@@ -95,7 +95,8 @@ services:
       BUILD_SERVER_GITHUB_WEBHOOK_SECRET: INDIEBUILD_GITHUB_WEBHOOK_SECRET
       BUILD_SERVER_AUTH_SECRET: INDIEBUILD_WORKER_AUTH_SECRET
     command:
-      - ./.ores/ci-worker-target/debug/dd-build-server
+      - bash
+      - scripts/run-ci-worker.sh
     build:
       - ["bash", "scripts/bootstrap-ci-worker.sh"]
     working_dir: .
