@@ -1,0 +1,175 @@
+{
+  "schemaVersion": "indiebuild.cohort.v1",
+  "name": "laptop-ci-wave-1",
+  "description": "Advisory exact-head local IndieBuild trial: 30 open PRs across 16 GitHub organizations.",
+  "mode": "advisory",
+  "headPolicy": "resolve-current-open-same-repository-head-at-submit",
+  "forkPolicy": "deny",
+  "promotionEvidence": {
+    "context": "indiebuild.dev/ci",
+    "reporter": "github-app-check-run",
+    "requiredBindings": [
+      "repository",
+      "pullRequest",
+      "headSha",
+      "context",
+      "appId",
+      "completed",
+      "success"
+    ],
+    "patStatusContext": "indiebuild.dev/ci-advisory",
+    "requiresDeliveredTerminalVerdict": true,
+    "requiresCrashReconciliation": true,
+    "requiresExactHead": true,
+    "requiresStrictSuccessConclusion": true,
+    "allowsPatFallback": false
+  },
+  "promotionBlockers": [
+    {
+      "ref": "ORESoftware/ores-compose#154",
+      "kind": "pull_request",
+      "requiredState": "merged",
+      "capability": "service environment isolation with env_clear for build, service, and healthcheck subprocesses"
+    },
+    {
+      "ref": "ORESoftware/ores-compose#161",
+      "kind": "issue",
+      "requiredState": "closed",
+      "capability": "phase-scoped build, start, and healthcheck environment least privilege"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker.rs#73",
+      "kind": "pull_request",
+      "requiredState": "merged",
+      "capability": "exact object-id checkout"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker.rs#74",
+      "kind": "pull_request",
+      "requiredState": "merged",
+      "capability": "pull-request intake and GitHub reporting baseline"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker.rs#77",
+      "kind": "issue",
+      "requiredState": "closed",
+      "capability": "server-side GitHub App installation resolution and app-required reporting"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker.rs#78",
+      "kind": "issue",
+      "requiredState": "closed",
+      "capability": "durable reconciliation of orphaned checks and undelivered terminal verdicts"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker.rs#79",
+      "kind": "issue",
+      "requiredState": "closed",
+      "capability": "complete filter-all authoritative Check Run recovery without hidden or duplicate runs"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker.rs#80",
+      "kind": "issue",
+      "requiredState": "closed",
+      "capability": "serialized monotonic durable report-intent transitions"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker-monorepo#9",
+      "kind": "pull_request",
+      "requiredState": "merged",
+      "capability": "pinned provenance-workspace worker build and verified binary receipt"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker-infra#46",
+      "kind": "issue",
+      "requiredState": "closed",
+      "capability": "current ores.compose.v1 worker plus Cloudflare Tunnel topology acceptance"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker-infra#49",
+      "kind": "pull_request",
+      "requiredState": "merged",
+      "capability": "isolated loopback worker plus webhook-only Cloudflare Tunnel implementation"
+    },
+    {
+      "ref": "ORESoftware/ores-gh-bots#58",
+      "kind": "pull_request",
+      "requiredState": "merged",
+      "capability": "transactional provider evidence and strict App-bound CI success semantics"
+    }
+  ],
+  "prerequisites": [
+    "ORESoftware/ores-compose#150",
+    "ORESoftware/ores-compose#152",
+    "ORESoftware/ores-compose#154",
+    "ORESoftware/ores-compose#161",
+    "gha-indie-worker/gha-indie-worker.rs#73",
+    "gha-indie-worker/gha-indie-worker.rs#74",
+    "gha-indie-worker/gha-indie-worker.rs#77",
+    "gha-indie-worker/gha-indie-worker.rs#78",
+    "gha-indie-worker/gha-indie-worker.rs#79",
+    "gha-indie-worker/gha-indie-worker.rs#80",
+    "gha-indie-worker/gha-indie-worker-monorepo#9",
+    "gha-indie-worker/gha-indie-worker-infra#46",
+    "gha-indie-worker/gha-indie-worker-infra#49",
+    "ORESoftware/ores-gh-bots#58"
+  ],
+  "allowedOwners": [
+    "ORESoftware",
+    "canonical-cloud",
+    "ClaimGraph",
+    "chapter-publishing",
+    "shared-auth",
+    "zed-pkg",
+    "gha-indie-worker",
+    "ores-chat",
+    "ores-rate-limit",
+    "opto-sync",
+    "memebank",
+    "elenkos-systems",
+    "embedded-alerts",
+    "sonus-auris",
+    "asia-major-eateries",
+    "hypesiege"
+  ],
+  "entries": [
+    { "repo": "ORESoftware/ores-compose", "pullRequest": 150, "profile": "rust-verify" },
+    { "repo": "ORESoftware/ores-gh-bots", "pullRequest": 58, "profile": "node-verify" },
+    { "repo": "ORESoftware/ores-cli", "pullRequest": 406, "profile": "rust-verify" },
+    { "repo": "ORESoftware/ores-middleware", "pullRequest": 243, "profile": "rust-verify" },
+
+    { "repo": "canonical-cloud/canonical-api-server.rs", "pullRequest": 77, "profile": "rust-verify" },
+    { "repo": "canonical-cloud/canonical-api-server.rs", "pullRequest": 76, "profile": "rust-verify" },
+    { "repo": "canonical-cloud/canonical-cli", "pullRequest": 47, "profile": "rust-verify" },
+
+    { "repo": "ClaimGraph/claimgraph-api-server.rs", "pullRequest": 18, "profile": "rust-verify" },
+    { "repo": "ClaimGraph/claimgraph-mcp-server.rs", "pullRequest": 5, "profile": "rust-verify" },
+    { "repo": "ClaimGraph/claimgraph-web-server.rs", "pullRequest": 18, "profile": "rust-verify" },
+
+    { "repo": "chapter-publishing/cp-admin-api-server.rs", "pullRequest": 11, "profile": "rust-verify" },
+    { "repo": "chapter-publishing/cp-admin-web-server.rs", "pullRequest": 7, "profile": "rust-verify" },
+
+    { "repo": "shared-auth/shared-auth-flutter", "pullRequest": 23, "profile": "flutter-verify" },
+    { "repo": "zed-pkg/zed-cli", "pullRequest": 466, "profile": "rust-verify" },
+
+    { "repo": "gha-indie-worker/gha-indie-worker.rs", "pullRequest": 73, "profile": "rust-verify" },
+    { "repo": "gha-indie-worker/gha-indie-worker.rs", "pullRequest": 74, "profile": "rust-verify" },
+    { "repo": "gha-indie-worker/gha-indie-worker-cli", "pullRequest": 14, "profile": "rust-verify" },
+    { "repo": "gha-indie-worker/gha-indie-worker-api-server.rs", "pullRequest": 32, "profile": "rust-verify" },
+
+    { "repo": "ores-chat/ores-chat-mcp-server.rs", "pullRequest": 10, "profile": "rust-verify" },
+    { "repo": "ores-rate-limit/ores-rl-lambdas", "pullRequest": 10, "profile": "rust-verify" },
+    { "repo": "opto-sync/opto-sync-lib-core", "pullRequest": 19, "profile": "rust-verify" },
+    { "repo": "memebank/memebank-admin-api-server.rs", "pullRequest": 5, "profile": "rust-verify" },
+    { "repo": "elenkos-systems/elenkos-admin-api-server.rs", "pullRequest": 5, "profile": "rust-verify" },
+    { "repo": "embedded-alerts/eal-admin-web-server.rs", "pullRequest": 4, "profile": "rust-verify" },
+    { "repo": "sonus-auris/sonus-auris-api-server.rs", "pullRequest": 80, "profile": "rust-verify" },
+
+    { "repo": "asia-major-eateries/ame-flutter", "pullRequest": 2, "profile": "flutter-verify" },
+    { "repo": "asia-major-eateries/ame-web-server.rs", "pullRequest": 3, "profile": "rust-verify" },
+
+    { "repo": "hypesiege/hypesiege-admin-api-server.rs", "pullRequest": 9, "profile": "rust-verify" },
+    { "repo": "hypesiege/hypesiege-cli", "pullRequest": 21, "profile": "rust-verify" },
+    { "repo": "hypesiege/hypesiege-mcp-server.rs", "pullRequest": 24, "profile": "rust-verify" }
+  ]
+}

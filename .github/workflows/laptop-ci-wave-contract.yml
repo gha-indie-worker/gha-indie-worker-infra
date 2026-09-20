@@ -1,0 +1,185 @@
+name: laptop CI wave contract
+
+on:
+  pull_request:
+    paths:
+      - "cohorts/laptop-ci-wave-1.json"
+      - "cohorts/laptop-ci-wave-1-receipt.schema.json"
+      - "scripts/run-laptop-ci-wave-1.sh"
+      - ".github/workflows/laptop-ci-wave-contract.yml"
+  push:
+    branches: [main]
+    paths:
+      - "cohorts/laptop-ci-wave-1.json"
+      - "cohorts/laptop-ci-wave-1-receipt.schema.json"
+      - "scripts/run-laptop-ci-wave-1.sh"
+      - ".github/workflows/laptop-ci-wave-contract.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Shell syntax
+        run: bash -n scripts/run-laptop-ci-wave-1.sh
+
+      - name: JSON syntax
+        run: |
+          jq -e . cohorts/laptop-ci-wave-1.json >/dev/null
+          jq -e . cohorts/laptop-ci-wave-1-receipt.schema.json >/dev/null
+
+      - name: Cohort trust invariants
+        run: |
+          set -euo pipefail
+          file=cohorts/laptop-ci-wave-1.json
+
+          jq -e '.schemaVersion == "indiebuild.cohort.v1"' "$file" >/dev/null
+          jq -e '.mode == "advisory"' "$file" >/dev/null
+          jq -e '.forkPolicy == "deny"' "$file" >/dev/null
+          jq -e '.headPolicy == "resolve-current-open-same-repository-head-at-submit"' "$file" >/dev/null
+
+          jq -e '.entries | length == 30' "$file" >/dev/null
+          jq -e '[.entries[].repo | split("/")[0]] | unique | length >= 10' "$file" >/dev/null
+          jq -e '[.entries[] | (.repo + "#" + (.pullRequest|tostring))] | length == (unique | length)' "$file" >/dev/null
+          jq -e 'all(.entries[]; (.repo | test("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")))' "$file" >/dev/null
+          jq -e 'all(.entries[]; ((.pullRequest | type) == "number") and (.pullRequest >= 1) and ((.pullRequest | floor) == .pullRequest))' "$file" >/dev/null
+          jq -e '(.allowedOwners | length) == (.allowedOwners | unique | length)' "$file" >/dev/null
+
+          jq -e '
+            ["rust-verify","node-verify","python-verify","flutter-verify","playwright","puppeteer","browser-e2e"] as $allowed
+            | all(.entries[]; .profile as $p | ($allowed | index($p)) != null)
+          ' "$file" >/dev/null
+          jq -e '. as $root | all(.entries[]; (.repo | split("/")[0]) as $owner | ($root.allowedOwners | index($owner)) != null)' "$file" >/dev/null
+
+          jq -e '.promotionEvidence.context == "indiebuild.dev/ci"' "$file" >/dev/null
+          jq -e '.promotionEvidence.reporter == "github-app-check-run"' "$file" >/dev/null
+          jq -e '.promotionEvidence.patStatusContext == "indiebuild.dev/ci-advisory"' "$file" >/dev/null
+          jq -e '.promotionEvidence.requiresDeliveredTerminalVerdict == true' "$file" >/dev/null
+          jq -e '.promotionEvidence.requiresCrashReconciliation == true' "$file" >/dev/null
+          jq -e '.promotionEvidence.requiresExactHead == true' "$file" >/dev/null
+          jq -e '.promotionEvidence.requiresStrictSuccessConclusion == true' "$file" >/dev/null
+          jq -e '.promotionEvidence.allowsPatFallback == false' "$file" >/dev/null
+          jq -e '.promotionEvidence.requiredBindings == ["repository","pullRequest","headSha","context","appId","completed","success"]' "$file" >/dev/null
+
+          jq -e '.promotionBlockers | length == 12' "$file" >/dev/null
+          jq -e '[.promotionBlockers[].ref] | length == (unique | length)' "$file" >/dev/null
+          jq -e 'all(.promotionBlockers[]; (.kind == "pull_request" or .kind == "issue") and (.requiredState == "merged" or .requiredState == "closed") and ((.capability | type) == "string") and ((.capability | length) > 0))' "$file" >/dev/null
+          jq -e 'all(.promotionBlockers[]; if .kind == "pull_request" then .requiredState == "merged" else .requiredState == "closed" end)' "$file" >/dev/null
+          jq -e '.promotionBlockers as $blockers | .prerequisites as $prereqs | all($blockers[]; .ref as $ref | ($prereqs | index($ref)) != null)' "$file" >/dev/null
+
+          jq -e 'any(.promotionBlockers[]; .ref == "ORESoftware/ores-compose#154" and .kind == "pull_request" and .requiredState == "merged")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "ORESoftware/ores-compose#161" and .kind == "issue" and .requiredState == "closed")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker.rs#73" and .kind == "pull_request" and .requiredState == "merged")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker.rs#74" and .kind == "pull_request" and .requiredState == "merged")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker.rs#77" and .kind == "issue" and .requiredState == "closed")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker.rs#78" and .kind == "issue" and .requiredState == "closed")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker.rs#79" and .kind == "issue" and .requiredState == "closed")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker.rs#80" and .kind == "issue" and .requiredState == "closed")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker-monorepo#9" and .kind == "pull_request" and .requiredState == "merged")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker-infra#46" and .kind == "issue" and .requiredState == "closed")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "gha-indie-worker/gha-indie-worker-infra#49" and .kind == "pull_request" and .requiredState == "merged")' "$file" >/dev/null
+          jq -e 'any(.promotionBlockers[]; .ref == "ORESoftware/ores-gh-bots#58" and .kind == "pull_request" and .requiredState == "merged")' "$file" >/dev/null
+
+      - name: Receipt schema trust invariants
+        run: |
+          set -euo pipefail
+          schema=cohorts/laptop-ci-wave-1-receipt.schema.json
+          jq -e '.["$schema"] == "https://json-schema.org/draft/2020-12/schema"' "$schema" >/dev/null
+          jq -e '.["$defs"].EntryRefused.properties.headSha.["$ref"] == "#/$defs/Sha40OrEmpty"' "$schema" >/dev/null
+          jq -e '.["$defs"].EntryAdmitted.properties.profile.["$ref"] == "#/$defs/Profile"' "$schema" >/dev/null
+          jq -e '.["$defs"].EntryAdmitted.properties.headSha.["$ref"] == "#/$defs/Sha40"' "$schema" >/dev/null
+          jq -e '.["$defs"].EntryFinished.properties.headSha.["$ref"] == "#/$defs/Sha40"' "$schema" >/dev/null
+          jq -e '.["$defs"].EntryFinished.properties.jobId.maxLength == 256' "$schema" >/dev/null
+          jq -e '.["$defs"].EntryFinished.properties.stale.type == "boolean"' "$schema" >/dev/null
+          jq -e '.["$defs"].EntryFinished.properties.nativeGitHubActions.["$ref"] == "#/$defs/NativeGitHubActions"' "$schema" >/dev/null
+          jq -e '.["$defs"].NativeGitHubActions.properties.zeroStepRuns.type == "integer"' "$schema" >/dev/null
+          jq -e '.["$defs"].NativeGitHubActions.properties.stepfulRuns.type == "integer"' "$schema" >/dev/null
+          jq -e '.["$defs"].HostedRun.properties.headSha.["$ref"] == "#/$defs/Sha40"' "$schema" >/dev/null
+          jq -e '.["$defs"].EntryFinished.unevaluatedProperties == false' "$schema" >/dev/null
+
+      - name: Hosted evidence classification smoke
+        run: |
+          set -euo pipefail
+          root="$(mktemp -d)"
+          trap 'rm -rf "$root"' EXIT
+          mkdir -p "$root/bin" "$root/receipts"
+          sha=0123456789abcdef0123456789abcdef01234567
+
+          cat >"$root/cohort.json" <<'JSON'
+          {
+            "schemaVersion":"indiebuild.cohort.v1",
+            "name":"fixture",
+            "mode":"advisory",
+            "allowedOwners":["test-org"],
+            "entries":[{"repo":"test-org/test-repo","pullRequest":1,"profile":"rust-verify"}]
+          }
+          JSON
+
+          cat >"$root/bin/gh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          [[ "${1:-}" == "api" ]] || exit 64
+          endpoint="${2:-}"
+          sha=0123456789abcdef0123456789abcdef01234567
+          case "$endpoint" in
+            repos/test-org/test-repo/pulls/1)
+              printf '%s\n' "{\"head\":{\"sha\":\"$sha\",\"repo\":{\"full_name\":\"test-org/test-repo\"}},\"state\":\"open\",\"draft\":false}"
+              ;;
+            "repos/test-org/test-repo/actions/runs?head_sha=$sha&event=pull_request&per_page=10")
+              printf '%s\n' "{\"total_count\":2,\"workflow_runs\":[{\"id\":101,\"name\":\"stepful\",\"status\":\"completed\",\"conclusion\":\"success\",\"head_sha\":\"$sha\"},{\"id\":102,\"name\":\"zero-step\",\"status\":\"completed\",\"conclusion\":\"failure\",\"head_sha\":\"$sha\"}]}"
+              ;;
+            "repos/test-org/test-repo/actions/runs/101/jobs?per_page=100")
+              printf '%s\n' '{"jobs":[{"id":1,"steps":[{"name":"test","status":"completed","conclusion":"success"}]}]}'
+              ;;
+            "repos/test-org/test-repo/actions/runs/102/jobs?per_page=100")
+              printf '%s\n' '{"jobs":[{"id":2,"steps":null}]}'
+              ;;
+            *)
+              echo "unexpected fake gh endpoint: $endpoint" >&2
+              exit 65
+              ;;
+          esac
+          SH
+          chmod +x "$root/bin/gh"
+
+          cat >"$root/bin/giw" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          printf '%s\n' '{"headSha":"0123456789abcdef0123456789abcdef01234567","jobId":"fixture-job","status":"succeeded"}'
+          SH
+          chmod +x "$root/bin/giw"
+
+          COHORT_FILE="$root/cohort.json" \
+          RECEIPT_DIR="$root/receipts" \
+          GH_BIN="$root/bin/gh" \
+          GIW_BIN="$root/bin/giw" \
+          JQ_BIN=jq \
+          HOSTED_RUN_LIMIT=10 \
+            bash scripts/run-laptop-ci-wave-1.sh --entry test-org/test-repo#1
+
+          receipt="$(find "$root/receipts" -name 'laptop-ci-wave-1-*.ndjson' -type f -print -quit)"
+          [[ -n "$receipt" ]]
+          jq -se '
+            [ .[] | select(.event == "entry_finished") ] as $finished
+            | ($finished|length) == 1
+            and $finished[0].stale == false
+            and $finished[0].nativeGitHubActions.available == true
+            and $finished[0].nativeGitHubActions.totalMatchingRuns == 2
+            and $finished[0].nativeGitHubActions.inspectedRuns == 2
+            and $finished[0].nativeGitHubActions.stepfulRuns == 1
+            and $finished[0].nativeGitHubActions.zeroStepRuns == 1
+            and $finished[0].nativeGitHubActions.jobsUnavailableRuns == 0
+            and $finished[0].nativeGitHubActions.completedStepfulRuns == 1
+            and $finished[0].nativeGitHubActions.successfulStepfulRuns == 1
+            and $finished[0].nativeGitHubActions.nonSuccessStepfulRuns == 0
+            and ($finished[0].nativeGitHubActions.runs | map(select(.name == "zero-step"))[0].conclusion == "failure")
+            and ($finished[0].nativeGitHubActions.runs | map(select(.name == "zero-step"))[0].stepful == false)
+          ' "$receipt" >/dev/null

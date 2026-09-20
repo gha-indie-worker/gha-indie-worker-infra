@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gha-indie-worker/gha-indie-worker-infra/cohorts/laptop-ci-wave-1-receipt.schema.json",
+  "title": "IndieBuild laptop CI wave receipt event",
+  "description": "Append-only NDJSON event schema for advisory exact-head cohort execution. A receipt is evidence, not merge authority; authoritative promotion additionally requires an App-owned GitHub Check Run bound to the same head SHA.",
+  "oneOf": [
+    { "$ref": "#/$defs/CohortStarted" },
+    { "$ref": "#/$defs/EntryRefused" },
+    { "$ref": "#/$defs/EntryAdmitted" },
+    { "$ref": "#/$defs/EntryFinished" },
+    { "$ref": "#/$defs/CohortFinished" }
+  ],
+  "$defs": {
+    "Sha40": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "Sha40OrEmpty": {
+      "oneOf": [
+        { "$ref": "#/$defs/Sha40" },
+        { "const": "" }
+      ]
+    },
+    "Repo": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 201,
+      "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    },
+    "Profile": {
+      "enum": [
+        "rust-verify",
+        "node-verify",
+        "python-verify",
+        "flutter-verify",
+        "playwright",
+        "puppeteer",
+        "browser-e2e"
+      ]
+    },
+    "RunId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "HostedRun": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string", "maxLength": 256 },
+        "status": {
+          "enum": ["queued", "in_progress", "completed", "requested", "waiting", "pending"]
+        },
+        "conclusion": {
+          "enum": [
+            "success",
+            "failure",
+            "neutral",
+            "cancelled",
+            "skipped",
+            "timed_out",
+            "action_required",
+            "stale",
+            "startup_failure",
+            null
+          ]
+        },
+        "headSha": { "$ref": "#/$defs/Sha40" },
+        "jobsAvailable": { "type": "boolean" },
+        "stepful": { "type": ["boolean", "null"] }
+      },
+      "required": ["id", "name", "status", "conclusion", "headSha", "jobsAvailable", "stepful"]
+    },
+    "NativeGitHubActions": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "properties": {
+        "available": { "type": "boolean" },
+        "queryError": {
+          "oneOf": [
+            { "const": "workflow-runs-query-failed" },
+            { "type": "null" }
+          ]
+        },
+        "totalMatchingRuns": { "type": "integer", "minimum": 0 },
+        "inspectedRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "stepfulRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "zeroStepRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "jobsUnavailableRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "completedStepfulRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "successfulStepfulRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "nonSuccessStepfulRuns": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "truncated": { "type": "boolean" },
+        "runs": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/HostedRun" }
+        }
+      },
+      "required": [
+        "available",
+        "queryError",
+        "totalMatchingRuns",
+        "inspectedRuns",
+        "stepfulRuns",
+        "zeroStepRuns",
+        "jobsUnavailableRuns",
+        "completedStepfulRuns",
+        "successfulStepfulRuns",
+        "nonSuccessStepfulRuns",
+        "truncated",
+        "runs"
+      ]
+    },
+    "CohortStarted": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "properties": {
+        "event": { "const": "cohort_started" },
+        "runId": { "$ref": "#/$defs/RunId" },
+        "cohort": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "cohortSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "mode": { "const": "advisory" },
+        "entryCount": { "type": "integer", "minimum": 1, "maximum": 100 }
+      },
+      "required": ["event", "runId", "cohort", "cohortSha256", "mode", "entryCount"]
+    },
+    "EntryRefused": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "properties": {
+        "event": { "const": "entry_refused" },
+        "runId": { "$ref": "#/$defs/RunId" },
+        "repo": { "$ref": "#/$defs/Repo" },
+        "pullRequest": { "type": "integer", "minimum": 1 },
+        "profile": { "$ref": "#/$defs/Profile" },
+        "headSha": { "$ref": "#/$defs/Sha40OrEmpty" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 256 }
+      },
+      "required": ["event", "runId", "repo", "pullRequest", "profile", "headSha", "reason"]
+    },
+    "EntryAdmitted": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "properties": {
+        "event": { "const": "entry_admitted" },
+        "runId": { "$ref": "#/$defs/RunId" },
+        "repo": { "$ref": "#/$defs/Repo" },
+        "pullRequest": { "type": "integer", "minimum": 1 },
+        "profile": { "$ref": "#/$defs/Profile" },
+        "headSha": { "$ref": "#/$defs/Sha40" }
+      },
+      "required": ["event", "runId", "repo", "pullRequest", "profile", "headSha"]
+    },
+    "EntryFinished": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "properties": {
+        "event": { "const": "entry_finished" },
+        "runId": { "$ref": "#/$defs/RunId" },
+        "repo": { "$ref": "#/$defs/Repo" },
+        "pullRequest": { "type": "integer", "minimum": 1 },
+        "profile": { "$ref": "#/$defs/Profile" },
+        "headSha": { "$ref": "#/$defs/Sha40" },
+        "jobId": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "status": { "enum": ["succeeded", "failed", "error", "cancelled", "timeout"] },
+        "afterHeadSha": {
+          "oneOf": [
+            { "$ref": "#/$defs/Sha40" },
+            { "type": "null" }
+          ]
+        },
+        "afterHeadQueryError": {
+          "oneOf": [
+            { "enum": ["invalid-after-head-sha", "pr-recheck-failed"] },
+            { "type": "null" }
+          ]
+        },
+        "cliExit": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "stale": { "type": "boolean" },
+        "nativeGitHubActions": { "$ref": "#/$defs/NativeGitHubActions" }
+      },
+      "required": ["event", "runId", "repo", "pullRequest", "profile", "headSha", "jobId", "status", "afterHeadSha", "afterHeadQueryError", "cliExit", "stale", "nativeGitHubActions"]
+    },
+    "CohortFinished": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "properties": {
+        "event": { "const": "cohort_finished" },
+        "runId": { "$ref": "#/$defs/RunId" },
+        "attempted": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "failures": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "success": { "type": "boolean" }
+      },
+      "required": ["event", "runId", "attempted", "failures", "success"]
+    }
+  }
+}
