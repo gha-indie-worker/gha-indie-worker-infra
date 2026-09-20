@@ -89,6 +89,18 @@ Terraform owns the remotely managed tunnel and `ci-laptop.indiebuild.dev` DNS re
 
 Fresh hosted and self-hosted workflow attempts made while hardening this path are presently failing at GitHub Actions startup **before any job is allocated** (`jobs=[]`). Treat those runs as infrastructure non-evidence: they are neither source passes nor source failures. The laptop acceptance below is the next executable boundary; do not promote based on static review alone.
 
+## Live acceptance sequence
+
+Use the standalone `gha-indie-worker-api-server.rs` smoke repository first; its Cargo manifest has no sibling path dependencies.
+
+1. Run the fake-sentinel isolation harness above against the exact #154 `ores-compose` binary.
+2. Start `.ores-compose.yaml` with the real operator-owned bindings.
+3. Confirm loopback `http://127.0.0.1:8100/readyz` is healthy and Cloudflare tunnel readiness is healthy locally.
+4. Enable/apply the optional laptop tunnel Terraform and verify public non-webhook paths are blocked.
+5. Deliver a signed same-repository `pull_request` event for the smoke repo and retain the exact head SHA, worker job id, Check Run id, App id and terminal conclusion.
+6. Kill the worker after local execution becomes terminal but before/while GitHub delivery is pending, restart the same pinned stack, and verify the durable report-intent reconciler either completes the same Check Run or refuses success.
+7. Only after that succeeds, run #47's 30-PR / 16-org cohort observationally and compare against native stepful CI where available.
+
 ## Evidence promotion
 
 The worker runs in `app-required` mode and writes the authoritative context `indiebuild.dev/ci`. A result is not merge-authoritative merely because that context exists.
