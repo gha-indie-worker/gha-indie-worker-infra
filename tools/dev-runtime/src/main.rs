@@ -9,7 +9,7 @@ use std::{
 };
 
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
-const EXPECTED_MONOREPO: &str = "b599977c766a9b9209a8d554d506f8639be5a08b";
+const EXPECTED_MONOREPO: &str = "7843f373202f082f18c9a8175496ad4a4b2ed317";
 const ORES_CLI_REV_PATH: &str = "config/ores-cli.rev";
 const ORES_COMPOSE_REV_PATH: &str = "config/ores-compose.rev";
 const STUB_API_PIN: &str = "90cfc8a86660d36683fc96d629af843c347e6667";
@@ -120,6 +120,7 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
         "http://127.0.0.1:18091/readyz",
         "BUILD_SERVER_REPORTING_MODE: \"app-required\"",
         "BUILD_SERVER_WORK_ROOT: INDIEBUILD_WORK_ROOT",
+        "INDIEBUILD_LIBS_SOURCE_DIR: INDIEBUILD_LIBS_SOURCE_DIR",
         "INDIEBUILD_WORKER_SHA: \"be8f6aac3eb6e1d1f76d613e3082ca2114ceb2bf\"",
         "BUILD_SERVER_GITHUB_APP_PRIVATE_KEY_PATH: INDIEBUILD_GITHUB_APP_PRIVATE_KEY_PATH",
         "BUILD_SERVER_GITHUB_WEBHOOK_SECRET: INDIEBUILD_GITHUB_WEBHOOK_SECRET",
