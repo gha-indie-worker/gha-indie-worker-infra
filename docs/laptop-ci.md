@@ -115,4 +115,4 @@ Promotion remains closed until all of these are demonstrated end-to-end:
 - the operator-owned #47 cohort has run observationally across its 30 PRs / 16 orgs and receipts reconcile against native stepful CI where available;
 - `ores-gh-bots` independently authenticates the current-head App Check Run before counting it.
 
-PAT Commit Status remains advisory under the distinct `indiebuild.dev/ci-advisory` context and must never satisfy the trusted predicate.
+Until all of those are true, `indiebuild.dev/ci` remains non-counting regardless of a green Check Run. PAT Commit Status remains advisory under the distinct `indiebuild.dev/ci-advisory` context and must never satisfy the trusted predicate.
