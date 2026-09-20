@@ -12,6 +12,8 @@ The local parent process may hold all control-plane credentials, but `ores-compo
 - build, service and healthcheck subprocesses start from `env_clear()` under the `ORESoftware/ores-compose#154` executor contract;
 - tested PR code runs inside the worker's fixed profile container and does not receive worker/tunnel control-plane values.
 
+`ores-compose#154` currently scopes environment by **service**, not by execution phase. Until `ORESoftware/ores-compose#161` lands, the trusted worker bootstrap removes the service's secret bindings before Git/Cargo/helper processes are created, and trusted readiness wrappers remove worker/tunnel secrets before `curl` is exec'd. The long-running worker and `cloudflared` processes still receive only the credentials they actually need.
+
 The public Cloudflare hostname is also not a public worker API. The zone firewall blocks every request to `ci-laptop.indiebuild.dev` except **POST `/webhooks/github`**. The worker independently verifies GitHub's `X-Hub-Signature-256` HMAC before interpreting a delivery.
 
 ## Required operator environment
@@ -35,13 +37,15 @@ The private-key binding is a **path**, not PEM contents. `gha-indie-worker.rs` r
 
 The production `.ores-compose.yaml` is intentionally reproducible and currently pins:
 
-- monorepo source-adapter head `gha-indie-worker/gha-indie-worker-monorepo#9@3f4644873bfbcad8f3363463de69e72901d03cac`;
+- monorepo source-adapter head `gha-indie-worker/gha-indie-worker-monorepo#9@b599977c766a9b9209a8d554d506f8639be5a08b`;
 - split worker commit `be8f6aac3eb6e1d1f76d613e3082ca2114ceb2bf`;
 - provenance workspace commit `ORESoftware/k8s-cluster@5cfac43c6900898f36f588d044ca34083da1c726`.
 
+The source adapter validates cached Git origins, removes stale/untracked provenance files before Cargo sees them, disables ambient/global Git config and dangerous protocols, builds Git/Cargo under a scrubbed environment, and writes a SHA-256 provenance receipt. The runtime launcher validates that receipt and binary hash against the two operator pins before the final worker `exec`.
+
 When a dependency PR merges with a different SHA, advance the pin explicitly. Do not replace an immutable pin with a branch name. The pins above are frozen for this review unless a dependency itself changes.
 
-The compose executable must include the executor half of `ORESoftware/ores-compose#154`: service environment admission before source side effects plus `env_clear()` for build, service and healthcheck commands.
+The compose executable must include the executor half of `ORESoftware/ores-compose#154`: service environment admission before source side effects plus `env_clear()` for build, service and healthcheck commands. `#161` is the follow-up for first-class build/start/healthcheck environment separation; remove the temporary shell scrub wrappers after that contract lands.
 
 ## Preflight isolation acceptance
 
@@ -71,7 +75,7 @@ ores-compose plan .ores-compose.yaml
 ores-compose up .ores-compose.yaml
 ```
 
-The trusted monorepo bootstrap reconstructs the split worker in its immutable source-provenance workspace and builds `dd-build-server` at the pinned SHA. The trusted launcher checks runtime inputs before `exec`-ing that binary. The worker binds only `127.0.0.1:8100`; `cloudflared` connects outward from the same laptop.
+The trusted monorepo bootstrap reconstructs the split worker in its immutable source-provenance workspace and builds `dd-build-server` at the pinned SHA. The trusted launcher checks runtime inputs and binary provenance before `exec`-ing that worker. The worker binds only `127.0.0.1:8100`; `cloudflared` connects outward from the same laptop.
 
 For an operator shutdown:
 
@@ -83,7 +87,7 @@ ores-compose down .ores-compose.yaml
 
 The Terraform resource is opt-in. In the production Cloudflare platform root, set `enable_laptop_ci_tunnel = true` only after the isolation test passes and the App/webhook configuration is ready.
 
-Terraform owns the remotely managed tunnel and `ci-laptop.indiebuild.dev` DNS record. `cloudflared` consumes the generated tunnel token at runtime; the token is not stored in the compose manifest or placed on its command line.
+Terraform owns the remotely managed tunnel and `ci-laptop.indiebuild.dev` DNS record. `cloudflared` consumes the generated tunnel token at runtime; the token is not stored in the compose manifest or placed on its command line. The firewall entry point rejects every other method/path on that hostname before traffic reaches the tunnel.
 
 ## Current verification limitation
 
@@ -96,7 +100,7 @@ Use the standalone `gha-indie-worker-api-server.rs` smoke repository first; its 
 1. Run the fake-sentinel isolation harness above against the exact #154 `ores-compose` binary.
 2. Start `.ores-compose.yaml` with the real operator-owned bindings.
 3. Confirm loopback `http://127.0.0.1:8100/readyz` is healthy and Cloudflare tunnel readiness is healthy locally.
-4. Enable/apply the optional laptop tunnel Terraform and verify public non-webhook paths are blocked.
+4. Enable/apply the optional laptop tunnel Terraform and verify public non-webhook paths and non-POST methods are blocked.
 5. Deliver a signed same-repository `pull_request` event for the smoke repo and retain the exact head SHA, worker job id, Check Run id, App id and terminal conclusion.
 6. Kill the worker after local execution becomes terminal but before/while GitHub delivery is pending, restart the same pinned stack, and verify the durable report-intent reconciler either completes the same Check Run or refuses success.
 7. Only after that succeeds, run #47's 30-PR / 16-org cohort observationally and compare against native stepful CI where available.
