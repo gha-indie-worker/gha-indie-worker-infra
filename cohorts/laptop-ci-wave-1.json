@@ -32,6 +32,12 @@
       "capability": "service environment isolation with env_clear for build, service, and healthcheck subprocesses"
     },
     {
+      "ref": "ORESoftware/ores-compose#161",
+      "kind": "issue",
+      "requiredState": "closed",
+      "capability": "phase-scoped build, start, and healthcheck environment least privilege"
+    },
+    {
       "ref": "gha-indie-worker/gha-indie-worker.rs#73",
       "kind": "pull_request",
       "requiredState": "merged",
@@ -56,10 +62,34 @@
       "capability": "durable reconciliation of orphaned checks and undelivered terminal verdicts"
     },
     {
+      "ref": "gha-indie-worker/gha-indie-worker.rs#79",
+      "kind": "issue",
+      "requiredState": "closed",
+      "capability": "complete filter-all authoritative Check Run recovery without hidden or duplicate runs"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker.rs#80",
+      "kind": "issue",
+      "requiredState": "closed",
+      "capability": "serialized monotonic durable report-intent transitions"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker-monorepo#9",
+      "kind": "pull_request",
+      "requiredState": "merged",
+      "capability": "pinned provenance-workspace worker build and verified binary receipt"
+    },
+    {
       "ref": "gha-indie-worker/gha-indie-worker-infra#46",
       "kind": "issue",
       "requiredState": "closed",
-      "capability": "current ores.compose.v1 worker plus Cloudflare Tunnel topology"
+      "capability": "current ores.compose.v1 worker plus Cloudflare Tunnel topology acceptance"
+    },
+    {
+      "ref": "gha-indie-worker/gha-indie-worker-infra#49",
+      "kind": "pull_request",
+      "requiredState": "merged",
+      "capability": "isolated loopback worker plus webhook-only Cloudflare Tunnel implementation"
     },
     {
       "ref": "ORESoftware/ores-gh-bots#58",
@@ -72,11 +102,16 @@
     "ORESoftware/ores-compose#150",
     "ORESoftware/ores-compose#152",
     "ORESoftware/ores-compose#154",
+    "ORESoftware/ores-compose#161",
     "gha-indie-worker/gha-indie-worker.rs#73",
     "gha-indie-worker/gha-indie-worker.rs#74",
     "gha-indie-worker/gha-indie-worker.rs#77",
     "gha-indie-worker/gha-indie-worker.rs#78",
+    "gha-indie-worker/gha-indie-worker.rs#79",
+    "gha-indie-worker/gha-indie-worker.rs#80",
+    "gha-indie-worker/gha-indie-worker-monorepo#9",
     "gha-indie-worker/gha-indie-worker-infra#46",
+    "gha-indie-worker/gha-indie-worker-infra#49",
     "ORESoftware/ores-gh-bots#58"
   ],
   "allowedOwners": [
