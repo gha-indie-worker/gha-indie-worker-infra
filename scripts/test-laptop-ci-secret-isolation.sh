@@ -51,7 +51,7 @@ export UNRELATED_SENTINEL='fake-unrelated-operator-sentinel'
 unset INTENTIONALLY_MISSING_SECRET || true
 
 # Static assertions bind this executable fixture to the production manifest and
-# prove the two credential families are not merely present somewhere in YAML —
+# prove credential/source families are not merely present somewhere in YAML —
 # they are present only in the intended service block.
 PROD="$ROOT/.ores-compose.yaml"
 RULES="$ROOT/modules/cloudflare/platform/rulesets.tf"
@@ -60,10 +60,11 @@ tunnel_block="$(service_block cloudflare-tunnel "$PROD")"
 api_block="$(service_block api "$PROD")"
 web_block="$(service_block web "$PROD")"
 
-grep -Fq 'commit: b599977c766a9b9209a8d554d506f8639be5a08b' "$PROD" || fail "production monorepo source pin drifted from reviewed #9 head"
+grep -Fq 'commit: 7843f373202f082f18c9a8175496ad4a4b2ed317' "$PROD" || fail "production monorepo source pin drifted from reviewed #9 head"
 [[ "$worker_block" == *'BUILD_SERVER_REPORTING_MODE: "app-required"'* ]] || fail "production worker is not app-required"
 [[ "$worker_block" == *'HOST: "127.0.0.1"'* ]] || fail "production worker is not loopback-bound"
 [[ "$worker_block" == *'BUILD_SERVER_WORK_ROOT: INDIEBUILD_WORK_ROOT'* ]] || fail "durable worker work root is not an explicit required binding"
+[[ "$worker_block" == *'INDIEBUILD_LIBS_SOURCE_DIR: INDIEBUILD_LIBS_SOURCE_DIR'* ]] || fail "private provenance checkout path is not an explicit required worker binding"
 [[ "$worker_block" == *'BUILD_SERVER_GITHUB_APP_PRIVATE_KEY_PATH: INDIEBUILD_GITHUB_APP_PRIVATE_KEY_PATH'* ]] || fail "worker App key binding missing"
 [[ "$worker_block" == *'BUILD_SERVER_GITHUB_WEBHOOK_SECRET: INDIEBUILD_GITHUB_WEBHOOK_SECRET'* ]] || fail "worker webhook binding missing"
 [[ "$worker_block" == *'scripts/bootstrap-ci-worker.sh'* ]] || fail "worker build does not use the trusted bootstrap"
@@ -76,12 +77,14 @@ grep -Fq 'commit: b599977c766a9b9209a8d554d506f8639be5a08b' "$PROD" || fail "pro
 [[ "$tunnel_block" != *'INDIEBUILD_GITHUB_APP_'* ]] || fail "tunnel block can see App bindings"
 [[ "$tunnel_block" != *'INDIEBUILD_GITHUB_WEBHOOK_SECRET'* ]] || fail "tunnel block can see webhook binding"
 [[ "$tunnel_block" != *'INDIEBUILD_WORKER_AUTH_SECRET'* ]] || fail "tunnel block can see worker auth binding"
+[[ "$tunnel_block" != *'INDIEBUILD_LIBS_SOURCE_DIR'* ]] || fail "tunnel block can see private provenance checkout path"
 
 for sibling in "$api_block" "$web_block"; do
   [[ "$sibling" != *'INDIEBUILD_GITHUB_APP_'* ]] || fail "ordinary sibling can see App bindings"
   [[ "$sibling" != *'INDIEBUILD_GITHUB_WEBHOOK_SECRET'* ]] || fail "ordinary sibling can see webhook binding"
   [[ "$sibling" != *'INDIEBUILD_WORKER_AUTH_SECRET'* ]] || fail "ordinary sibling can see worker auth binding"
   [[ "$sibling" != *'INDIEBUILD_CLOUDFLARE_TUNNEL_TOKEN'* ]] || fail "ordinary sibling can see tunnel binding"
+  [[ "$sibling" != *'INDIEBUILD_LIBS_SOURCE_DIR'* ]] || fail "ordinary sibling can see private provenance checkout path"
 done
 
 if grep -Eq -- '--token([ =]|$)' "$PROD"; then
@@ -149,6 +152,7 @@ fi
 
 echo "laptop CI isolation acceptance: PASS"
 echo "- production source pin and trusted phase-scrub wrappers are fixed"
+echo "- private provenance checkout path is required only by the worker service"
 echo "- production credential families are scoped to the intended service blocks"
 echo "- worker/tunnel/sibling environments isolated across build, service and healthcheck"
 echo "- undeclared parent sentinel absent"
