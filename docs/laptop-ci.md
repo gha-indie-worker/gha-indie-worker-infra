@@ -39,7 +39,7 @@ The production `.ores-compose.yaml` is intentionally reproducible and currently 
 - split worker commit `be8f6aac3eb6e1d1f76d613e3082ca2114ceb2bf`;
 - provenance workspace commit `ORESoftware/k8s-cluster@5cfac43c6900898f36f588d044ca34083da1c726`.
 
-When a dependency PR merges with a different SHA, advance the pin explicitly. Do not replace an immutable pin with a branch name.
+When a dependency PR merges with a different SHA, advance the pin explicitly. Do not replace an immutable pin with a branch name. The pins above are frozen for this review unless a dependency itself changes.
 
 The compose executable must include the executor half of `ORESoftware/ores-compose#154`: service environment admission before source side effects plus `env_clear()` for build, service and healthcheck commands.
 
