@@ -5,7 +5,7 @@ source:
   repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git
   # Exact head of gha-indie-worker-monorepo#9. Keep this pinned; when #9 lands
   # with a different merge SHA, advance this pin explicitly in the same review.
-  commit: b599977c766a9b9209a8d554d506f8639be5a08b
+  commit: 7843f373202f082f18c9a8175496ad4a4b2ed317
   checkout_dir: .ores/sources/gha-indie-worker-monorepo
 
 # Policy authority for service selection. Port 8080 is intentionally NOT owned
@@ -86,10 +86,11 @@ services:
       BUILD_SERVER_LAMBDA_ENABLED: "false"
       BUILD_SERVER_KEEP_WORKDIRS: "false"
     secret_env:
-      # This non-secret state path intentionally uses the required binding
-      # mechanism too: it must be an operator-owned absolute directory OUTSIDE
-      # the materialized source checkout so report intents survive refreshes.
+      # These two non-secret filesystem paths intentionally use the required
+      # binding mechanism: both must be operator-owned absolute paths outside
+      # the materialized source tree. #161 will separate build-only/runtime env.
       BUILD_SERVER_WORK_ROOT: INDIEBUILD_WORK_ROOT
+      INDIEBUILD_LIBS_SOURCE_DIR: INDIEBUILD_LIBS_SOURCE_DIR
       BUILD_SERVER_GITHUB_APP_ID: INDIEBUILD_GITHUB_APP_ID
       BUILD_SERVER_GITHUB_APP_PRIVATE_KEY_PATH: INDIEBUILD_GITHUB_APP_PRIVATE_KEY_PATH
       BUILD_SERVER_GITHUB_WEBHOOK_SECRET: INDIEBUILD_GITHUB_WEBHOOK_SECRET
@@ -103,7 +104,7 @@ services:
     replicas: 1
     healthcheck:
       # Until ores-compose has phase-scoped env, use a trusted wrapper that
-      # unsets worker secrets before exec'ing curl.
+      # unsets worker secrets and build-only source paths before exec'ing curl.
       command: ["bash", "scripts/ci-worker-healthcheck.sh"]
       interval_ms: 3000
       timeout_ms: 2000
