@@ -1,0 +1,255 @@
+name: certify ORE exact heads 20260922
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-ore-exact-heads-20260922.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  reactive-maps:
+    if: github.head_ref == 'ci/certify-ore-exact-heads-20260922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SUBJECT_SHA: 2d9a6f1d418c2876d1871b22a5ae60b1376ca43e
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-reactive-maps
+          ref: ${{ env.SUBJECT_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: subject
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact source
+        run: test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
+      - uses: actions/setup-node@1e60f620b9541d2c2439ed7661e09b58fe1c9b84 # v4
+        with:
+          node-version: '22'
+      - name: TypeScript install
+        working-directory: subject/src/typescript
+        run: npm install --ignore-scripts
+      - name: TypeScript tests
+        working-directory: subject/src/typescript
+        run: npm test
+      - name: TypeScript build
+        working-directory: subject/src/typescript
+        run: npm run build
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
+        with:
+          go-version: '1.23.x'
+      - name: Go race tests
+        working-directory: subject/src/go
+        run: go test -race ./...
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust tests
+        working-directory: subject/src/rust
+        run: cargo test --all-targets
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '27.3'
+          gleam-version: '1.15.4'
+          rebar3-version: '3'
+      - name: Gleam tests
+        working-directory: subject/src/gleam
+        run: gleam test
+      - name: Prove source immutable
+        if: always()
+        run: |
+          test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
+          test -z "$(git -C subject status --porcelain)"
+
+  clients-core:
+    if: github.head_ref == 'ci/certify-ore-exact-heads-20260922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SUBJECT_SHA: 64d653c2550f9ac3b7fd93e3bb1ad7a9e9834681
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-clients-core
+          ref: ${{ env.SUBJECT_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: subject
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact source
+        run: test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          components: rustfmt,clippy
+      - name: Configure private Cargo Git reads
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+      - name: Rust format
+        working-directory: subject
+        run: cargo fmt --all -- --check
+      - name: Rust Clippy
+        working-directory: subject
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Rust tests
+        working-directory: subject
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo test --all-targets --all-features
+      - name: Prove source immutable
+        if: always()
+        run: |
+          test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
+          test -z "$(git -C subject status --porcelain)"
+
+  ores-cli:
+    if: github.head_ref == 'ci/certify-ore-exact-heads-20260922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      SUBJECT_SHA: 40daac105e1e0ca76b4c086426f81bd70024887b
+      TJSV_SHA: 93dd73cb246a09b0a1c62d7192cc62ca6ecbe405
+    steps:
+      - name: Checkout exact ores-cli source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-cli
+          ref: ${{ env.SUBJECT_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: subject
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact source
+        run: test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
+      - name: Checkout immutable TJSV authority
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/typespec-json-schema-validator
+          ref: ${{ env.TJSV_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: subject/tmp/tjsv
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify TJSV authority
+        run: test "$(git -C subject/tmp/tjsv rev-parse HEAD)" = "$TJSV_SHA"
+      - uses: actions/setup-node@1e60f620b9541d2c2439ed7661e09b58fe1c9b84
+        with:
+          node-version: '22.16.0'
+      - name: Install immutable TJSV dependencies
+        working-directory: subject/tmp/tjsv
+        run: npm ci --omit=dev
+      - name: Verify installer contracts
+        working-directory: subject
+        run: |
+          set -euo pipefail
+          test -x post-install.sh
+          command -v zsh >/dev/null
+          bash -n post-install.sh
+          bash -n tests/post_install.sh
+          bash -n tests/shell_install_contract.sh
+          bash -n tests/tjsv_lifecycle_contract.sh
+          bash -n tests/launcher_symlink_contract.sh
+          bash tests/post_install.sh
+          bash tests/shell_install_contract.sh
+          bash tests/tjsv_lifecycle_contract.sh
+          bash tests/launcher_symlink_contract.sh
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: 1.95.0
+          components: clippy,rustfmt
+      - name: Configure private Cargo Git reads
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+      - name: Locked metadata
+        working-directory: subject
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo metadata --locked --format-version 1 >/dev/null
+      - name: Rust format
+        working-directory: subject
+        run: cargo fmt --all --check
+      - name: Rust Clippy
+        working-directory: subject
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo clippy --all-targets --all-features --locked -- -D warnings
+      - name: Rust tests
+        working-directory: subject
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo test --all-targets --all-features --locked
+      - name: Positive TypeSpec and JSON Schema admission
+        working-directory: subject
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/tjsv-generated"
+          node tmp/tjsv/bin/typespec-json-schema-validator.mjs check \
+            --typespec=contracts/infra-gitops/main.tsp \
+            --schema=contracts/infra-gitops/authored.schema.json \
+            --report="$RUNNER_TEMP/infra-gitops-parity.json" \
+            --contract-ir="$RUNNER_TEMP/infra-gitops-contract-ir.json" \
+            --output-dir="$RUNNER_TEMP/tjsv-generated"
+          test -s "$RUNNER_TEMP/tjsv-generated/typespec.generated.schema.json"
+          ORES_TJSV_REPORT="$RUNNER_TEMP/infra-gitops-parity.json" \
+          ORES_TJSV_GENERATED_SCHEMA="$RUNNER_TEMP/tjsv-generated/typespec.generated.schema.json" \
+            cargo test --locked --test tjsv_ci_fixture assert_success_evidence -- --exact --ignored --nocapture
+      - name: TypeSpec-only drift rejection
+        working-directory: subject
+        run: |
+          set -euo pipefail
+          cp contracts/infra-gitops/main.tsp "$RUNNER_TEMP/infra-gitops-typespec-drift.tsp"
+          ORES_TJSV_FIXTURE="$RUNNER_TEMP/infra-gitops-typespec-drift.tsp" \
+          ORES_TJSV_FROM='supabaseRoot: string;' ORES_TJSV_TO='supabaseRoot: int32;' \
+            cargo test --locked --test tjsv_ci_fixture mutate_typespec_once -- --exact --ignored --nocapture
+          set +e
+          node tmp/tjsv/bin/typespec-json-schema-validator.mjs check \
+            --typespec="$RUNNER_TEMP/infra-gitops-typespec-drift.tsp" \
+            --schema=contracts/infra-gitops/authored.schema.json \
+            --report="$RUNNER_TEMP/typespec-drift-report.json" \
+            --contract-ir="$RUNNER_TEMP/typespec-drift-ir.json" \
+            --output-dir="$RUNNER_TEMP/typespec-drift-generated"
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          ORES_TJSV_REPORT="$RUNNER_TEMP/typespec-drift-report.json" \
+            cargo test --locked --test tjsv_ci_fixture assert_rejection_evidence -- --exact --ignored --nocapture
+      - name: JSON-Schema-only drift rejection
+        working-directory: subject
+        run: |
+          set -euo pipefail
+          cp contracts/infra-gitops/authored.schema.json "$RUNNER_TEMP/infra-gitops-drift.schema.json"
+          ORES_TJSV_FIXTURE="$RUNNER_TEMP/infra-gitops-drift.schema.json" \
+          ORES_TJSV_JSON_POINTER='/$defs/InfraGitOpsContract/properties/supabaseRoot/type' \
+          ORES_TJSV_JSON_VALUE='"integer"' \
+            cargo test --locked --test tjsv_ci_fixture mutate_json_schema_value -- --exact --ignored --nocapture
+          set +e
+          node tmp/tjsv/bin/typespec-json-schema-validator.mjs check \
+            --typespec=contracts/infra-gitops/main.tsp \
+            --schema="$RUNNER_TEMP/infra-gitops-drift.schema.json" \
+            --report="$RUNNER_TEMP/schema-drift-report.json" \
+            --contract-ir="$RUNNER_TEMP/schema-drift-ir.json" \
+            --output-dir="$RUNNER_TEMP/schema-drift-generated"
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          ORES_TJSV_REPORT="$RUNNER_TEMP/schema-drift-report.json" \
+          ORES_TJSV_CONTRACT_IR="$RUNNER_TEMP/schema-drift-ir.json" \
+            cargo test --locked --test tjsv_ci_fixture assert_rejection_evidence -- --exact --ignored --nocapture
+      - name: Repository audit
+        working-directory: subject
+        run: cargo run --quiet --locked -- audit repo --path . --profile baseline > "$RUNNER_TEMP/repo-audit.jsonl"
+      - name: Package audit
+        working-directory: subject
+        run: cargo run --quiet --locked -- audit package --path . > "$RUNNER_TEMP/package-audit.jsonl"
+      - name: Prove sources immutable
+        if: always()
+        run: |
+          test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
+          git -C subject diff --exit-code
+          git -C subject/tmp/tjsv diff --exit-code
