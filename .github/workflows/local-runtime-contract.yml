@@ -113,7 +113,7 @@ jobs:
                   "server_stream" => {
                       let return_spec = single_generic_type(output, "ServerStreamResult").ok_or_else(|| {
                           RpcSourceError::Contract(format!(
-                              "{path}: {name} uses stream = \\"server_stream\\" and must return ServerStreamResult<OperationSpec>"
+                              "{path}: {name} uses server_stream metadata and must return ServerStreamResult<OperationSpec>"
                           ))
                       })?;
                       if normalize_type(&return_spec) != normalize_type(&meta.spec) {
