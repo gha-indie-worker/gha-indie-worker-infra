@@ -32,13 +32,16 @@ if start >= 0:
         raise SystemExit(f"{PATH}: ApiHttpRoute end anchor drifted")
     text = text[:start] + text[end + 3 :]
 
-select_start = text.find("fn select_api_tmp(root: &Path, request: &RequestView<'_>)")
-parser_start = text.find("fn collect_generated_api_lambdas(root: &Path)", select_start)
-render_start = text.find("fn render_api_main(selection: &ApiSelection)", parser_start)
+select_start = text.find("fn select_api_tmp(")
+parser_start = text.find("fn collect_generated_api_lambdas(", select_start)
+render_start = text.find("fn render_api_main(", parser_start)
 if min(select_start, parser_start, render_start) < 0:
     raise SystemExit(f"{PATH}: selection/parser/render anchors drifted")
 
-replacement = r'''fn select_api_tmp(root: &Path, request: &RequestView<'_>) -> Result<(PathBuf, ApiSelection), String> {
+replacement = r'''fn select_api_tmp(
+    root: &Path,
+    request: &RequestView<'_>,
+) -> Result<(PathBuf, ApiSelection), String> {
     if request.path == "/v1/rpc" {
         if request.method != "POST" {
             return Err("/v1/rpc PPR invocation requires POST".to_owned());
@@ -64,8 +67,9 @@ replacement = r'''fn select_api_tmp(root: &Path, request: &RequestView<'_>) -> R
         ));
     }
 
-    let (operation, route_params) = LambdaOperation::select_ppr_http(root, request.method, request.path)
-        .map_err(|error| format!("HTTP PPR selection failed: {error}"))?;
+    let (operation, route_params) =
+        LambdaOperation::select_ppr_http(root, request.method, request.path)
+            .map_err(|error| format!("HTTP PPR selection failed: {error}"))?;
     let tmp = tmp_for_operation(root, &operation)?;
     Ok((
         tmp,
@@ -80,9 +84,9 @@ replacement = r'''fn select_api_tmp(root: &Path, request: &RequestView<'_>) -> R
 }
 
 fn tmp_for_operation(root: &Path, operation: &LambdaOperation) -> Result<PathBuf, String> {
-    let handlers = root.join(&operation.handlers_source);
-    if !handlers.starts_with(root)
-        || handlers.components().any(|component| {
+    let relative = Path::new(&operation.handlers_source);
+    if relative.is_absolute()
+        || relative.components().any(|component| {
             matches!(
                 component,
                 Component::ParentDir | Component::RootDir | Component::Prefix(_)
@@ -94,6 +98,7 @@ fn tmp_for_operation(root: &Path, operation: &LambdaOperation) -> Result<PathBuf
             operation.operation_key, operation.handlers_source
         ));
     }
+    let handlers = root.join(relative);
     let metadata = fs::symlink_metadata(&handlers).map_err(|error| {
         format!(
             "could not inspect typed Lambda handlers source {}: {error}",
@@ -124,7 +129,10 @@ fn tmp_for_operation(root: &Path, operation: &LambdaOperation) -> Result<PathBuf
         .ok_or("typed Lambda handlers source has no route directory")?;
     let lambda = route_dir.join("lambda.rs");
     let metadata = fs::symlink_metadata(&lambda).map_err(|error| {
-        format!("could not inspect generated API Lambda {}: {error}", lambda.display())
+        format!(
+            "could not inspect generated API Lambda {}: {error}",
+            lambda.display()
+        )
     })?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err(format!(
@@ -132,8 +140,12 @@ fn tmp_for_operation(root: &Path, operation: &LambdaOperation) -> Result<PathBuf
             lambda.display()
         ));
     }
-    let source = fs::read_to_string(&lambda)
-        .map_err(|error| format!("could not read generated API Lambda {}: {error}", lambda.display()))?;
+    let source = fs::read_to_string(&lambda).map_err(|error| {
+        format!(
+            "could not read generated API Lambda {}: {error}",
+            lambda.display()
+        )
+    })?;
     if source.lines().next() != Some(GENERATED_API_LAMBDA_MARKER) {
         return Err(format!(
             "{} is not an ores-stack generated API Lambda",
@@ -147,8 +159,8 @@ fn tmp_for_operation(root: &Path, operation: &LambdaOperation) -> Result<PathBuf
 text = text[:select_start] + replacement + text[render_start:]
 
 # The old generated-source parser is gone; so are its route-matching helpers.
-match_start = text.find("fn match_route(pattern: &str, raw_path: &str)")
-json_start = text.find("fn rust_json_object(values: &BTreeMap<String, String>)", match_start)
+match_start = text.find("fn match_route(")
+json_start = text.find("fn rust_json_object(", match_start)
 if match_start >= 0:
     if json_start < 0:
         raise SystemExit(f"{PATH}: route helper end anchor drifted")
