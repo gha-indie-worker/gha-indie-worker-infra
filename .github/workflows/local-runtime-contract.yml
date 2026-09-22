@@ -14,6 +14,7 @@ on:
       - ".devcontainer/**"
       - "docs/local-development.md"
       - ".github/workflows/local-runtime-contract.yml"
+      - "scripts/ci/**"
   push:
     branches: [main]
     paths:
@@ -38,3 +39,109 @@ jobs:
           submodules: false
       - name: Exact source / gitlink parity
         run: cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate
+
+  certify-stream:
+    if: github.event_name == 'pull_request' && github.head_ref == 'ci/ores-stack-pr162-cert-20260921'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout certification harness
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: cert-harness
+          persist-credentials: false
+          submodules: false
+
+      - name: Checkout current ores-stack stream branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-stack
+          ref: feat/server-stream-lambda-ppr-20260921
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: ores-stack
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Configure private Git authentication
+        shell: bash
+        working-directory: ores-stack
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          gh auth setup-git
+          git config user.name 'ORESoftware automation'
+          git config user.email 'noreply@oresoftware.com'
+
+      - name: Patch absolute PPR deadline and reap invariants
+        shell: bash
+        working-directory: ores-stack
+        run: |
+          set -Eeuo pipefail
+          python3 ../cert-harness/scripts/ci/patch_ores_stack_ppr_deadline.py
+          rustfmt --edition 2021 crates/ores-stack-cli/src/process_per_request.rs
+          git diff --check -- crates/ores-stack-cli/src/process_per_request.rs
+
+      - name: Commit deadline hardening when needed
+        shell: bash
+        working-directory: ores-stack
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          git add crates/ores-stack-cli/src/process_per_request.rs
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix(ppr): enforce one hard request deadline through finalization'
+            git push origin HEAD:feat/server-stream-lambda-ppr-20260921
+          fi
+          printf 'certifying ores-stack %s\n' "$(git rev-parse HEAD)"
+
+      - name: Install ores-stack MSRV
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.88.0 --profile minimal
+          rustup default 1.88.0
+
+      - name: Bootstrap deterministic workspace lock
+        shell: bash
+        working-directory: ores-stack
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+        run: |
+          set -Eeuo pipefail
+          bash scripts/bootstrap-cargo-lock.sh ensure
+          cargo metadata --locked --no-deps >/dev/null
+
+      - name: Compile deadline, typed selection, and stream contracts
+        shell: bash
+        working-directory: ores-stack
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+        run: |
+          set -Eeuo pipefail
+          cargo test --locked -p ores-stack-core rpc_spec_validation::tests
+          cargo test --locked -p ores-stack-core \
+            --test rpc_generated_tree_compiles \
+            --test rpc_server_stream_generated_tree_compiles
+          cargo test --locked -p ores-stack-cli process_per_request
+          cargo test --locked -p ores-stack-cli ppr_api_direct_child
+
+      - name: Build ores-stack CLI
+        shell: bash
+        working-directory: ores-stack
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+        run: |
+          set -Eeuo pipefail
+          cargo build --locked -p ores-stack-cli --bin ores-stack
+
+      - name: Prove PPR relay is incrementally chunked
+        shell: bash
+        working-directory: ores-stack
+        run: |
+          set -Eeuo pipefail
+          timeout 5m bash scripts/ppr-stream-e2e-smoke.sh
