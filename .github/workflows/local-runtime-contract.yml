@@ -70,6 +70,15 @@ jobs:
           set -Eeuo pipefail
           rustup toolchain install 1.88.0 --profile minimal
           rustup default 1.88.0
+      - name: Refresh lockfile in isolated certification checkout
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+        run: |
+          set -Eeuo pipefail
+          cargo generate-lockfile
+          git diff -- Cargo.lock | tee /tmp/ores-stack-pr162-cargo-lock.diff
       - name: Compile generated unary and server-stream dispatch facades
         shell: bash
         env:
@@ -80,6 +89,14 @@ jobs:
           cargo test --locked -p ores-stack-core \
             --test rpc_generated_tree_compiles \
             --test rpc_stream_admission_contract
+      - name: Build ores-stack CLI for PPR certification
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+        run: |
+          set -Eeuo pipefail
+          cargo build --locked -p ores-stack-cli --bin ores-stack
       - name: Prove incremental multi-chunk PPR server stream
         shell: bash
         env:
