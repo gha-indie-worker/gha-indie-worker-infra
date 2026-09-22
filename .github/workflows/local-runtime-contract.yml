@@ -38,3 +38,40 @@ jobs:
           submodules: false
       - name: Exact source / gitlink parity
         run: cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate
+
+  certify-ores-stack-pr162:
+    if: github.event_name == 'pull_request' && github.head_ref == 'ci/ores-stack-pr162-cert-20260921'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout private ores-stack audited head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-stack
+          ref: fcbf88b17ab0fd777781c4901651d5b1d58d3b2f
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact source head
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "fcbf88b17ab0fd777781c4901651d5b1d58d3b2f"
+      - name: Install ores-stack MSRV
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.88.0 --profile minimal
+          rustup default 1.88.0
+      - name: Compile generated unary and server-stream dispatch facades
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo test --locked -p ores-stack-core \
+            --test rpc_generated_tree_compiles \
+            --test rpc_stream_admission_contract
+      - name: Prove incremental multi-chunk PPR server stream
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout 15m bash scripts/ppr-server-stream-e2e.sh
