@@ -15,8 +15,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      EXPECTED_ORES_COMPOSE_SHA: 7de8e4c3beb44f54de9be10828c1104bc22486d6
-      EXPECTED_BASE_SHA: 2e0d1488ca32371e4f410f95cf6886674b86876c
+      EXPECTED_ORES_COMPOSE_SHA: 5a60d476305fe881898c84dd925962f653346a05
+      EXPECTED_BASE_SHA: 2deb9229521acd66f9f14bf858ac6f78c734d106
     steps:
       - name: Checkout certification harness
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
