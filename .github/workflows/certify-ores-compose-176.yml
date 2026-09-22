@@ -40,7 +40,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_ORES_COMPOSE_SHA"
-          git fetch origin "$EXPECTED_BASE_SHA" --depth=1
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
           test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | sort | tr '\n' ' ')" = 'tests/source_filter_execution_regressions.rs '
           git diff --check "$EXPECTED_BASE_SHA"..HEAD
           test -z "$(git status --porcelain)"
