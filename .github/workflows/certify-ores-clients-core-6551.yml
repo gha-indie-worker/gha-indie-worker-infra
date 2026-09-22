@@ -19,6 +19,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
+      - name: Checkout proof harness
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
       - name: Checkout exact source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -29,160 +34,28 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Verify exact source and main ancestry
+      - name: Verify exact source and configure guarded push
+        env:
+          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
         shell: bash
         run: |
           set -euo pipefail
           test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
-          test "$(git -C subject rev-parse origin/main)" = "$MAIN_SHA"
-          git -C subject merge-base --is-ancestor "$MAIN_SHA" "$SUBJECT_SHA"
           test -z "$(git -C subject status --porcelain)"
+          test -n "${ORE_SOURCE_PAT:-}"
           git -C subject config user.name ORESoftware
           git -C subject config user.email alex@oresoftware.com
-          git config --global url."https://x-access-token:${{ secrets.ORE_SOURCE_PAT }}@github.com/".insteadOf "https://github.com/"
+          git -C subject remote set-url origin "https://x-access-token:${ORE_SOURCE_PAT}@github.com/ORESoftware/ores-clients-core.git"
+          test "$(git -C subject ls-remote origin refs/heads/main | awk '{print $1}')" = "$MAIN_SHA"
+          test "$(git -C subject ls-remote origin "refs/heads/${SOURCE_BRANCH}" | awk '{print $1}')" = "$SUBJECT_SHA"
+          git -C subject merge-base --is-ancestor "$MAIN_SHA" "$SUBJECT_SHA"
 
-      - name: Refactor Clippy defects without suppressions
-        working-directory: subject
+      - name: Apply narrow Clippy refactor
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          render = Path('src/render.rs')
-          text = render.read_text()
-          old = "s.split(|c: char| c == '_' || c == '-')"
-          if text.count(old) != 1:
-              raise SystemExit(f'expected one manual char comparison, found {text.count(old)}')
-          render.write_text(text.replace(old, "s.split(['_', '-'])"))
-
-          lib = Path('src/lib.rs')
-          text = lib.read_text()
-
-          old_call = '''        if run_conformance {
-            run_language_conformance(
-                root,
-                &loaded,
-                target,
-                renderer,
-                language,
-                &canonical,
-                &package_root,
-                &mut failures,
-            )?;
-        }
-'''
-          new_call = '''        if run_conformance {
-            let context = ConformanceContext {
-                root,
-                config: root.join(CONFIG_FILE),
-                contract: clean_join(root, &loaded.cfg.contract.surface)?,
-                header: &canonical,
-                package_root: &package_root,
-                target,
-                renderer,
-            };
-            run_language_conformance(&loaded, language, &context, &mut failures)?;
-        }
-'''
-          if text.count(old_call) != 1:
-              raise SystemExit('run_language_conformance call shape changed')
-          text = text.replace(old_call, new_call)
-
-          marker = 'fn run_language_conformance(\n'
-          if text.count(marker) != 1:
-              raise SystemExit('run_language_conformance definition shape changed')
-          context_def = '''struct ConformanceContext<'a> {
-    root: &'a Path,
-    config: PathBuf,
-    contract: PathBuf,
-    header: &'a Path,
-    package_root: &'a Path,
-    target: &'a str,
-    renderer: &'a str,
-}
-
-'''
-          text = text.replace(marker, context_def + marker, 1)
-
-          old_sig = '''fn run_language_conformance(
-    root: &Path,
-    loaded: &Loaded,
-    target: &str,
-    renderer: &str,
-    language: &LanguageConfig,
-    header: &Path,
-    package_root: &Path,
-    failures: &mut Vec<String>,
-) -> Result<()> {
-'''
-          new_sig = '''fn run_language_conformance(
-    loaded: &Loaded,
-    language: &LanguageConfig,
-    context: &ConformanceContext<'_>,
-    failures: &mut Vec<String>,
-) -> Result<()> {
-    let target = context.target;
-'''
-          if text.count(old_sig) != 1:
-              raise SystemExit('run_language_conformance signature changed')
-          text = text.replace(old_sig, new_sig)
-
-          old_shell_call = '''            let status = shell(
-                command,
-                root,
-                &root.join(CONFIG_FILE),
-                &clean_join(root, &loaded.cfg.contract.surface)?,
-                header,
-                package_root,
-                target,
-                renderer,
-            )?;
-'''
-          if text.count(old_shell_call) != 1:
-              raise SystemExit('shell call shape changed')
-          text = text.replace(old_shell_call, '            let status = shell(command, context)?;\n')
-
-          old_shell = '''fn shell(
-    command: &str,
-    root: &Path,
-    config: &Path,
-    contract: &Path,
-    header: &Path,
-    package_root: &Path,
-    language: &str,
-    renderer: &str,
-) -> Result<std::process::ExitStatus> {
-'''
-          new_shell = '''fn shell(
-    command: &str,
-    context: &ConformanceContext<'_>,
-) -> Result<std::process::ExitStatus> {
-'''
-          if text.count(old_shell) != 1:
-              raise SystemExit('shell signature changed')
-          text = text.replace(old_shell, new_shell)
-
-          old_env = '''    cmd.current_dir(root)
-        .env("ORES_CLIENTS_CONFIG", config)
-        .env("ORES_CLIENTS_CONTRACT", contract)
-        .env("ORES_CLIENTS_HEADER", header)
-        .env("ORES_CLIENTS_PACKAGE_ROOT", package_root)
-        .env("ORES_CLIENTS_LANGUAGE", language)
-        .env("ORES_CLIENTS_RENDERER", renderer)
-'''
-          new_env = '''    cmd.current_dir(context.root)
-        .env("ORES_CLIENTS_CONFIG", &context.config)
-        .env("ORES_CLIENTS_CONTRACT", &context.contract)
-        .env("ORES_CLIENTS_HEADER", context.header)
-        .env("ORES_CLIENTS_PACKAGE_ROOT", context.package_root)
-        .env("ORES_CLIENTS_LANGUAGE", context.target)
-        .env("ORES_CLIENTS_RENDERER", context.renderer)
-'''
-          if text.count(old_env) != 1:
-              raise SystemExit('shell environment block changed')
-          lib.write_text(text.replace(old_env, new_env))
-          PY
+          python3 scripts/repair-ores-clients-core-1.py subject
+          test "$(git -C subject diff --name-only | sort)" = $'src/lib.rs\nsrc/render.rs'
 
       - name: Install source CI Rust toolchain
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
@@ -208,7 +81,7 @@ jobs:
         working-directory: subject
         run: cargo test --all-targets --all-features
 
-      - name: Verify diff and fast-forward only admitted branch
+      - name: Verify and fast-forward only admitted branch
         working-directory: subject
         shell: bash
         run: |
