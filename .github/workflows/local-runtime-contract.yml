@@ -73,25 +73,32 @@ jobs:
           git config user.name 'ORESoftware automation'
           git config user.email 'noreply@oresoftware.com'
 
-      - name: Patch stream-aware spec projection validation
+      - name: Patch stream-aware source authorities
         shell: bash
         working-directory: ores-stack
         run: |
           set -Eeuo pipefail
           python3 ../cert-harness/scripts/ci/patch_ores_stack_server_stream.py
-          rustfmt --edition 2021 crates/ores-stack-core/src/rpc_spec_validation.rs
-          git diff --check -- crates/ores-stack-core/src/rpc_spec_validation.rs
+          python3 ../cert-harness/scripts/ci/patch_ores_stack_ppr_typed_selection.py
+          rustfmt --edition 2021 \
+            crates/ores-stack-core/src/rpc_spec_validation.rs \
+            crates/ores-stack-cli/src/ppr_api_direct_child.rs
+          git diff --check -- \
+            crates/ores-stack-core/src/rpc_spec_validation.rs \
+            crates/ores-stack-cli/src/ppr_api_direct_child.rs
 
-      - name: Commit validator hardening when needed
+      - name: Commit authority hardening when needed
         shell: bash
         working-directory: ores-stack
         env:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
         run: |
           set -Eeuo pipefail
-          git add crates/ores-stack-core/src/rpc_spec_validation.rs
+          git add \
+            crates/ores-stack-core/src/rpc_spec_validation.rs \
+            crates/ores-stack-cli/src/ppr_api_direct_child.rs
           if ! git diff --cached --quiet; then
-            git commit -m 'fix(rpc): validate server-stream spec projections by stream shape'
+            git commit -m 'fix(ppr): use typed Lambda inventory for direct-child selection'
             git push origin HEAD:feat/server-stream-lambda-ppr-20260921
           fi
           printf 'certifying ores-stack %s\n' "$(git rev-parse HEAD)"
@@ -126,6 +133,7 @@ jobs:
           cargo test --locked -p ores-stack-core \
             --test rpc_generated_tree_compiles \
             --test rpc_server_stream_generated_tree_compiles
+          cargo test --locked -p ores-stack-cli ppr_api_direct_child
 
       - name: Build ores-stack CLI
         shell: bash
