@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: ORESoftware/ores-stack
-          ref: fcbf88b17ab0fd777781c4901651d5b1d58d3b2f
+          ref: 245a95c3f044f14b230b8558cbf065312b263eb5
           token: ${{ secrets.ORE_SOURCE_PAT }}
           persist-credentials: false
           fetch-depth: 1
@@ -56,7 +56,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$(git rev-parse HEAD)" = "fcbf88b17ab0fd777781c4901651d5b1d58d3b2f"
+          test "$(git rev-parse HEAD)" = "245a95c3f044f14b230b8558cbf065312b263eb5"
       - name: Configure private Git dependency authentication
         shell: bash
         env:
@@ -78,7 +78,14 @@ jobs:
         run: |
           set -Eeuo pipefail
           cargo generate-lockfile
-          git diff -- Cargo.lock | tee /tmp/ores-stack-pr162-cargo-lock.diff
+          git status --short -- Cargo.lock
+      - name: Preserve generated workspace lockfile
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ores-stack-pr162-Cargo.lock
+          path: Cargo.lock
+          if-no-files-found: error
+          retention-days: 2
       - name: Compile generated unary and server-stream dispatch facades
         shell: bash
         env:
