@@ -1,4 +1,4 @@
-name: certify ores-compose #176 exact head
+name: certify ores-compose #178 exact head
 
 on:
   pull_request:
@@ -8,14 +8,13 @@ on:
 permissions:
   contents: read
 
-# The exact checkout is deep enough to contain EXPECTED_BASE_SHA; do not re-fetch after credentials are removed.
 jobs:
   certify:
     if: github.head_ref == 'ci/certify-ores-compose-176-20260922'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      EXPECTED_ORES_COMPOSE_SHA: 5a60d476305fe881898c84dd925962f653346a05
+      EXPECTED_ORES_COMPOSE_SHA: 202171eaaad46f9f9f2684622c8e8574b998a88b
       EXPECTED_BASE_SHA: 2deb9229521acd66f9f14bf858ac6f78c734d106
     steps:
       - name: Checkout certification harness
@@ -66,45 +65,35 @@ jobs:
       - name: Changed-file formatting
         shell: bash
         working-directory: ores-compose
-        run: |
-          set -Eeuo pipefail
-          rustfmt --edition 2024 --check tests/source_filter_execution_regressions.rs
+        run: rustfmt --edition 2024 --check tests/source_filter_execution_regressions.rs
 
-      - name: All-target all-feature compile
+      - name: Locked all-target all-feature compile
         shell: bash
         working-directory: ores-compose
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-        run: |
-          set -Eeuo pipefail
-          cargo check --all-targets --all-features
+        run: cargo check --locked --all-targets --all-features
 
       - name: Source-filter regression suite
         shell: bash
         working-directory: ores-compose
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-        run: |
-          set -Eeuo pipefail
-          cargo test --test source_filter_execution_regressions -- --nocapture
+        run: cargo test --locked --test source_filter_execution_regressions -- --nocapture
 
-      - name: Full all-target all-feature tests
+      - name: Full locked all-target all-feature tests
         shell: bash
         working-directory: ores-compose
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-        run: |
-          set -Eeuo pipefail
-          cargo test --all-targets --all-features
+        run: cargo test --locked --all-targets --all-features
 
-      - name: Strict Clippy
+      - name: Strict locked Clippy
         shell: bash
         working-directory: ores-compose
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-        run: |
-          set -Eeuo pipefail
-          cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
       - name: Assert candidate remained immutable
         if: always()
@@ -118,4 +107,4 @@ jobs:
             git status --short >&2
             exit 1
           }
-          echo ORES_COMPOSE_176_CERT_PASS
+          echo ORES_COMPOSE_178_CERT_PASS
