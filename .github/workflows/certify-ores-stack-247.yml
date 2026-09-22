@@ -1,0 +1,74 @@
+name: certify ores-stack 247
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-ores-stack-247.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-ore-exact-heads-20260922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      SUBJECT_SHA: d953a8f6faaacfce35ef5ea9f3ca31977369f661
+    steps:
+      - name: Checkout exact ores-stack candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-stack
+          ref: ${{ env.SUBJECT_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: subject
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact source identity
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
+          test -z "$(git -C subject status --porcelain)"
+      - name: Configure private Cargo Git reads
+        working-directory: subject
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          gh auth setup-git
+      - name: Install Rust 1.88
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.88.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.88.0
+          rustc --version | grep -F 'rustc 1.88.0'
+      - name: Verify locked dependency graph
+        working-directory: subject
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo metadata --locked --format-version 1 >/dev/null
+      - name: Rust format
+        working-directory: subject
+        run: cargo fmt --all -- --check
+      - name: Check RPC HTTP adapter crate
+        working-directory: subject
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo check --locked -p ores-fn-adapters --all-targets
+      - name: Test RPC HTTP adapter crate
+        working-directory: subject
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo test --locked -p ores-fn-adapters --all-targets
+      - name: Clippy RPC HTTP adapter crate
+        working-directory: subject
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo clippy --locked -p ores-fn-adapters --all-targets -- -D warnings
+      - name: Assert source remained immutable
+        if: always()
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
+          test -z "$(git -C subject status --porcelain)"
