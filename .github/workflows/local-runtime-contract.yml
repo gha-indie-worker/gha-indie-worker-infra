@@ -63,76 +63,110 @@ jobs:
           gh auth setup-git
           git config user.name 'ORESoftware automation'
           git config user.email 'noreply@oresoftware.com'
-      - name: Admit the routes transport container
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          if ! grep -Fq 'relative == Path::new("mod.rs")' crates/ores-stack-core/src/rpc_publication.rs; then
-            git cherry-pick dc2f3b339520be369f9e2426ebe9d2c6b1098d69
-          fi
-      - name: Make handlers scanner server-stream-shape aware
+      - name: Make spec projection validator server-stream aware
         shell: bash
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path('crates/ores-stack-core/src/rpc_source_v2.rs')
+          path = Path('crates/ores-stack-core/src/rpc_spec_validation.rs')
           text = path.read_text()
 
-          old_start = '        let (response, error) = result_types(&function.sig.output).ok_or_else(|| {'
-          replacement = '''        let (response, error) = operation_result_types(
-              &function.sig.output,
-              &meta,
-              &path_display,
-              &function.sig.ident.to_string(),
-          )?;\n'''
-          if 'let (response, error) = operation_result_types(' not in text:
-              start = text.find(old_start)
-              if start < 0:
-                  raise SystemExit('rpc_source_v2: unary return-shape anchor missing')
-              end_marker = '        let name = function.sig.ident.to_string();'
-              end = text.find(end_marker, start)
-              if end < 0:
-                  raise SystemExit('rpc_source_v2: post-return-shape anchor missing')
-              text = text[:start] + replacement + text[end:]
+          def replace_once(old: str, new: str) -> None:
+              global text
+              if new in text:
+                  return
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'rpc_spec_validation.rs: expected exactly one anchor, found {count}: {old[:80]!r}')
+              text = text.replace(old, new, 1)
 
-          helper_marker = 'fn result_types(output: &ReturnType) -> Option<(String, String)> {'
+          replace_once(
+              '        let operations = collect_operations(&handlers_file, &handlers_display)?;',
+              '        let operations = collect_operations(&handlers_file, &handlers_display, &specs)?;',
+          )
+          replace_once(
+              '''fn collect_operations(
+              file: &syn::File,
+              path: &str,
+          ) -> Result<BTreeMap<String, OperationDecl>, RpcSourceError> {''',
+              '''fn collect_operations(
+              file: &syn::File,
+              path: &str,
+              specs: &BTreeMap<String, SpecDecl>,
+          ) -> Result<BTreeMap<String, OperationDecl>, RpcSourceError> {''',
+          )
+          replace_once(
+              '        let (spec, key) = parse_operation_meta(attr, path, function)?;',
+              '''        let (spec, key) = parse_operation_meta(attr, path, function)?;
+              let stream = operation_stream_mode(attr, path, function)?;''',
+          )
+          replace_once(
+              '''        let (response, error) = result_types(&function.sig.output).ok_or_else(|| {
+              RpcSourceError::Contract(format!(
+                  "{path}: {} must return Result<Success, Error>",
+                  function.sig.ident
+              ))
+          })?;''',
+              '''        let (response, error) = operation_result_types(
+              &function.sig.output,
+              &spec,
+              &stream,
+              specs,
+              path,
+              function,
+          )?;''',
+          )
+
+          helper_anchor = '''fn parse_operation_meta(
+              attr: &Attribute,'''
           helper = r'''fn operation_result_types(
               output: &ReturnType,
-              meta: &OperationMeta,
+              spec_name: &str,
+              stream: &str,
+              specs: &BTreeMap<String, SpecDecl>,
               path: &str,
-              name: &str,
+              function: &ItemFn,
           ) -> Result<(String, String), RpcSourceError> {
-              match meta.stream.as_str() {
+              match stream {
                   "unary" => result_types(output).ok_or_else(|| {
                       RpcSourceError::Contract(format!(
-                          "{path}: {name} is unary and must return Result<Success, Error>"
+                          "{path}: {} is unary and must return Result<Success, Error>",
+                          function.sig.ident
                       ))
                   }),
                   "server_stream" => {
                       let return_spec = single_generic_type(output, "ServerStreamResult").ok_or_else(|| {
                           RpcSourceError::Contract(format!(
-                              "{path}: {name} uses server_stream metadata and must return ServerStreamResult<OperationSpec>"
+                              "{path}: {} uses server_stream metadata and must return ServerStreamResult<OperationSpec>",
+                              function.sig.ident
                           ))
                       })?;
-                      if normalize_type(&return_spec) != normalize_type(&meta.spec) {
+                      if normalize_type(&return_spec) != normalize_type(spec_name) {
                           return Err(RpcSourceError::Contract(format!(
-                              "{path}: {name} returns ServerStreamResult<{return_spec}> but #[ores_operation] declares spec {}",
-                              meta.spec
+                              "{path}: {} returns ServerStreamResult<{return_spec}> but #[ores_operation] declares spec {spec_name}",
+                              function.sig.ident
                           )));
                       }
-                      Ok((
-                          format!("<{} as ::ores_api_docs::OperationSpec>::ResponseBody", meta.spec),
-                          format!("<{} as ::ores_api_docs::OperationSpec>::Error", meta.spec),
-                      ))
+                      let local = specs.get(&normalize_type(spec_name));
+                      let response = local
+                          .and_then(|decl| decl.associated.get("ResponseBody"))
+                          .cloned()
+                          .unwrap_or_else(|| format!("<{spec_name} as ::ores_api_docs::OperationSpec>::ResponseBody"));
+                      let error = local
+                          .and_then(|decl| decl.associated.get("Error"))
+                          .cloned()
+                          .unwrap_or_else(|| format!("<{spec_name} as ::ores_api_docs::OperationSpec>::Error"));
+                      Ok((response, error))
                   }
                   "client_stream" | "bidi" => Err(RpcSourceError::Contract(format!(
-                      "{path}: {name} uses unsupported Rust handler stream mode {:?}; ores-stack currently admits unary and server_stream only",
-                      meta.stream
+                      "{path}: {} uses unsupported Rust handler stream mode {stream:?}; ores-stack currently admits unary and server_stream only",
+                      function.sig.ident
                   ))),
                   other => Err(RpcSourceError::Contract(format!(
-                      "{path}: {name} uses unknown stream mode {other:?}"
+                      "{path}: {} uses unknown stream mode {other:?}",
+                      function.sig.ident
                   ))),
               }
           }
@@ -151,16 +185,112 @@ jobs:
               let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
                   return None;
               };
-              let types = type_arguments(arguments);
+              let types = arguments
+                  .args
+                  .iter()
+                  .filter_map(|argument| match argument {
+                      GenericArgument::Type(value) => Some(tokens(value)),
+                      _ => None,
+                  })
+                  .collect::<Vec<_>>();
               (types.len() == 1).then(|| types[0].clone())
+          }
+
+          fn operation_stream_mode(
+              attr: &Attribute,
+              path: &str,
+              function: &ItemFn,
+          ) -> Result<String, RpcSourceError> {
+              let args = attr
+                  .parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
+                  .map_err(|error| RpcSourceError::Contract(format!(
+                      "{path}: invalid #[ores_operation] on {}: {error}",
+                      function.sig.ident
+                  )))?;
+              let mut stream = None;
+              for meta in args {
+                  let Meta::NameValue(value) = meta else {
+                      continue;
+                  };
+                  if !value.path.is_ident("stream") {
+                      continue;
+                  }
+                  if stream.is_some() {
+                      return Err(RpcSourceError::Contract(format!(
+                          "{path}: {} declares stream metadata more than once",
+                          function.sig.ident
+                      )));
+                  }
+                  let Expr::Lit(value) = value.value else {
+                      return Err(RpcSourceError::Contract(format!(
+                          "{path}: {} stream must be a string literal",
+                          function.sig.ident
+                      )));
+                  };
+                  let Lit::Str(value) = value.lit else {
+                      return Err(RpcSourceError::Contract(format!(
+                          "{path}: {} stream must be a string literal",
+                          function.sig.ident
+                      )));
+                  };
+                  stream = Some(value.value());
+              }
+              let stream = stream.unwrap_or_else(|| "unary".to_owned());
+              if !matches!(stream.as_str(), "unary" | "server_stream" | "client_stream" | "bidi") {
+                  return Err(RpcSourceError::Contract(format!(
+                      "{path}: {} uses unsupported stream mode {stream:?}",
+                      function.sig.ident
+                  )));
+              }
+              Ok(stream)
           }
 
           '''
           if 'fn operation_result_types(' not in text:
-              index = text.find(helper_marker)
+              index = text.find(helper_anchor)
               if index < 0:
-                  raise SystemExit('rpc_source_v2: result_types helper anchor missing')
+                  raise SystemExit('rpc_spec_validation.rs: helper insertion anchor missing')
               text = text[:index] + helper + text[index:]
+
+          test_anchor = '''    #[test]
+              fn route_binding_must_resolve_through_handlers_module() {'''
+          test = r'''    #[test]
+              fn server_stream_return_shape_is_checked_against_operation_spec() {
+                  let handlers = r#"
+                      struct WatchOperation;
+                      impl OperationSpec for WatchOperation {
+                          type Path = NoSection;
+                          type Query = NoSection;
+                          type RequestHeaders = NoSection;
+                          type RequestBody = NoSection;
+                          type ResponseBody = WatchEvent;
+                          type ResponseHeaders = NoSection;
+                          type ResponseTrailers = NoSection;
+                          type Error = WatchError;
+                          const KEY: &'static str = "demo.watch.stream";
+                      }
+                      #[ores_operation(
+                          spec = WatchOperation,
+                          key = "demo.watch.stream",
+                          codecs("json"),
+                          audiences("server"),
+                          scope = "regular",
+                          stream = "server_stream"
+                      )]
+                      async fn watch_stream(ctx: TypedOperationContext<AppState, WatchOperation>)
+                          -> ServerStreamResult<WatchOperation> { todo!() }
+                  "#;
+                  let dir = fixture("", handlers);
+                  let issues = inspect_rpc_spec_projections(dir.path()).expect("inspect");
+                  assert!(issues.is_empty(), "{issues:?}");
+              }
+
+          '''
+          if 'fn server_stream_return_shape_is_checked_against_operation_spec()' not in text:
+              index = text.find(test_anchor)
+              if index < 0:
+                  raise SystemExit('rpc_spec_validation.rs: test insertion anchor missing')
+              text = text[:index] + test + text[index:]
 
           path.write_text(text)
           PY
@@ -174,10 +304,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           if ! git diff --quiet; then
-            git add crates/ores-stack-core/src/rpc_source_v2.rs
-            git commit -m 'fix(rpc): require typed server-stream handler returns'
+            git add crates/ores-stack-core/src/rpc_spec_validation.rs
+            git commit -m 'fix(rpc): validate server-stream spec projections by stream shape'
+            git push origin HEAD:feat/server-stream-lambda-ppr-20260921
           fi
-          git push origin HEAD:feat/server-stream-lambda-ppr-20260921
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   certify-current-server-stream-ppr:
@@ -216,13 +346,14 @@ jobs:
           set -Eeuo pipefail
           bash scripts/bootstrap-cargo-lock.sh ensure
           cargo metadata --locked --no-deps >/dev/null
-      - name: Compile unary and real v6 server-stream generated dispatchers
+      - name: Compile source projection and generated dispatch contracts
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
           CARGO_NET_GIT_FETCH_WITH_CLI: "true"
         run: |
           set -Eeuo pipefail
+          cargo test --locked -p ores-stack-core rpc_spec_validation::tests
           cargo test --locked -p ores-stack-core \
             --test rpc_generated_tree_compiles \
             --test rpc_server_stream_generated_tree_compiles
