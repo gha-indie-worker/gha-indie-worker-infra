@@ -1,0 +1,72 @@
+name: certify ores-reactive-maps 1
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-ores-reactive-maps-1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-ore-exact-heads-20260922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SUBJECT_SHA: 2d9a6f1d418c2876d1871b22a5ae60b1376ca43e
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-reactive-maps
+          ref: ${{ env.SUBJECT_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: subject
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact source
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
+          test -z "$(git -C subject status --porcelain)"
+      - name: Set up Node 22
+        uses: actions/setup-node@1e60f620b9541d2c2439ed7661e09b58fe1c9b84
+        with:
+          node-version: '22'
+      - name: TypeScript install
+        working-directory: subject/src/typescript
+        run: npm install --ignore-scripts
+      - name: TypeScript tests
+        working-directory: subject/src/typescript
+        run: npm test
+      - name: TypeScript build
+        working-directory: subject/src/typescript
+        run: npm run build
+      - name: Set up Go 1.23
+        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32
+        with:
+          go-version: '1.23.x'
+      - name: Go race tests
+        working-directory: subject/src/go
+        run: go test -race ./...
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Rust tests
+        working-directory: subject/src/rust
+        run: cargo test --all-targets
+      - name: Set up Gleam
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '27.3'
+          gleam-version: '1.15.4'
+          rebar3-version: '3'
+      - name: Gleam tests
+        working-directory: subject/src/gleam
+        run: gleam test
+      - name: Assert source remained immutable
+        if: always()
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
+          test -z "$(git -C subject status --porcelain)"
