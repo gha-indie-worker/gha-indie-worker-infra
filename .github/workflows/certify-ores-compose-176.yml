@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
 
+# The exact checkout is deep enough to contain EXPECTED_BASE_SHA; do not re-fetch after credentials are removed.
 jobs:
   certify:
     if: github.head_ref == 'ci/certify-ores-compose-176-20260922'
