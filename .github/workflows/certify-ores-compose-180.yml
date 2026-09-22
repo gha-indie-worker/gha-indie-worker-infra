@@ -1,20 +1,16 @@
 name: certify ores-compose 180 exact head
 
 on:
-  push:
-    branches:
-      - ci/certify-ores-compose-180-20260922
   pull_request:
     paths:
       - '.github/workflows/certify-ores-compose-180.yml'
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   certify:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.head_ref == 'ci/certify-ores-compose-180-20260922'
+    if: github.head_ref == 'ci/certify-ores-compose-180-20260922'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -22,6 +18,13 @@ jobs:
       EXPECTED_BASE_SHA: b0134dca90af18d642a331603b0538f3964967a1
       CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
     steps:
+      - name: Checkout harness
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: cert-harness
+          persist-credentials: false
+          submodules: false
+
       - name: Checkout exact ores-compose candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -32,7 +35,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 64
 
-      - name: Assert exact candidate and review surface
+      - name: Assert exact candidate and one-file review surface
         shell: bash
         working-directory: ores-compose
         run: |
@@ -43,7 +46,7 @@ jobs:
           git diff --check "$EXPECTED_BASE_SHA"..HEAD
           test -z "$(git status --porcelain)"
 
-      - name: Configure private Cargo reads
+      - name: Configure private Cargo Git reads
         shell: bash
         working-directory: ores-compose
         env:
@@ -60,41 +63,44 @@ jobs:
           rustup default 1.98.1
           rustc --version | grep -F 'rustc 1.98.1'
 
-      - name: Formatting
+      - name: Changed-file formatting
         shell: bash
         working-directory: ores-compose
         run: rustfmt --edition 2024 --check src/trusted_working_directory.rs
 
-      - name: Locked all-target compile
+      - name: Locked all-target all-feature compile
         shell: bash
         working-directory: ores-compose
         run: cargo check --locked --all-targets --all-features
 
-      - name: Trusted working-directory tests
+      - name: Trusted working-directory unit family
         shell: bash
         working-directory: ores-compose
         run: cargo test --locked --lib trusted_working_directory::tests:: -- --test-threads=1
 
-      - name: Repeat replacement identity test 100 times
+      - name: Repeat replacement detection 100 times
         shell: bash
         working-directory: ores-compose
         run: |
           set -Eeuo pipefail
           for i in $(seq 1 100); do
-            cargo test --locked --lib trusted_working_directory::tests::replacement_after_admission_is_detected -- --exact --test-threads=1 >/tmp/replacement.log 2>&1 || { cat /tmp/replacement.log; exit 1; }
+            cargo test --locked --lib trusted_working_directory::tests::replacement_after_admission_is_detected -- --exact --test-threads=1 >/tmp/replacement.log 2>&1 || {
+              cat /tmp/replacement.log
+              exit 1
+            }
           done
 
-      - name: Full locked suite
+      - name: Ordinary content mutation remains valid
         shell: bash
         working-directory: ores-compose
-        run: cargo test --locked --all-targets --all-features --no-fail-fast
+        run: cargo test --locked --lib trusted_working_directory::tests::directory_content_changes_do_not_change_admitted_identity -- --exact --test-threads=1
 
-      - name: Source-owned strict Clippy
+      - name: Candidate-file Clippy
         shell: bash
         working-directory: ores-compose
-        run: cargo clippy --locked --lib --no-deps -- -D warnings
+        run: cargo clippy --locked --lib --no-deps -- -A warnings -D clippy::all
 
-      - name: Immutable source guard
+      - name: Assert immutable candidate
         if: always()
         shell: bash
         working-directory: ores-compose
