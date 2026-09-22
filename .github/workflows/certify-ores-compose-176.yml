@@ -1,4 +1,4 @@
-name: certify ores-compose #178 exact head
+name: certify ores-compose #179 exact head
 
 on:
   pull_request:
@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     env:
-      EXPECTED_ORES_COMPOSE_SHA: 202171eaaad46f9f9f2684622c8e8574b998a88b
-      EXPECTED_BASE_SHA: 2deb9229521acd66f9f14bf858ac6f78c734d106
+      EXPECTED_ORES_COMPOSE_SHA: 71d82aad5665956717096238335116c1b8f7f077
+      EXPECTED_BASE_SHA: b0134dca90af18d642a331603b0538f3964967a1
       CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
     steps:
       - name: Checkout certification harness
@@ -42,7 +42,7 @@ jobs:
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_ORES_COMPOSE_SHA"
           git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
-          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | sort | tr '\n' ' ')" = 'tests/source_filter_execution_regressions.rs '
+          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | sort | tr '\n' ' ')" = 'tests/formal_dependency_graph_exhaustive.rs '
           git diff --check "$EXPECTED_BASE_SHA"..HEAD
           test -z "$(git status --porcelain)"
 
@@ -75,17 +75,17 @@ jobs:
       - name: Changed-file formatting
         shell: bash
         working-directory: ores-compose
-        run: rustfmt --edition 2024 --check tests/source_filter_execution_regressions.rs
+        run: rustfmt --edition 2024 --check tests/formal_dependency_graph_exhaustive.rs
 
       - name: Locked all-target all-feature compile
         shell: bash
         working-directory: ores-compose
         run: cargo check --locked --all-targets --all-features
 
-      - name: Source-filter regression suite
+      - name: Exhaustive dependency-graph proof
         shell: bash
         working-directory: ores-compose
-        run: cargo test --locked --test source_filter_execution_regressions -- --nocapture
+        run: cargo test --locked --test formal_dependency_graph_exhaustive -- --nocapture
 
       - name: Compare full-suite failures with exact base
         shell: bash
@@ -197,4 +197,4 @@ jobs:
             git -C /tmp/ores-compose-base status --short >&2
             exit 1
           }
-          echo ORES_COMPOSE_178_DIFFERENTIAL_CERT_PASS
+          echo ORES_COMPOSE_179_DIFFERENTIAL_CERT_PASS
