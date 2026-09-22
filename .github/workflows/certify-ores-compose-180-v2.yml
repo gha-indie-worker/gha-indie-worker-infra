@@ -1,0 +1,119 @@
+name: certify ores-compose 180 exact head v2
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-ores-compose-180-v2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXPECTED_SHA: 65681bd722cfa0667192956da5368aa814e58a60
+      EXPECTED_BASE_SHA: b0134dca90af18d642a331603b0538f3964967a1
+      CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+    steps:
+      - name: Checkout harness
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: cert-harness
+          persist-credentials: false
+          submodules: false
+
+      - name: Checkout exact ores-compose candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-compose
+          ref: 65681bd722cfa0667192956da5368aa814e58a60
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: ores-compose
+          persist-credentials: false
+          fetch-depth: 64
+
+      - name: Assert exact candidate and review surface
+        shell: bash
+        working-directory: ores-compose
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
+          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | sort | tr '\n' ' ')" = 'src/trusted_working_directory.rs '
+          git diff --check "$EXPECTED_BASE_SHA"..HEAD
+          test -z "$(git status --porcelain)"
+
+      - name: Configure private Cargo Git reads
+        shell: bash
+        working-directory: ores-compose
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          gh auth setup-git
+
+      - name: Install Rust 1.98.1
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt,clippy
+          rustup default 1.98.1
+          rustc --version | grep -F 'rustc 1.98.1'
+
+      - name: Changed-file formatting
+        shell: bash
+        working-directory: ores-compose
+        run: rustfmt --edition 2021 --check src/trusted_working_directory.rs
+
+      - name: Locked all-target all-feature compile
+        shell: bash
+        working-directory: ores-compose
+        run: |
+          set -Eeuo pipefail
+          cargo metadata --locked --format-version 1 --no-deps >/dev/null
+          cargo check --locked --all-targets --all-features
+
+      - name: Trusted working-directory unit family
+        shell: bash
+        working-directory: ores-compose
+        run: cargo test --locked --lib trusted_working_directory::tests:: -- --test-threads=1
+
+      - name: Integration regression family
+        shell: bash
+        working-directory: ores-compose
+        run: cargo test --locked --test trusted_working_directory_regressions -- --test-threads=1
+
+      - name: Repeat replacement detection 100 times
+        shell: bash
+        working-directory: ores-compose
+        run: |
+          set -Eeuo pipefail
+          for i in $(seq 1 100); do
+            cargo test --locked --lib trusted_working_directory::tests::replacement_after_admission_is_detected -- --exact --test-threads=1 >/tmp/replacement.log 2>&1 || {
+              cat /tmp/replacement.log
+              exit 1
+            }
+          done
+
+      - name: Ordinary content mutation remains valid
+        shell: bash
+        working-directory: ores-compose
+        run: cargo test --locked --lib trusted_working_directory::tests::directory_content_changes_do_not_change_admitted_identity -- --exact --test-threads=1
+
+      - name: Candidate Clippy boundary
+        shell: bash
+        working-directory: ores-compose
+        run: cargo clippy --locked --lib --no-deps -- -A warnings -D clippy::all
+
+      - name: Assert immutable candidate
+        if: always()
+        shell: bash
+        working-directory: ores-compose
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
+          test -z "$(git diff --name-only -- Cargo.lock)"
+          echo ORES_COMPOSE_180_CERT_PASS
