@@ -1,0 +1,86 @@
+name: restack ores-stack 251
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/restack-ores-stack-251.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  restack:
+    if: github.head_ref == 'ci/certify-ore-exact-heads-20260922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_HEAD: 469dd0339d6e797c30e9322b4711b011d3b44b4d
+      EXPECTED_MAIN: 1b2eda561882a38bc30f434810520d9c970810d2
+      SOURCE_BRANCH: feat/ppr-edge-minimal-wrapper-current3-20260922
+      OLD_MIDDLEWARE_REV: 5c43cea4bf01e13857d353dce5d14b88cfc24695
+      NEW_MIDDLEWARE_REV: b930660d34896db1ab285c3b9bd97deaa37dc9ad
+      OLD_PROTOCOL_REV: 1f527c8e25ba10ba0fc9e0e4707b3b40bf05ac71
+      NEW_PROTOCOL_REV: 1b2eda561882a38bc30f434810520d9c970810d2
+    steps:
+      - name: Checkout exact source head with scoped token
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-stack
+          ref: ${{ env.EXPECTED_HEAD }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: subject
+          persist-credentials: true
+          fetch-depth: 0
+      - name: Assert source and main identities
+        working-directory: subject
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test -z "$(git status --porcelain)"
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN" || {
+            echo "main moved; refusing stale automated restack" >&2
+            exit 1
+          }
+      - name: Merge reviewed current main without conflict guessing
+        working-directory: subject
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ORESoftware'
+          git config user.email 'alex@oresoftware.com'
+          git merge --no-commit --no-ff "$EXPECTED_MAIN"
+      - name: Advance middleware and P2 protocol pins together
+        working-directory: subject
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('crates/ores-stack-cli/src/ppr_middleware_wrapper.rs')
+          text = p.read_text()
+          replacements = {
+              '5c43cea4bf01e13857d353dce5d14b88cfc24695': 'b930660d34896db1ab285c3b9bd97deaa37dc9ad',
+              '1f527c8e25ba10ba0fc9e0e4707b3b40bf05ac71': '1b2eda561882a38bc30f434810520d9c970810d2',
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count < 1:
+                  raise SystemExit(f'expected pin {old} not found')
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+          git diff --check
+          grep -F "$NEW_MIDDLEWARE_REV" crates/ores-stack-cli/src/ppr_middleware_wrapper.rs >/dev/null
+          grep -F "$NEW_PROTOCOL_REV" crates/ores-stack-cli/src/ppr_middleware_wrapper.rs >/dev/null
+          ! grep -F "$OLD_MIDDLEWARE_REV" crates/ores-stack-cli/src/ppr_middleware_wrapper.rs >/dev/null
+          ! grep -F "$OLD_PROTOCOL_REV" crates/ores-stack-cli/src/ppr_middleware_wrapper.rs >/dev/null
+      - name: Commit semantic restack and paired pin advance
+        working-directory: subject
+        run: |
+          set -Eeuo pipefail
+          git add crates/ores-stack-cli/src/ppr_middleware_wrapper.rs
+          git commit -m 'chore(ppr): restack wrapper on final P2 authority'
+      - name: Push fast-forward-only to source PR branch
+        working-directory: subject
+        run: |
+          set -Eeuo pipefail
+          git push origin "HEAD:refs/heads/$SOURCE_BRANCH"
