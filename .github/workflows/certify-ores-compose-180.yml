@@ -1,38 +1,20 @@
-name: Infra isolation contracts
+name: certify ores-compose 180 exact head
+
 on:
-  pull_request:
   push:
-    branches: [main, dev]
-  workflow_dispatch:
+    branches:
+      - 'ci/certify-ores-compose-180-20260922'
+    paths:
+      - '.github/workflows/certify-ores-compose-180.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/certify-ores-compose-180.yml'
+
 permissions:
   contents: read
-jobs:
-  offline-contracts:
-    name: Offline infra contracts (not live acceptance)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    defaults:
-      run:
-        working-directory: infra-isolation
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: infra-isolation/package-lock.json
-      - run: npm ci --ignore-scripts
-      - run: npm test
-      - name: Report the scope of this check
-        run: |
-          echo 'Offline contract and adversarial regression tests passed. This does not establish deployed network isolation.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Live acceptance requires fresh provider/AWS evidence and a complete authorized 30-cell network matrix.' >> "$GITHUB_STEP_SUMMARY"
 
-  certify-ores-compose-180:
-    name: Certify ores-compose #180 exact head
-    if: github.event_name == 'pull_request' && github.head_ref == 'ci/certify-ores-compose-180-20260922'
+jobs:
+  certify:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -40,6 +22,13 @@ jobs:
       EXPECTED_BASE_SHA: b0134dca90af18d642a331603b0538f3964967a1
       CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
     steps:
+      - name: Checkout harness
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: cert-harness
+          persist-credentials: false
+          submodules: false
+
       - name: Checkout exact ores-compose candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
