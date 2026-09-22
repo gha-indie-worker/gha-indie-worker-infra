@@ -82,8 +82,34 @@ jobs:
           cargo metadata --locked --no-deps >/dev/null
 
       - name: Check formatting
+        id: fmt
+        continue-on-error: true
         working-directory: ores-stack
         run: cargo fmt --all -- --check
+
+      - name: Materialize rustfmt delta
+        if: steps.fmt.outcome == 'failure'
+        working-directory: ores-stack
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --all
+          git diff -- . > ../rustfmt.diff
+          git diff --name-only > ../rustfmt-files.txt
+
+      - name: Upload rustfmt delta
+        if: steps.fmt.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ores-stack-215-rustfmt-delta
+          path: |
+            rustfmt.diff
+            rustfmt-files.txt
+          if-no-files-found: error
+
+      - name: Refuse formatting drift
+        if: steps.fmt.outcome == 'failure'
+        run: exit 1
 
       - name: Check ores-stack-core
         working-directory: ores-stack
