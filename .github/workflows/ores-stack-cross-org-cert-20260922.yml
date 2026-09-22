@@ -1,0 +1,197 @@
+name: ores-stack cross-org certification 2026-09-22
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/ores-stack-cross-org-cert-20260922.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: 'url.https://x-access-token:${{ secrets.ORE_SOURCE_PAT }}@github.com/.insteadOf'
+  GIT_CONFIG_VALUE_0: 'https://github.com/'
+
+jobs:
+  rpc-http-247:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact ores-stack #247 head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ORESoftware/ores-stack
+          ref: ce6b14759eea92211c774f1727e8a56acf57051b
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: ores-stack
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Assert immutable source
+        shell: bash
+        run: test "$(git -C ores-stack rev-parse HEAD)" = ce6b14759eea92211c774f1727e8a56acf57051b
+
+      - name: Rust 1.88
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.88.0 --profile minimal --no-self-update
+          rustup default 1.88.0
+          rustup component add rustfmt clippy
+
+      - name: Format RPC HTTP adapter
+        shell: bash
+        working-directory: ores-stack/crates/ores-fn-adapters
+        run: cargo fmt --all -- --check
+
+      - name: Check RPC HTTP adapter
+        shell: bash
+        working-directory: ores-stack/crates/ores-fn-adapters
+        run: cargo check --all-targets
+
+      - name: Test RPC HTTP adapter
+        shell: bash
+        working-directory: ores-stack/crates/ores-fn-adapters
+        run: cargo test --all-targets
+
+      - name: Clippy RPC HTTP adapter
+        shell: bash
+        working-directory: ores-stack/crates/ores-fn-adapters
+        run: cargo clippy --all-targets -- -D warnings
+
+  ppr-wrapper-251:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact ores-stack #251 head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ORESoftware/ores-stack
+          ref: 0e7545237147957758bfe26f2c39d2e19159aca0
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: ores-stack
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Assert immutable source
+        shell: bash
+        run: test "$(git -C ores-stack rev-parse HEAD)" = 0e7545237147957758bfe26f2c39d2e19159aca0
+
+      - name: Rust 1.88
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.88.0 --profile minimal --no-self-update
+          rustup default 1.88.0
+          rustup component add rustfmt clippy
+
+      - name: Format CLI wrapper slice
+        shell: bash
+        working-directory: ores-stack
+        run: cargo fmt --all -- --check
+
+      - name: Check CLI wrapper slice
+        shell: bash
+        working-directory: ores-stack
+        run: cargo check -p ores-stack-cli --all-targets
+
+      - name: Test CLI wrapper slice
+        shell: bash
+        working-directory: ores-stack
+        run: cargo test -p ores-stack-cli
+
+      - name: Clippy CLI wrapper slice
+        shell: bash
+        working-directory: ores-stack
+        run: cargo clippy -p ores-stack-cli --all-targets -- -D warnings
+
+      - name: Build real CLI
+        shell: bash
+        working-directory: ores-stack
+        run: cargo build -p ores-stack-cli
+
+      - name: Generate and compile isolated middleware wrapper
+        shell: bash
+        working-directory: ores-stack
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/ppr-wrapper-fixture"
+          mkdir -p "$fixture/src/middleware"
+          printf '%s\n' 'pub mod mw;' > "$fixture/src/middleware/mod.rs"
+          cat > "$fixture/src/middleware/mw.rs" <<'RUST'
+          pub async fn middleware(
+              args: ores_middleware::EdgeMinimalCallbackArgs,
+          ) -> Result<ores_middleware::EdgeMinimalDecision, ores_middleware::IntegrationError> {
+              Ok(ores_middleware::EdgeMinimalDecision::Continue(args.request))
+          }
+          RUST
+          ./target/debug/ores-stack __ppr-generate-middleware-wrapper --root="$fixture"
+          manifest="$fixture/tmp/ores-stack-ppr-middleware/Cargo.toml"
+          test -f "$manifest"
+          cargo check --manifest-path "$manifest"
+
+  p2-terminal-pin-257:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact ores-stack #257 head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ORESoftware/ores-stack
+          ref: 62b1bd6ed4a66beebf05951de635532be81f6b4e
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: ores-stack
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Assert immutable source
+        shell: bash
+        run: test "$(git -C ores-stack rev-parse HEAD)" = 62b1bd6ed4a66beebf05951de635532be81f6b4e
+
+      - name: Rust 1.88
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.88.0 --profile minimal --no-self-update
+          rustup default 1.88.0
+          rustup component add rustfmt clippy
+
+      - name: Reconcile resolver lock and check protocol
+        shell: bash
+        working-directory: ores-stack
+        run: |
+          set -euo pipefail
+          cargo check -p ores-stack-p2-edge-minimal --all-targets
+          cargo fmt --all -- --check
+          cargo test -p ores-stack-p2-edge-minimal
+          cargo clippy -p ores-stack-p2-edge-minimal --all-targets -- -D warnings
+          git diff --check -- Cargo.lock
+          git status --short
+
+      - name: Retain Cargo-generated lock witness
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ores-stack-257-cargo-lock
+          path: ores-stack/Cargo.lock
+          if-no-files-found: error
+          retention-days: 3
