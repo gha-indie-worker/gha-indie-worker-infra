@@ -73,25 +73,25 @@ jobs:
           git config user.name 'ORESoftware automation'
           git config user.email 'noreply@oresoftware.com'
 
-      - name: Patch typed direct-child PPR selection
+      - name: Patch absolute PPR deadline and reap invariants
         shell: bash
         working-directory: ores-stack
         run: |
           set -Eeuo pipefail
-          python3 ../cert-harness/scripts/ci/patch_ores_stack_ppr_typed_selection.py
-          rustfmt --edition 2021 crates/ores-stack-cli/src/ppr_api_direct_child.rs
-          git diff --check -- crates/ores-stack-cli/src/ppr_api_direct_child.rs
+          python3 ../cert-harness/scripts/ci/patch_ores_stack_ppr_deadline.py
+          rustfmt --edition 2021 crates/ores-stack-cli/src/process_per_request.rs
+          git diff --check -- crates/ores-stack-cli/src/process_per_request.rs
 
-      - name: Commit typed selection when needed
+      - name: Commit deadline hardening when needed
         shell: bash
         working-directory: ores-stack
         env:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
         run: |
           set -Eeuo pipefail
-          git add crates/ores-stack-cli/src/ppr_api_direct_child.rs
+          git add crates/ores-stack-cli/src/process_per_request.rs
           if ! git diff --cached --quiet; then
-            git commit -m 'fix(ppr): use typed Lambda inventory for direct-child selection'
+            git commit -m 'fix(ppr): enforce one hard request deadline through finalization'
             git push origin HEAD:feat/server-stream-lambda-ppr-20260921
           fi
           printf 'certifying ores-stack %s\n' "$(git rev-parse HEAD)"
@@ -114,7 +114,7 @@ jobs:
           bash scripts/bootstrap-cargo-lock.sh ensure
           cargo metadata --locked --no-deps >/dev/null
 
-      - name: Compile typed source and generated stream contracts
+      - name: Compile deadline, typed selection, and stream contracts
         shell: bash
         working-directory: ores-stack
         env:
@@ -126,6 +126,7 @@ jobs:
           cargo test --locked -p ores-stack-core \
             --test rpc_generated_tree_compiles \
             --test rpc_server_stream_generated_tree_compiles
+          cargo test --locked -p ores-stack-cli process_per_request
           cargo test --locked -p ores-stack-cli ppr_api_direct_child
 
       - name: Build ores-stack CLI
