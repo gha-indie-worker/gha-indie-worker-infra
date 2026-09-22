@@ -102,22 +102,23 @@ jobs:
               '''        let (spec, key) = parse_operation_meta(attr, path, function)?;
               let stream = operation_stream_mode(attr, path, function)?;''',
           )
-          replace_once(
-              '''        let (response, error) = result_types(&function.sig.output).ok_or_else(|| {
-              RpcSourceError::Contract(format!(
-                  "{path}: {} must return Result<Success, Error>",
-                  function.sig.ident
-              ))
-          })?;''',
-              '''        let (response, error) = operation_result_types(
+
+          if 'let (response, error) = operation_result_types(' not in text:
+              start = text.find('        let (response, error) = result_types(&function.sig.output)')
+              end_marker = '        let name = function.sig.ident.to_string();'
+              end = text.find(end_marker, start)
+              if start < 0 or end < 0:
+                  raise SystemExit('rpc_spec_validation.rs: return-shape block anchors missing')
+              replacement = '''        let (response, error) = operation_result_types(
               &function.sig.output,
               &spec,
               &stream,
               specs,
               path,
               function,
-          )?;''',
-          )
+          )?;
+'''
+              text = text[:start] + replacement + text[end:]
 
           helper_anchor = '''fn parse_operation_meta(
               attr: &Attribute,'''
