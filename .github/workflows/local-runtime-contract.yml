@@ -14,6 +14,7 @@ on:
       - ".devcontainer/**"
       - "docs/local-development.md"
       - ".github/workflows/local-runtime-contract.yml"
+      - "scripts/ci/**"
   push:
     branches: [main]
     paths:
@@ -39,22 +40,31 @@ jobs:
       - name: Exact source / gitlink parity
         run: cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate
 
-  certify_stream:
+  certify-stream:
     if: github.event_name == 'pull_request' && github.head_ref == 'ci/ores-stack-pr162-cert-20260921'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - name: Checkout current server-stream PPR branch
+      - name: Checkout certification harness
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: cert-harness
+          persist-credentials: false
+          submodules: false
+
+      - name: Checkout current ores-stack stream branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: ORESoftware/ores-stack
           ref: feat/server-stream-lambda-ppr-20260921
           token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: ores-stack
           persist-credentials: false
           fetch-depth: 0
 
       - name: Configure private Git authentication
         shell: bash
+        working-directory: ores-stack
         env:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
         run: |
@@ -63,196 +73,18 @@ jobs:
           git config user.name 'ORESoftware automation'
           git config user.email 'noreply@oresoftware.com'
 
-      - name: Make spec projection validator stream-shape aware
+      - name: Patch stream-aware spec projection validation
         shell: bash
+        working-directory: ores-stack
         run: |
           set -Eeuo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('crates/ores-stack-core/src/rpc_spec_validation.rs')
-          text = path.read_text()
-
-          if 'collect_operations(&handlers_file, &handlers_display, &specs)?' not in text:
-              old = 'collect_operations(&handlers_file, &handlers_display)?'
-              if text.count(old) != 1:
-                  raise SystemExit('collect_operations call anchor drifted')
-              text = text.replace(old, 'collect_operations(&handlers_file, &handlers_display, &specs)?', 1)
-
-          old_sig = '''fn collect_operations(
-              file: &syn::File,
-              path: &str,
-          ) -> Result<BTreeMap<String, OperationDecl>, RpcSourceError> {'''
-          new_sig = '''fn collect_operations(
-              file: &syn::File,
-              path: &str,
-              specs: &BTreeMap<String, SpecDecl>,
-          ) -> Result<BTreeMap<String, OperationDecl>, RpcSourceError> {'''
-          if new_sig not in text:
-              if text.count(old_sig) != 1:
-                  raise SystemExit('collect_operations signature anchor drifted')
-              text = text.replace(old_sig, new_sig, 1)
-
-          parse_line = '        let (spec, key) = parse_operation_meta(attr, path, function)?;'
-          stream_line = parse_line + '\n        let stream = operation_stream_mode(attr, path, function)?;'
-          if stream_line not in text:
-              if text.count(parse_line) != 1:
-                  raise SystemExit('operation metadata anchor drifted')
-              text = text.replace(parse_line, stream_line, 1)
-
-          if 'let (response, error) = operation_result_types(' not in text:
-              start = text.find('        let (response, error) = result_types(&function.sig.output)')
-              end = text.find('        let name = function.sig.ident.to_string();', start)
-              if start < 0 or end < 0:
-                  raise SystemExit('return-shape block anchors drifted')
-              replacement = '''        let (response, error) = operation_result_types(
-              &function.sig.output,
-              &spec,
-              &stream,
-              specs,
-              path,
-              function,
-          )?;
-'''
-              text = text[:start] + replacement + text[end:]
-
-          if 'fn operation_result_types(' not in text:
-              anchor = 'fn parse_operation_meta(\n'
-              index = text.find(anchor)
-              if index < 0:
-                  raise SystemExit('helper insertion anchor drifted')
-              helper = r'''fn operation_result_types(
-              output: &ReturnType,
-              spec_name: &str,
-              stream: &str,
-              specs: &BTreeMap<String, SpecDecl>,
-              path: &str,
-              function: &ItemFn,
-          ) -> Result<(String, String), RpcSourceError> {
-              match stream {
-                  "unary" => result_types(output).ok_or_else(|| {
-                      RpcSourceError::Contract(format!(
-                          "{path}: {} is unary and must return Result<Success, Error>",
-                          function.sig.ident
-                      ))
-                  }),
-                  "server_stream" => {
-                      let return_spec = single_generic_return(output, "ServerStreamResult").ok_or_else(|| {
-                          RpcSourceError::Contract(format!(
-                              "{path}: {} uses server_stream metadata and must return ServerStreamResult<OperationSpec>",
-                              function.sig.ident
-                          ))
-                      })?;
-                      if normalize_type(&return_spec) != normalize_type(spec_name) {
-                          return Err(RpcSourceError::Contract(format!(
-                              "{path}: {} returns ServerStreamResult<{return_spec}> but #[ores_operation] declares spec {spec_name}",
-                              function.sig.ident
-                          )));
-                      }
-                      let local = specs.get(&normalize_type(spec_name));
-                      let response = local
-                          .and_then(|decl| decl.associated.get("ResponseBody"))
-                          .cloned()
-                          .unwrap_or_else(|| format!("<{spec_name} as ::ores_api_docs::OperationSpec>::ResponseBody"));
-                      let error = local
-                          .and_then(|decl| decl.associated.get("Error"))
-                          .cloned()
-                          .unwrap_or_else(|| format!("<{spec_name} as ::ores_api_docs::OperationSpec>::Error"));
-                      Ok((response, error))
-                  }
-                  "client_stream" | "bidi" => Err(RpcSourceError::Contract(format!(
-                      "{path}: {} uses unsupported Rust handler stream mode {stream:?}; ores-stack currently admits unary and server_stream only",
-                      function.sig.ident
-                  ))),
-                  other => Err(RpcSourceError::Contract(format!(
-                      "{path}: {} uses unknown stream mode {other:?}",
-                      function.sig.ident
-                  ))),
-              }
-          }
-
-          fn single_generic_return(output: &ReturnType, expected: &str) -> Option<String> {
-              let ReturnType::Type(_, ty) = output else {
-                  return None;
-              };
-              let Type::Path(path) = ty.as_ref() else {
-                  return None;
-              };
-              let segment = path.path.segments.last()?;
-              if segment.ident != expected {
-                  return None;
-              }
-              let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
-                  return None;
-              };
-              let mut types = arguments.args.iter().filter_map(|argument| match argument {
-                  GenericArgument::Type(value) => Some(tokens(value)),
-                  _ => None,
-              });
-              let first = types.next()?;
-              types.next().is_none().then_some(first)
-          }
-
-          fn operation_stream_mode(
-              attr: &Attribute,
-              path: &str,
-              function: &ItemFn,
-          ) -> Result<String, RpcSourceError> {
-              let args = attr
-                  .parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
-                  .map_err(|error| RpcSourceError::Contract(format!(
-                      "{path}: invalid #[ores_operation] on {}: {error}",
-                      function.sig.ident
-                  )))?;
-              let mut stream = None;
-              for meta in args {
-                  let Meta::NameValue(value) = meta else {
-                      continue;
-                  };
-                  if !value.path.is_ident("stream") {
-                      continue;
-                  }
-                  if stream.is_some() {
-                      return Err(RpcSourceError::Contract(format!(
-                          "{path}: {} declares stream metadata more than once",
-                          function.sig.ident
-                      )));
-                  }
-                  let Expr::Lit(value) = value.value else {
-                      return Err(RpcSourceError::Contract(format!(
-                          "{path}: {} stream must be a string literal",
-                          function.sig.ident
-                      )));
-                  };
-                  let Lit::Str(value) = value.lit else {
-                      return Err(RpcSourceError::Contract(format!(
-                          "{path}: {} stream must be a string literal",
-                          function.sig.ident
-                      )));
-                  };
-                  stream = Some(value.value());
-              }
-              let stream = stream.unwrap_or_else(|| "unary".to_owned());
-              if !matches!(stream.as_str(), "unary" | "server_stream" | "client_stream" | "bidi") {
-                  return Err(RpcSourceError::Contract(format!(
-                      "{path}: {} uses unsupported stream mode {stream:?}",
-                      function.sig.ident
-                  )));
-              }
-              Ok(stream)
-          }
-
-          '''
-              text = text[:index] + helper + text[index:]
-
-          path.write_text(text)
-          PY
-
+          python3 ../cert-harness/scripts/ci/patch_ores_stack_server_stream.py
           rustfmt --edition 2021 crates/ores-stack-core/src/rpc_spec_validation.rs
           git diff --check -- crates/ores-stack-core/src/rpc_spec_validation.rs
 
-      - name: Commit validator hardening
+      - name: Commit validator hardening when needed
         shell: bash
+        working-directory: ores-stack
         env:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
         run: |
@@ -273,6 +105,7 @@ jobs:
 
       - name: Bootstrap deterministic workspace lock
         shell: bash
+        working-directory: ores-stack
         env:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
           CARGO_NET_GIT_FETCH_WITH_CLI: "true"
@@ -283,6 +116,7 @@ jobs:
 
       - name: Compile source and generated stream contracts
         shell: bash
+        working-directory: ores-stack
         env:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
           CARGO_NET_GIT_FETCH_WITH_CLI: "true"
@@ -295,6 +129,7 @@ jobs:
 
       - name: Build ores-stack CLI
         shell: bash
+        working-directory: ores-stack
         env:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
           CARGO_NET_GIT_FETCH_WITH_CLI: "true"
@@ -304,6 +139,7 @@ jobs:
 
       - name: Prove PPR relay is incrementally chunked
         shell: bash
+        working-directory: ores-stack
         run: |
           set -Eeuo pipefail
           timeout 5m bash scripts/ppr-stream-e2e-smoke.sh
