@@ -1,0 +1,85 @@
+name: baseline ores-compose for #178 differential proof
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/baseline-ores-compose-178.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    if: github.head_ref == 'ci/certify-ores-compose-176-20260922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      EXPECTED_MAIN_SHA: 2deb9229521acd66f9f14bf858ac6f78c734d106
+    steps:
+      - name: Checkout exact ores-compose main baseline
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-compose
+          ref: ${{ env.EXPECTED_MAIN_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Assert exact clean baseline
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_SHA"
+          test -z "$(git status --porcelain)"
+
+      - name: Configure private Cargo Git reads
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          gh auth setup-git
+
+      - name: Install reviewed Rust toolchain
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt,clippy
+          rustup default 1.98.1
+          rustc --version | grep -F 'rustc 1.98.1'
+
+      - name: Locked all-target all-feature compile baseline
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo check --locked --all-targets --all-features
+
+      - name: Record full-suite baseline without converting inherited red to green
+        shell: bash
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          set +e
+          cargo test --locked --all-targets --all-features 2>&1 | tee "$RUNNER_TEMP/baseline-tests.log"
+          status=${PIPESTATUS[0]}
+          echo "BASELINE_TEST_EXIT=$status"
+          grep -E '^failures:|^test result:|Yaml\("strict YAML/schema decode failed"\)|IdentityChanged' "$RUNNER_TEMP/baseline-tests.log" || true
+          exit 0
+
+      - name: Record strict Clippy baseline without waiving it
+        shell: bash
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          set +e
+          cargo clippy --locked --all-targets --all-features -- -D warnings 2>&1 | tee "$RUNNER_TEMP/baseline-clippy.log"
+          status=${PIPESTATUS[0]}
+          echo "BASELINE_CLIPPY_EXIT=$status"
+          grep -E 'error: unused import: `JobState`|error: could not compile|warning: unused import: `JobState`' "$RUNNER_TEMP/baseline-clippy.log" || true
+          exit 0
+
+      - name: Assert baseline remained immutable
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_SHA"
+          test -z "$(git status --porcelain)"
