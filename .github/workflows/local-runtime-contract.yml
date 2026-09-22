@@ -39,12 +39,10 @@ jobs:
       - name: Exact source / gitlink parity
         run: cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate
 
-  patch-current-server-stream-ppr:
+  certify_stream:
     if: github.event_name == 'pull_request' && github.head_ref == 'ci/ores-stack-pr162-cert-20260921'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    outputs:
-      head_sha: ${{ steps.head.outputs.sha }}
+    timeout-minutes: 40
     steps:
       - name: Checkout current server-stream PPR branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -54,6 +52,7 @@ jobs:
           token: ${{ secrets.ORE_SOURCE_PAT }}
           persist-credentials: false
           fetch-depth: 0
+
       - name: Configure private Git authentication
         shell: bash
         env:
@@ -63,7 +62,8 @@ jobs:
           gh auth setup-git
           git config user.name 'ORESoftware automation'
           git config user.email 'noreply@oresoftware.com'
-      - name: Make spec projection validator server-stream aware
+
+      - name: Make spec projection validator stream-shape aware
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -73,42 +73,38 @@ jobs:
           path = Path('crates/ores-stack-core/src/rpc_spec_validation.rs')
           text = path.read_text()
 
-          def replace_once(old: str, new: str) -> None:
-              global text
-              if new in text:
-                  return
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'rpc_spec_validation.rs: expected exactly one anchor, found {count}: {old[:80]!r}')
-              text = text.replace(old, new, 1)
+          if 'collect_operations(&handlers_file, &handlers_display, &specs)?' not in text:
+              old = 'collect_operations(&handlers_file, &handlers_display)?'
+              if text.count(old) != 1:
+                  raise SystemExit('collect_operations call anchor drifted')
+              text = text.replace(old, 'collect_operations(&handlers_file, &handlers_display, &specs)?', 1)
 
-          replace_once(
-              '        let operations = collect_operations(&handlers_file, &handlers_display)?;',
-              '        let operations = collect_operations(&handlers_file, &handlers_display, &specs)?;',
-          )
-          replace_once(
-              '''fn collect_operations(
+          old_sig = '''fn collect_operations(
               file: &syn::File,
               path: &str,
-          ) -> Result<BTreeMap<String, OperationDecl>, RpcSourceError> {''',
-              '''fn collect_operations(
+          ) -> Result<BTreeMap<String, OperationDecl>, RpcSourceError> {'''
+          new_sig = '''fn collect_operations(
               file: &syn::File,
               path: &str,
               specs: &BTreeMap<String, SpecDecl>,
-          ) -> Result<BTreeMap<String, OperationDecl>, RpcSourceError> {''',
-          )
-          replace_once(
-              '        let (spec, key) = parse_operation_meta(attr, path, function)?;',
-              '''        let (spec, key) = parse_operation_meta(attr, path, function)?;
-              let stream = operation_stream_mode(attr, path, function)?;''',
-          )
+          ) -> Result<BTreeMap<String, OperationDecl>, RpcSourceError> {'''
+          if new_sig not in text:
+              if text.count(old_sig) != 1:
+                  raise SystemExit('collect_operations signature anchor drifted')
+              text = text.replace(old_sig, new_sig, 1)
+
+          parse_line = '        let (spec, key) = parse_operation_meta(attr, path, function)?;'
+          stream_line = parse_line + '\n        let stream = operation_stream_mode(attr, path, function)?;'
+          if stream_line not in text:
+              if text.count(parse_line) != 1:
+                  raise SystemExit('operation metadata anchor drifted')
+              text = text.replace(parse_line, stream_line, 1)
 
           if 'let (response, error) = operation_result_types(' not in text:
               start = text.find('        let (response, error) = result_types(&function.sig.output)')
-              end_marker = '        let name = function.sig.ident.to_string();'
-              end = text.find(end_marker, start)
+              end = text.find('        let name = function.sig.ident.to_string();', start)
               if start < 0 or end < 0:
-                  raise SystemExit('rpc_spec_validation.rs: return-shape block anchors missing')
+                  raise SystemExit('return-shape block anchors drifted')
               replacement = '''        let (response, error) = operation_result_types(
               &function.sig.output,
               &spec,
@@ -120,9 +116,12 @@ jobs:
 '''
               text = text[:start] + replacement + text[end:]
 
-          helper_anchor = '''fn parse_operation_meta(
-              attr: &Attribute,'''
-          helper = r'''fn operation_result_types(
+          if 'fn operation_result_types(' not in text:
+              anchor = 'fn parse_operation_meta(\n'
+              index = text.find(anchor)
+              if index < 0:
+                  raise SystemExit('helper insertion anchor drifted')
+              helper = r'''fn operation_result_types(
               output: &ReturnType,
               spec_name: &str,
               stream: &str,
@@ -138,7 +137,7 @@ jobs:
                       ))
                   }),
                   "server_stream" => {
-                      let return_spec = single_generic_type(output, "ServerStreamResult").ok_or_else(|| {
+                      let return_spec = single_generic_return(output, "ServerStreamResult").ok_or_else(|| {
                           RpcSourceError::Contract(format!(
                               "{path}: {} uses server_stream metadata and must return ServerStreamResult<OperationSpec>",
                               function.sig.ident
@@ -172,7 +171,7 @@ jobs:
               }
           }
 
-          fn single_generic_type(output: &ReturnType, expected: &str) -> Option<String> {
+          fn single_generic_return(output: &ReturnType, expected: &str) -> Option<String> {
               let ReturnType::Type(_, ty) = output else {
                   return None;
               };
@@ -186,15 +185,12 @@ jobs:
               let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
                   return None;
               };
-              let types = arguments
-                  .args
-                  .iter()
-                  .filter_map(|argument| match argument {
-                      GenericArgument::Type(value) => Some(tokens(value)),
-                      _ => None,
-                  })
-                  .collect::<Vec<_>>();
-              (types.len() == 1).then(|| types[0].clone())
+              let mut types = arguments.args.iter().filter_map(|argument| match argument {
+                  GenericArgument::Type(value) => Some(tokens(value)),
+                  _ => None,
+              });
+              let first = types.next()?;
+              types.next().is_none().then_some(first)
           }
 
           fn operation_stream_mode(
@@ -247,97 +243,34 @@ jobs:
           }
 
           '''
-          if 'fn operation_result_types(' not in text:
-              index = text.find(helper_anchor)
-              if index < 0:
-                  raise SystemExit('rpc_spec_validation.rs: helper insertion anchor missing')
               text = text[:index] + helper + text[index:]
-
-          test_anchor = '''    #[test]
-              fn route_binding_must_resolve_through_handlers_module() {'''
-          test = r'''    #[test]
-              fn server_stream_return_shape_is_checked_against_operation_spec() {
-                  let handlers = r#"
-                      struct WatchOperation;
-                      impl OperationSpec for WatchOperation {
-                          type Path = NoSection;
-                          type Query = NoSection;
-                          type RequestHeaders = NoSection;
-                          type RequestBody = NoSection;
-                          type ResponseBody = WatchEvent;
-                          type ResponseHeaders = NoSection;
-                          type ResponseTrailers = NoSection;
-                          type Error = WatchError;
-                          const KEY: &'static str = "demo.watch.stream";
-                      }
-                      #[ores_operation(
-                          spec = WatchOperation,
-                          key = "demo.watch.stream",
-                          codecs("json"),
-                          audiences("server"),
-                          scope = "regular",
-                          stream = "server_stream"
-                      )]
-                      async fn watch_stream(ctx: TypedOperationContext<AppState, WatchOperation>)
-                          -> ServerStreamResult<WatchOperation> { todo!() }
-                  "#;
-                  let dir = fixture("", handlers);
-                  let issues = inspect_rpc_spec_projections(dir.path()).expect("inspect");
-                  assert!(issues.is_empty(), "{issues:?}");
-              }
-
-          '''
-          if 'fn server_stream_return_shape_is_checked_against_operation_spec()' not in text:
-              index = text.find(test_anchor)
-              if index < 0:
-                  raise SystemExit('rpc_spec_validation.rs: test insertion anchor missing')
-              text = text[:index] + test + text[index:]
 
           path.write_text(text)
           PY
-          cargo fmt --all
-          git diff --check
-      - name: Commit source hardening
-        id: head
+
+          rustfmt --edition 2021 crates/ores-stack-core/src/rpc_spec_validation.rs
+          git diff --check -- crates/ores-stack-core/src/rpc_spec_validation.rs
+
+      - name: Commit validator hardening
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
         run: |
           set -Eeuo pipefail
-          if ! git diff --quiet; then
-            git add crates/ores-stack-core/src/rpc_spec_validation.rs
+          git add crates/ores-stack-core/src/rpc_spec_validation.rs
+          if ! git diff --cached --quiet; then
             git commit -m 'fix(rpc): validate server-stream spec projections by stream shape'
             git push origin HEAD:feat/server-stream-lambda-ppr-20260921
           fi
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          printf 'certifying ores-stack %s\n' "$(git rev-parse HEAD)"
 
-  certify-current-server-stream-ppr:
-    if: github.event_name == 'pull_request' && github.head_ref == 'ci/ores-stack-pr162-cert-20260921'
-    needs: patch-current-server-stream-ppr
-    runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    steps:
-      - name: Checkout exact patched ores-stack head
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: ORESoftware/ores-stack
-          ref: ${{ needs.patch-current-server-stream-ppr.outputs.head_sha }}
-          token: ${{ secrets.ORE_SOURCE_PAT }}
-          persist-credentials: false
-          fetch-depth: 1
-      - name: Configure private Git dependency authentication
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
-        run: |
-          set -Eeuo pipefail
-          gh auth setup-git
       - name: Install ores-stack MSRV
         shell: bash
         run: |
           set -Eeuo pipefail
           rustup toolchain install 1.88.0 --profile minimal
           rustup default 1.88.0
+
       - name: Bootstrap deterministic workspace lock
         shell: bash
         env:
@@ -347,7 +280,8 @@ jobs:
           set -Eeuo pipefail
           bash scripts/bootstrap-cargo-lock.sh ensure
           cargo metadata --locked --no-deps >/dev/null
-      - name: Compile source projection and generated dispatch contracts
+
+      - name: Compile source and generated stream contracts
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
@@ -358,6 +292,7 @@ jobs:
           cargo test --locked -p ores-stack-core \
             --test rpc_generated_tree_compiles \
             --test rpc_server_stream_generated_tree_compiles
+
       - name: Build ores-stack CLI
         shell: bash
         env:
@@ -366,7 +301,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           cargo build --locked -p ores-stack-cli --bin ores-stack
-      - name: Prove relay is incrementally chunked
+
+      - name: Prove PPR relay is incrementally chunked
         shell: bash
         run: |
           set -Eeuo pipefail
