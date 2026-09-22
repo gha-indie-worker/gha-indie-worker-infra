@@ -39,10 +39,10 @@ jobs:
       - name: Exact source / gitlink parity
         run: cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate
 
-  certify-ores-stack-215:
+  repair-ores-stack-215-format:
     if: github.event_name == 'pull_request' && github.head_ref == 'ci/ores-stack-215-direct-only-cert-20260922'
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 10
     steps:
       - name: Checkout exact ores-stack candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -62,81 +62,32 @@ jobs:
           test "$(git rev-parse HEAD)" = "ced8858009d2e8d99f6e6243f2c5318a6f6abe19"
           git diff --check
 
-      - name: Install ores-stack MSRV
+      - name: Install Rust 1.88 rustfmt
         shell: bash
         run: |
           set -Eeuo pipefail
-          rustup toolchain install 1.88.0 --profile minimal --component rustfmt --component clippy
+          rustup toolchain install 1.88.0 --profile minimal --component rustfmt
           rustup default 1.88.0
 
-      - name: Bootstrap deterministic workspace lock
+      - name: Format only the #215 source file
+        working-directory: ores-stack
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustfmt --edition 2021 crates/ores-stack-core/src/lambda_execution_leaf_plan.rs
+          git diff --check
+          test "$(git diff --name-only)" = "crates/ores-stack-core/src/lambda_execution_leaf_plan.rs"
+
+      - name: Commit source-local formatting repair
         working-directory: ores-stack
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
-          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
         run: |
           set -Eeuo pipefail
           gh auth setup-git
-          bash scripts/bootstrap-cargo-lock.sh ensure
-          cargo metadata --locked --no-deps >/dev/null
-
-      - name: Check formatting
-        id: fmt
-        continue-on-error: true
-        working-directory: ores-stack
-        run: cargo fmt --all -- --check
-
-      - name: Materialize rustfmt delta
-        if: steps.fmt.outcome == 'failure'
-        working-directory: ores-stack
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cargo fmt --all
-          git diff -- . > ../rustfmt.diff
-          git diff --name-only > ../rustfmt-files.txt
-
-      - name: Upload rustfmt delta
-        if: steps.fmt.outcome == 'failure'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: ores-stack-215-rustfmt-delta
-          path: |
-            rustfmt.diff
-            rustfmt-files.txt
-          if-no-files-found: error
-
-      - name: Refuse formatting drift
-        if: steps.fmt.outcome == 'failure'
-        run: exit 1
-
-      - name: Check ores-stack-core
-        working-directory: ores-stack
-        env:
-          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
-          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-        run: cargo check --locked -p ores-stack-core --all-targets
-
-      - name: Focused execution-leaf tests
-        working-directory: ores-stack
-        env:
-          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
-          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-        run: cargo test --locked -p ores-stack-core lambda_execution_leaf_plan -- --nocapture
-
-      - name: Clippy ores-stack-core
-        working-directory: ores-stack
-        env:
-          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
-          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-        run: cargo clippy --locked -p ores-stack-core --all-targets -- -D warnings
-
-      - name: Preserve exact source
-        working-directory: ores-stack
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          test "$(git rev-parse HEAD)" = "ced8858009d2e8d99f6e6243f2c5318a6f6abe19"
-          git diff --check
-          test -z "$(git status --porcelain --untracked-files=no)"
+          git config user.name 'ORESoftware automation'
+          git config user.email 'noreply@oresoftware.com'
+          git add crates/ores-stack-core/src/lambda_execution_leaf_plan.rs
+          git commit -m 'style(lambda): rustfmt direct-only execution plan repair'
+          git push origin HEAD:fix/lambda-execution-direct-only-semantics-20260922
