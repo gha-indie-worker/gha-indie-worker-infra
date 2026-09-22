@@ -169,6 +169,8 @@ jobs:
       - name: Commit source hardening
         id: head
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
         run: |
           set -Eeuo pipefail
           if ! git diff --quiet; then
