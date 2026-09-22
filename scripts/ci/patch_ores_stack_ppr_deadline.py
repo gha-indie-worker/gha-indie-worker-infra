@@ -45,11 +45,14 @@ replace_once(
     "deadline-bound middleware finalization",
 )
 
-old_prepare_start = "fn run_prepare(mode: PrepareMode, prepare_lock: &Mutex<()>) -> Result<(), String> {"
-new_prepare_start = "fn run_prepare(\n    mode: PrepareMode,\n    prepare_lock: &Mutex<()>,\n    deadline: Instant,\n) -> Result<(), String> {"
-replace_once(old_prepare_start, new_prepare_start, "run_prepare signature")
+replace_once(
+    "fn run_prepare(mode: PrepareMode, prepare_lock: &Mutex<()>) -> Result<(), String> {",
+    "fn run_prepare(\n    mode: PrepareMode,\n    prepare_lock: &Mutex<()>,\n    deadline: Instant,\n) -> Result<(), String> {",
+    "run_prepare signature",
+)
 
-old_prepare_body = '''    let _guard = prepare_lock
+replace_once(
+    '''    let _guard = prepare_lock
         .lock()
         .map_err(|_| "process-per-request generation lock was poisoned".to_owned())?;
     let executable = env::current_exe().map_err(|error| {
@@ -67,8 +70,8 @@ old_prepare_body = '''    let _guard = prepare_lock
     } else {
         Err(format!("PPR source generation exited with status {status}"))
     }
-'''
-new_prepare_body = '''    let _guard = loop {
+''',
+    '''    let _guard = loop {
         match prepare_lock.try_lock() {
             Ok(guard) => break guard,
             Err(std::sync::TryLockError::Poisoned(_)) => {
@@ -129,7 +132,58 @@ new_prepare_body = '''    let _guard = loop {
         }
         thread::sleep(STREAM_RELAY_POLL);
     }
+''',
+    "deadline-bound generation process",
+)
+
+# Lock the lifecycle ordering and direct-child reap behavior into tests.
+test_anchor = '''    #[test]
+    fn reason_phrases_cover_timeout_and_gateway_errors() {'''
+if "fn hard_deadline_covers_middleware_prepare_child_and_finalize()" not in text:
+    test = r'''    #[test]
+    fn hard_deadline_covers_middleware_prepare_child_and_finalize() {
+        let source = include_str!("process_per_request.rs");
+        let start = source
+            .find("let hard_deadline = Instant::now() + CHILD_LIFETIME_TIMEOUT")
+            .expect("absolute hard deadline");
+        let begin = source
+            .find("stack.begin(metadata)")
+            .expect("middleware begin");
+        let prepare = source
+            .find("run_prepare(spec.prepare, prepare_lock, work_deadline)")
+            .expect("deadline-bound generation");
+        let relay = source
+            .find("let child_deadline = work_deadline")
+            .expect("child work deadline");
+        let finish = source
+            .rfind("stack.finish(active_request")
+            .expect("deadline-bound finalization");
+        assert!(start < begin && begin < prepare && prepare < relay && relay < finish);
+        assert!(source.contains("MIDDLEWARE_FINALIZATION_RESERVE"));
+        assert!(source.contains("tokio::time::Instant::from_std(hard_deadline)"));
+        assert!(source.matches("stack.finish(active_request").count() >= 3);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn child_guard_kill_and_reap_reaps_the_actual_child() {
+        let child = Command::new("sh")
+            .args(["-c", "sleep 30"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn sleeping child");
+        let mut guard = ChildGuard(child);
+        let status = guard.kill_and_reap().expect("kill and reap child");
+        assert!(!status.success());
+        assert!(guard.0.try_wait().expect("poll reaped child").is_some());
+    }
+
 '''
-replace_once(old_prepare_body, new_prepare_body, "deadline-bound generation process")
+    index = text.find(test_anchor)
+    if index < 0:
+        raise SystemExit(f"{PATH}: lifecycle test insertion anchor drifted")
+    text = text[:index] + test + text[index:]
 
 PATH.write_text(text)
