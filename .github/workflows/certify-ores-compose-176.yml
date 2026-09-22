@@ -12,10 +12,11 @@ jobs:
   certify:
     if: github.head_ref == 'ci/certify-ores-compose-176-20260922'
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 55
     env:
       EXPECTED_ORES_COMPOSE_SHA: 202171eaaad46f9f9f2684622c8e8574b998a88b
       EXPECTED_BASE_SHA: 2deb9229521acd66f9f14bf858ac6f78c734d106
+      CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
     steps:
       - name: Checkout certification harness
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -62,6 +63,15 @@ jobs:
           rustup default 1.98.1
           rustc --version | grep -F 'rustc 1.98.1'
 
+      - name: Prepare exact base worktree
+        shell: bash
+        working-directory: ores-compose
+        run: |
+          set -Eeuo pipefail
+          git worktree add --detach /tmp/ores-compose-base "$EXPECTED_BASE_SHA"
+          test "$(git -C /tmp/ores-compose-base rev-parse HEAD)" = "$EXPECTED_BASE_SHA"
+          test -z "$(git -C /tmp/ores-compose-base status --porcelain)"
+
       - name: Changed-file formatting
         shell: bash
         working-directory: ores-compose
@@ -70,41 +80,121 @@ jobs:
       - name: Locked all-target all-feature compile
         shell: bash
         working-directory: ores-compose
-        env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo check --locked --all-targets --all-features
 
       - name: Source-filter regression suite
         shell: bash
         working-directory: ores-compose
-        env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo test --locked --test source_filter_execution_regressions -- --nocapture
 
-      - name: Full locked all-target all-feature tests
+      - name: Compare full-suite failures with exact base
         shell: bash
-        working-directory: ores-compose
-        env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-        run: cargo test --locked --all-targets --all-features
+        run: |
+          set -Eeuo pipefail
+          set +e
+          (cd ores-compose && cargo test --locked --all-targets --all-features --no-fail-fast) > /tmp/head-tests.log 2>&1
+          head_rc=$?
+          (cd /tmp/ores-compose-base && cargo test --locked --all-targets --all-features --no-fail-fast) > /tmp/base-tests.log 2>&1
+          base_rc=$?
+          set -e
+          export HEAD_RC="$head_rc" BASE_RC="$base_rc"
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
 
-      - name: Strict locked Clippy
+          failed = re.compile(r'^test (.+) \.\.\. FAILED$')
+          def failures(path):
+              out=set()
+              for line in Path(path).read_text(errors='replace').splitlines():
+                  m=failed.match(line.strip())
+                  if m:
+                      out.add(m.group(1))
+              return out
+
+          base=failures('/tmp/base-tests.log')
+          head=failures('/tmp/head-tests.log')
+          new=sorted(head-base)
+          print(f"full-suite exit base={os.environ['BASE_RC']} head={os.environ['HEAD_RC']}")
+          print(f"failed tests base={len(base)} head={len(head)} new={len(new)}")
+          for name in new:
+              print(f"NEW FAILURE: {name}")
+          if int(os.environ['BASE_RC']) == 0:
+              assert int(os.environ['HEAD_RC']) == 0, 'candidate regressed a green base suite'
+          assert not new, 'candidate introduced full-suite test failures'
+          PY
+
+      - name: Compare Clippy diagnostics with exact base
         shell: bash
-        working-directory: ores-compose
-        env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+        run: |
+          set -Eeuo pipefail
+          set +e
+          (cd ores-compose && cargo clippy --locked --all-targets --all-features --message-format=json -- -D warnings) > /tmp/head-clippy.jsonl 2>/tmp/head-clippy.stderr
+          head_rc=$?
+          (cd /tmp/ores-compose-base && cargo clippy --locked --all-targets --all-features --message-format=json -- -D warnings) > /tmp/base-clippy.jsonl 2>/tmp/base-clippy.stderr
+          base_rc=$?
+          set -e
+          export HEAD_RC="$head_rc" BASE_RC="$base_rc"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
 
-      - name: Assert candidate remained immutable
+          def norm(path):
+              p=str(path or '').replace('\\','/')
+              for marker in ('/ores-compose-base/','/ores-compose/'):
+                  if marker in p:
+                      return p.split(marker,1)[1]
+              return p
+
+          def diagnostics(path):
+              out=set()
+              for raw in Path(path).read_text(errors='replace').splitlines():
+                  try:
+                      obj=json.loads(raw)
+                  except json.JSONDecodeError:
+                      continue
+                  if obj.get('reason') != 'compiler-message':
+                      continue
+                  msg=obj.get('message') or {}
+                  if msg.get('level') not in {'warning','error'}:
+                      continue
+                  spans=msg.get('spans') or []
+                  primary=next((s for s in spans if s.get('is_primary')), spans[0] if spans else {})
+                  out.add((
+                      msg.get('level') or '',
+                      (msg.get('code') or {}).get('code') or '',
+                      norm(primary.get('file_name')),
+                      msg.get('message') or '',
+                  ))
+              return out
+
+          base=diagnostics('/tmp/base-clippy.jsonl')
+          head=diagnostics('/tmp/head-clippy.jsonl')
+          new=sorted(head-base)
+          print(f"clippy exit base={os.environ['BASE_RC']} head={os.environ['HEAD_RC']}")
+          print(f"diagnostics base={len(base)} head={len(head)} new={len(new)}")
+          for item in new:
+              print('NEW DIAGNOSTIC:', item)
+          if int(os.environ['BASE_RC']) == 0:
+              assert int(os.environ['HEAD_RC']) == 0, 'candidate regressed green base Clippy'
+          assert not new, 'candidate introduced Clippy diagnostics'
+          PY
+
+      - name: Assert candidate and base remained immutable
         if: always()
         shell: bash
         working-directory: ores-compose
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_ORES_COMPOSE_SHA"
+          test "$(git -C /tmp/ores-compose-base rev-parse HEAD)" = "$EXPECTED_BASE_SHA"
           test -z "$(git status --porcelain)" || {
             echo 'verification mutated candidate source' >&2
             git status --short >&2
             exit 1
           }
-          echo ORES_COMPOSE_178_CERT_PASS
+          test -z "$(git -C /tmp/ores-compose-base status --porcelain)" || {
+            echo 'verification mutated baseline source' >&2
+            git -C /tmp/ores-compose-base status --short >&2
+            exit 1
+          }
+          echo ORES_COMPOSE_178_DIFFERENTIAL_CERT_PASS
