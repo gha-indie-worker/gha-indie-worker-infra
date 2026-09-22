@@ -1,0 +1,89 @@
+name: certify ores-websocket #13 exact package head
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-ores-websocket-13.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-ores-websocket-13-20260922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      SOURCE_SHA: 9c0391cf4e62921d557aec86eecedbdbd54ce8dd
+      SOURCE_MAIN_SHA: 8cceeaf7142c469bc7ef55c16dc51ae0f9aeb43e
+      ZED_CLI_SHA: 344d432a6f94d4b1cfa02228ec36623c7484177a
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact ores-websocket candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-websocket
+          ref: ${{ env.SOURCE_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: subject
+          persist-credentials: false
+          fetch-depth: 32
+
+      - name: Guard exact manifest-only review surface
+        working-directory: subject
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git cat-file -e "$SOURCE_MAIN_SHA^{commit}"
+          test "$(git diff --name-only "$SOURCE_MAIN_SHA"..HEAD | tr '\n' ' ')" = '.zpkg.toml '
+          git diff --check "$SOURCE_MAIN_SHA"..HEAD
+          grep -F 'language = "universal"' .zpkg.toml
+          ! grep -Eq '^\[targets\.' .zpkg.toml
+          grep -F 'test = "sh conformance/check.sh"' .zpkg.toml
+          test -z "$(git status --porcelain)"
+
+      - name: Configure private Git reads
+        env:
+          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "${ORE_SOURCE_PAT:-}"
+          git config --global url."https://x-access-token:${ORE_SOURCE_PAT}@github.com/".insteadOf "https://github.com/"
+
+      - name: Install pinned Zed CLI
+        shell: bash
+        run: cargo install --git https://github.com/zed-pkg/zed-cli --rev "$ZED_CLI_SHA" --locked zed-cli
+
+      - name: Validate exact package manifest
+        working-directory: subject
+        run: zed validate
+
+      - name: Materialize universal package in disposable copy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cp -a subject "$RUNNER_TEMP/zed-subject"
+          cd "$RUNNER_TEMP/zed-subject"
+          unset ZED_PKG_GITHUB_TOKEN || true
+          zed install --allow-build --install-mode copy
+          zed validate --require-lock
+
+      - name: Run package-level conformance authority
+        working-directory: subject
+        shell: bash
+        run: sh conformance/check.sh
+
+      - name: Final immutable source guard
+        if: always()
+        working-directory: subject
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test -z "$(git status --porcelain)"
+          echo ORES_WEBSOCKET_13_CERT_PASS
