@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      EXPECTED_SOURCE_SHA: f45c907a46878b93a35b207e1cee79687a83461c
+      EXPECTED_SOURCE_SHA: ce931a6d7032e4beebc70e96f3ba96eb09dee99d
       SOURCE_BRANCH: feat/service-environment-isolation
     steps:
       - name: Checkout exact source branch
@@ -43,7 +43,10 @@ jobs:
           set -Eeuo pipefail
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt
           rustup default 1.98.1
-          rustfmt --edition 2021 --config skip_children=true src/config_loader.rs src/service_environment.rs
+          rustfmt --edition 2021 --config skip_children=true \
+            src/config_loader.rs \
+            src/local_up_process.rs \
+            src/service_environment.rs
           mapfile -t changed < <(git diff --name-only)
           test "${#changed[@]}" -gt 0 || {
             echo 'no formatting delta produced' >&2
@@ -51,12 +54,12 @@ jobs:
           }
           for path in "${changed[@]}"; do
             case "$path" in
-              src/config_loader.rs|src/service_environment.rs) ;;
+              src/config_loader.rs|src/local_up_process.rs|src/service_environment.rs) ;;
               *) echo "unexpected rustfmt change: $path" >&2; exit 1 ;;
             esac
           done
           git diff --check
-          git diff -- src/config_loader.rs src/service_environment.rs
+          git diff -- src/config_loader.rs src/local_up_process.rs src/service_environment.rs
 
       - name: Commit and push bounded format-only repair
         shell: bash
@@ -67,7 +70,7 @@ jobs:
           gh auth setup-git
           git config user.name 'ORESoftware'
           git config user.email 'alexander.d.mills@gmail.com'
-          git add -- src/config_loader.rs src/service_environment.rs
-          test -z "$(git diff --cached --name-only | grep -Ev '^(src/config_loader\.rs|src/service_environment\.rs)$' || true)"
-          git commit -m 'style: rustfmt service environment isolation'
+          git add -- src/config_loader.rs src/local_up_process.rs src/service_environment.rs
+          test -z "$(git diff --cached --name-only | grep -Ev '^(src/config_loader\.rs|src/local_up_process\.rs|src/service_environment\.rs)$' || true)"
+          git commit -m 'style: rustfmt service environment local-up path'
           git push origin "HEAD:${SOURCE_BRANCH}"
