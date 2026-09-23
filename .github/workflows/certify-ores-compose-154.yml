@@ -84,6 +84,7 @@ jobs:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: |
           set -Eeuo pipefail
+          mkdir -p target
           cargo clippy --all-targets --all-features --message-format=json 2>target/clippy-stderr.log | tee target/clippy.jsonl >/dev/null
           python3 - <<'PY'
           import json
