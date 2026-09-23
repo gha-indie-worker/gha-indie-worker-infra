@@ -13,8 +13,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      EXPECTED_SHA: 65681bd722cfa0667192956da5368aa814e58a60
-      EXPECTED_BASE_SHA: b0134dca90af18d642a331603b0538f3964967a1
+      EXPECTED_SHA: 78f7f0c6298c81a31aff414f037f27eeb9ebb52b
+      EXPECTED_BASE_SHA: c505136a2ed01dc9d3d428dff89557261b219922
       CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
     steps:
       - name: Checkout harness
@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: ORESoftware/ores-compose
-          ref: 65681bd722cfa0667192956da5368aa814e58a60
+          ref: 78f7f0c6298c81a31aff414f037f27eeb9ebb52b
           token: ${{ secrets.ORE_SOURCE_PAT }}
           path: ores-compose
           persist-credentials: false
@@ -101,6 +101,11 @@ jobs:
         shell: bash
         working-directory: ores-compose
         run: cargo test --locked --lib trusted_working_directory::tests::directory_content_changes_do_not_change_admitted_identity -- --exact --test-threads=1
+
+      - name: Preserve merged exhaustive dependency-wave proof
+        shell: bash
+        working-directory: ores-compose
+        run: cargo test --locked --test formal_dependency_graph_exhaustive -- --nocapture
 
       - name: Candidate Clippy boundary
         shell: bash
