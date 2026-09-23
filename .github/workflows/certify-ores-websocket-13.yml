@@ -16,7 +16,7 @@ jobs:
     env:
       SOURCE_SHA: 9c0391cf4e62921d557aec86eecedbdbd54ce8dd
       SOURCE_MAIN_SHA: 8cceeaf7142c469bc7ef55c16dc51ae0f9aeb43e
-      ZED_CLI_SHA: 344d432a6f94d4b1cfa02228ec36623c7484177a
+      ZED_CLI_SHA: 69fce161e456d758459cab5d3a6441f599769bfa
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
