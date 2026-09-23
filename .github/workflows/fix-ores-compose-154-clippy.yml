@@ -1,0 +1,165 @@
+name: fix ores-compose 154 clippy defects
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/fix-ores-compose-154-clippy.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    if: github.head_ref == 'ci/certify-ores-compose-154-20260922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXPECTED_SOURCE_SHA: da06fc34404ac6b3e42590d6cdfc5ab55cfea59f
+      SOURCE_BRANCH: feat/service-environment-isolation
+    steps:
+      - name: Checkout exact source branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-compose
+          ref: ${{ env.SOURCE_BRANCH }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Assert immutable starting point
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          test -z "$(git status --porcelain)"
+
+      - name: Apply bounded source repairs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          up = Path('src/up_orchestrator.rs')
+          text = up.read_text()
+          old = '''        let replica_policies = parse_compose_replica_runtime_policies(&input, &project)
+              .map_err(|error| error.to_string())?;
+          let replica_plans = plan_project_replicas(&project, &replica_policies)
+              .map_err(|error| error.to_string())?;
+          preflight_project_execution(&project, &replica_plans)?;
+          let shutdown_waves =
+              plan_project_shutdown_waves(&project).map_err(|error| error.to_string())?;
+          '''
+          # Keep indentation exact by deriving from the actual source block below.
+          old = '''        let replica_policies = parse_compose_replica_runtime_policies(&input, &project)
+              .map_err(|error| error.to_string())?;
+          ''' if False else '''        let replica_policies = parse_compose_replica_runtime_policies(&input, &project)
+            .map_err(|error| error.to_string())?;
+        let replica_plans = plan_project_replicas(&project, &replica_policies)
+            .map_err(|error| error.to_string())?;
+        preflight_project_execution(&project, &replica_plans)?;
+        let shutdown_waves =
+            plan_project_shutdown_waves(&project).map_err(|error| error.to_string())?;
+'''
+          new = '''        let replica_policies = parse_compose_replica_runtime_policies(&input, &project)
+            .map_err(|error| error.to_string())?;
+        let service_environment_policies =
+            parse_compose_service_environment_policies(&input, &project)
+                .map_err(|error| error.to_string())?;
+        let mut replica_plans = plan_project_replicas(&project, &replica_policies)
+            .map_err(|error| error.to_string())?;
+        let build_environments =
+            admit_service_environments(&project, &service_environment_policies, &mut replica_plans)?;
+        preflight_project_execution(&project, &replica_plans)?;
+        let shutdown_waves =
+            plan_project_shutdown_waves(&project).map_err(|error| error.to_string())?;
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one orchestrator admission block, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          old_call = '''            runtime.block_on(run_waves(
+                project.project.as_str(),
+                waves,
+                replica_plans,
+                shutdown_waves,
+            ))
+'''
+          new_call = '''            runtime.block_on(run_waves(
+                project.project.as_str(),
+                waves,
+                replica_plans,
+                build_environments,
+                shutdown_waves,
+            ))
+'''
+          if text.count(old_call) != 1:
+              raise SystemExit(f'expected one run_waves call, found {text.count(old_call)}')
+          up.write_text(text.replace(old_call, new_call, 1))
+
+          env = Path('src/service_environment.rs')
+          text = env.read_text()
+          old_match = '''            ServiceEnvironmentError::InvalidResolvedEnvironmentValue { key }
+                if key == "BUILD_SERVER_GITHUB_WEBHOOK_SECRET"
+'''
+          new_match = '''            ServiceEnvironmentError::InvalidResolvedEnvironmentValue { ref key }
+                if key == "BUILD_SERVER_GITHUB_WEBHOOK_SECRET"
+'''
+          if text.count(old_match) != 1:
+              raise SystemExit(f'expected one partial-move match, found {text.count(old_match)}')
+          env.write_text(text.replace(old_match, new_match, 1))
+          PY
+
+          mapfile -t changed < <(git diff --name-only)
+          printf 'changed: %s\n' "${changed[*]}"
+          test "${#changed[@]}" -eq 2
+          for path in "${changed[@]}"; do
+            case "$path" in
+              src/up_orchestrator.rs|src/service_environment.rs) ;;
+              *) echo "unexpected source change: $path" >&2; exit 1 ;;
+            esac
+          done
+
+      - name: Format repaired files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt
+          rustup default 1.98.1
+          rustfmt --edition 2021 --config skip_children=true \
+            src/up_orchestrator.rs src/service_environment.rs
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -eq 2
+          for path in "${changed[@]}"; do
+            case "$path" in
+              src/up_orchestrator.rs|src/service_environment.rs) ;;
+              *) echo "unexpected post-rustfmt change: $path" >&2; exit 1 ;;
+            esac
+          done
+
+      - name: Compile all targets before push
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          set -Eeuo pipefail
+          gh auth setup-git
+          cargo check --all-targets --all-features
+
+      - name: Commit and push exact repair
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          gh auth setup-git
+          git config user.name 'ORESoftware'
+          git config user.email 'alexander.d.mills@gmail.com'
+          git add -- src/up_orchestrator.rs src/service_environment.rs
+          mapfile -t staged < <(git diff --cached --name-only)
+          test "${#staged[@]}" -eq 2
+          git commit -m 'fix: admit service environments in up orchestrator'
+          git push origin "HEAD:${SOURCE_BRANCH}"
