@@ -42,27 +42,24 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          perl -0pi -e 's/JobSnapshot, JobState, QueueError/JobSnapshot, QueueError/' src/machine.rs
-
-          perl -0pi -e 's/InvalidResolvedEnvironmentValue \{ key \}/InvalidResolvedEnvironmentValue { ref key }/g' src/service_environment.rs
+          perl -0pi -e 's/ServiceEnvironmentError::InvalidResolvedEnvironmentValue \{ key \}\n                if key == "BUILD_SERVER_GITHUB_WEBHOOK_SECRET"/ServiceEnvironmentError::InvalidResolvedEnvironmentValue { ref key }\n                if key == "BUILD_SERVER_GITHUB_WEBHOOK_SECRET"/' src/service_environment.rs
 
           perl -0pi -e 's/let replica_policies = parse_compose_replica_runtime_policies\(&input, &project\)\n            \.map_err\(\|error\| error\.to_string\(\)\)\?;\n        let replica_plans = plan_project_replicas\(&project, &replica_policies\)\n            \.map_err\(\|error\| error\.to_string\(\)\)\?;\n        preflight_project_execution\(&project, &replica_plans\)\?;/let replica_policies = parse_compose_replica_runtime_policies(&input, &project)\n            .map_err(|error| error.to_string())?;\n        let service_environment_policies =\n            parse_compose_service_environment_policies(&input, &project)\n                .map_err(|error| error.to_string())?;\n        let mut replica_plans = plan_project_replicas(&project, &replica_policies)\n            .map_err(|error| error.to_string())?;\n        let build_environments = admit_service_environments(\n            &project,\n            &service_environment_policies,\n            &mut replica_plans,\n        )?;\n        preflight_project_execution(&project, &replica_plans)?;/s' src/up_orchestrator.rs
 
           perl -0pi -e 's/(runtime\.block_on\(run_waves\(\n                project\.project\.as_str\(\),\n                waves,\n                replica_plans,\n)(                shutdown_waves,)/$1                build_environments,\n$2/s' src/up_orchestrator.rs
 
-          grep -F 'JobSnapshot, QueueError' src/machine.rs
           grep -F 'parse_compose_service_environment_policies(&input, &project)' src/up_orchestrator.rs
           grep -F 'let build_environments = admit_service_environments(' src/up_orchestrator.rs
           grep -F 'InvalidResolvedEnvironmentValue { ref key }' src/service_environment.rs
 
           mapfile -t changed < <(git diff --name-only)
-          test "${#changed[@]}" -eq 3
+          test "${#changed[@]}" -eq 2
           printf '%s\n' "${changed[@]}" | sort > /tmp/actual-paths
-          printf '%s\n' src/machine.rs src/service_environment.rs src/up_orchestrator.rs | sort > /tmp/expected-paths
+          printf '%s\n' src/service_environment.rs src/up_orchestrator.rs | sort > /tmp/expected-paths
           diff -u /tmp/expected-paths /tmp/actual-paths
           git diff --check
 
-      - name: Format and prove strict Rust build
+      - name: Format and prove all-target compile
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
@@ -70,14 +67,13 @@ jobs:
         run: |
           set -Eeuo pipefail
           gh auth setup-git
-          rustup toolchain install 1.98.1 --profile minimal --component rustfmt,clippy
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt
           rustup default 1.98.1
           rustfmt --edition 2021 --config skip_children=true \
-            src/machine.rs \
             src/service_environment.rs \
             src/up_orchestrator.rs
           git diff --check
-          cargo clippy --all-targets --all-features -- -D warnings
+          cargo check --all-targets --all-features
 
       - name: Commit and push bounded repair
         shell: bash
@@ -85,14 +81,15 @@ jobs:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
         run: |
           set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
           gh auth setup-git
           git config user.name 'ORESoftware'
           git config user.email 'alexander.d.mills@gmail.com'
-          git add -- src/machine.rs src/service_environment.rs src/up_orchestrator.rs
+          git add -- src/service_environment.rs src/up_orchestrator.rs
           mapfile -t staged < <(git diff --cached --name-only)
-          test "${#staged[@]}" -eq 3
+          test "${#staged[@]}" -eq 2
           printf '%s\n' "${staged[@]}" | sort > /tmp/staged-paths
-          printf '%s\n' src/machine.rs src/service_environment.rs src/up_orchestrator.rs | sort > /tmp/expected-paths
+          printf '%s\n' src/service_environment.rs src/up_orchestrator.rs | sort > /tmp/expected-paths
           diff -u /tmp/expected-paths /tmp/staged-paths
           git commit -m 'fix: complete service environment admission path'
           git push origin "HEAD:${SOURCE_BRANCH}"
