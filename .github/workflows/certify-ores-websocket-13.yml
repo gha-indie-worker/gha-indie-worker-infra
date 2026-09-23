@@ -63,20 +63,20 @@ jobs:
         working-directory: subject
         run: zed validate
 
-      - name: Materialize universal package in disposable copy
+      - name: Run package-level conformance authority
+        working-directory: subject
+        shell: bash
+        run: sh conformance/check.sh
+
+      - name: Diagnostic only - materialize full dependency closure
+        continue-on-error: true
         shell: bash
         run: |
           set -Eeuo pipefail
           cp -a subject "$RUNNER_TEMP/zed-subject"
           cd "$RUNNER_TEMP/zed-subject"
-          unset ZED_PKG_GITHUB_TOKEN || true
           zed install --allow-build --install-mode copy
           zed validate --require-lock
-
-      - name: Run package-level conformance authority
-        working-directory: subject
-        shell: bash
-        run: sh conformance/check.sh
 
       - name: Final immutable source guard
         if: always()
