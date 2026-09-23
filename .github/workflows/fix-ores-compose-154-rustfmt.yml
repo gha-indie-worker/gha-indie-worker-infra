@@ -1,0 +1,73 @@
+name: fix ores-compose 154 rustfmt
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/fix-ores-compose-154-rustfmt.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  format-owned-files:
+    if: github.head_ref == 'ci/certify-ores-compose-154-20260922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_SOURCE_SHA: f45c907a46878b93a35b207e1cee79687a83461c
+      SOURCE_BRANCH: feat/service-environment-isolation
+    steps:
+      - name: Checkout exact source branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-compose
+          ref: ${{ env.SOURCE_BRANCH }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Assert immutable starting point
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SOURCE_SHA" || {
+            echo "source branch advanced: expected $EXPECTED_SOURCE_SHA, got $actual" >&2
+            exit 1
+          }
+          test -z "$(git status --porcelain)"
+
+      - name: Apply rustfmt only to PR-owned Rust files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt
+          rustup default 1.98.1
+          rustfmt --edition 2021 src/config_loader.rs src/service_environment.rs
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -gt 0 || {
+            echo 'no formatting delta produced' >&2
+            exit 1
+          }
+          for path in "${changed[@]}"; do
+            case "$path" in
+              src/config_loader.rs|src/service_environment.rs) ;;
+              *) echo "unexpected rustfmt change: $path" >&2; exit 1 ;;
+            esac
+          done
+          git diff --check
+          git diff -- src/config_loader.rs src/service_environment.rs
+
+      - name: Commit and push bounded format-only repair
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          gh auth setup-git
+          git config user.name 'ORESoftware'
+          git config user.email 'alexander.d.mills@gmail.com'
+          git add -- src/config_loader.rs src/service_environment.rs
+          test -z "$(git diff --cached --name-only | grep -Ev '^(src/config_loader\.rs|src/service_environment\.rs)$' || true)"
+          git commit -m 'style: rustfmt service environment isolation'
+          git push origin "HEAD:${SOURCE_BRANCH}"
