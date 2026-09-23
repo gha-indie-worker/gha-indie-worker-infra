@@ -1,4 +1,4 @@
-name: certify ores-compose #175 exhaustive dependency-wave proof
+name: certify ores-compose #179 exhaustive dependency-wave proof
 
 on:
   pull_request:
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      EXPECTED_SHA: a4550cd482abe7e6e55e39f207cb11fb8ce0a202
+      EXPECTED_SHA: 3f0c9897774c8b505e163cc50bc3d571358975dc
       EXPECTED_BASE_SHA: b0134dca90af18d642a331603b0538f3964967a1
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -79,4 +79,4 @@ jobs:
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test -z "$(git status --porcelain)"
-          echo ORES_COMPOSE_175_CERT_PASS
+          echo ORES_COMPOSE_179_CERT_PASS
