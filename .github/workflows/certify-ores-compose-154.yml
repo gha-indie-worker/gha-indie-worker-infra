@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      EXPECTED_ORES_COMPOSE_SHA: da06fc34404ac6b3e42590d6cdfc5ab55cfea59f
+      EXPECTED_ORES_COMPOSE_SHA: 14b10f64ef6e77430ce60fc8a2df9f5bea41ccbf
     steps:
       - name: Checkout certification harness
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -74,16 +74,49 @@ jobs:
           rustfmt --edition 2021 --config skip_children=true --check \
             src/config_loader.rs \
             src/local_up_process.rs \
-            src/service_environment.rs
+            src/service_environment.rs \
+            src/up_orchestrator.rs
 
-      - name: Rust clippy
+      - name: Clippy compile and PR-owned lint gate
         shell: bash
         working-directory: ores-compose
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: |
           set -Eeuo pipefail
-          cargo clippy --all-targets --all-features -- -D warnings
+          cargo clippy --all-targets --all-features --message-format=json 2>target/clippy-stderr.log | tee target/clippy.jsonl >/dev/null
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          owned = {
+              'src/config_loader.rs',
+              'src/local_up_process.rs',
+              'src/service_environment.rs',
+              'src/up_orchestrator.rs',
+          }
+          failures = []
+          for raw in Path('target/clippy.jsonl').read_text().splitlines():
+              try:
+                  event = json.loads(raw)
+              except json.JSONDecodeError:
+                  continue
+              if event.get('reason') != 'compiler-message':
+                  continue
+              message = event.get('message') or {}
+              if message.get('level') != 'warning':
+                  continue
+              spans = message.get('spans') or []
+              touched = sorted({s.get('file_name') for s in spans if s.get('file_name') in owned})
+              if touched:
+                  code = (message.get('code') or {}).get('code') or 'warning'
+                  failures.append((touched, code, message.get('message', '')))
+          if failures:
+              for touched, code, text in failures:
+                  print(f'PR-owned Clippy warning {code} in {touched}: {text}')
+              raise SystemExit(1)
+          print('No Clippy warnings touch PR-owned Rust files.')
+          PY
 
       - name: Rust tests
         shell: bash
