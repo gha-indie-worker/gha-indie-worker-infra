@@ -43,7 +43,7 @@ jobs:
           set -Eeuo pipefail
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt
           rustup default 1.98.1
-          rustfmt --edition 2021 src/config_loader.rs src/service_environment.rs
+          rustfmt --edition 2021 --config skip_children=true src/config_loader.rs src/service_environment.rs
           mapfile -t changed < <(git diff --name-only)
           test "${#changed[@]}" -gt 0 || {
             echo 'no formatting delta produced' >&2
