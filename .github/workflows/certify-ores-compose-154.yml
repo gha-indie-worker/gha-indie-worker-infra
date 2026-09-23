@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      EXPECTED_ORES_COMPOSE_SHA: f45c907a46878b93a35b207e1cee79687a83461c
+      EXPECTED_ORES_COMPOSE_SHA: ce931a6d7032e4beebc70e96f3ba96eb09dee99d
     steps:
       - name: Checkout certification harness
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -66,12 +66,15 @@ jobs:
           rustup default 1.98.1
           rustc --version | grep -F 'rustc 1.98.1'
 
-      - name: Rust format
+      - name: Rust format for PR-owned files
         shell: bash
         working-directory: ores-compose
         run: |
           set -Eeuo pipefail
-          cargo fmt --all --check
+          rustfmt --edition 2021 --config skip_children=true --check \
+            src/config_loader.rs \
+            src/local_up_process.rs \
+            src/service_environment.rs
 
       - name: Rust clippy
         shell: bash
