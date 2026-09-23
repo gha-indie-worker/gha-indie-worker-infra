@@ -1,0 +1,231 @@
+name: certify canonical-cli PR 47
+
+on:
+  push:
+    branches:
+      - ci/certify-canonical-cli-47-20260922
+    paths:
+      - '.github/workflows/certify-canonical-cli-47.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXPECTED_OLD_HEAD: d5ac1b233e7d0197f11fa976a005f07fca562e0b
+      EXPECTED_MAIN_SHA: b3d39d72417df17a5cc0c4c7f9ea1ec50b61c713
+      SOURCE_BRANCH: feat/readiness-tls-enforcement
+    steps:
+      - name: Checkout exact canonical-cli candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: canonical-cloud/canonical-cli
+          ref: ${{ env.SOURCE_BRANCH }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: canonical-cli
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Assert source identity and configure private Git reads
+        shell: bash
+        working-directory: canonical-cli
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_OLD_HEAD" || {
+            echo "source head moved; expected $EXPECTED_OLD_HEAD, got $(git rev-parse HEAD)" >&2
+            exit 1
+          }
+          gh auth setup-git
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN_SHA" || {
+            echo "main moved; expected $EXPECTED_MAIN_SHA, got $(git rev-parse origin/main)" >&2
+            exit 1
+          }
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: '1.95.0'
+          components: rustfmt,clippy
+
+      - name: Reconcile TLS readiness onto current main
+        shell: bash
+        working-directory: canonical-cli
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          set -Eeuo pipefail
+          old_head="$(git rev-parse HEAD)"
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+
+          for f in \
+            docs/readiness-tls.md \
+            examples/readiness-tls.json \
+            src/readiness_tls.rs \
+            tests/readiness_tls_cli.rs \
+            .cli-flags.toml; do
+            mkdir -p "$work/$(dirname "$f")"
+            git show "$old_head:$f" > "$work/$f"
+          done
+
+          git reset --hard "$EXPECTED_MAIN_SHA"
+
+          for f in \
+            docs/readiness-tls.md \
+            examples/readiness-tls.json \
+            src/readiness_tls.rs \
+            tests/readiness_tls_cli.rs; do
+            mkdir -p "$(dirname "$f")"
+            cp "$work/$f" "$f"
+          done
+
+          python3 - "$work/.cli-flags.toml" <<'PY'
+          from pathlib import Path
+          import sys
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one marker, found {count}: {old!r}")
+              return text.replace(old, new, 1)
+
+          cargo = Path('Cargo.toml')
+          text = cargo.read_text()
+          if 'rustls = "0.23.42"' not in text:
+              text = replace_once(
+                  text,
+                  'reqwest = { version = "0.13.4", default-features = false, features = ["rustls"] }\n',
+                  'reqwest = { version = "0.13.4", default-features = false, features = ["rustls"] }\nrustls = "0.23.42"\n',
+                  'rustls dependency',
+              )
+          tokio_line = next(line for line in text.splitlines() if line.startswith('tokio = '))
+          if '"net"' not in tokio_line:
+              text = replace_once(text, '"macros", "process"', '"macros", "net", "process"', 'tokio net feature')
+          if 'tokio-rustls = "0.26.4"' not in text:
+              text = replace_once(
+                  text,
+                  'tokio = { version = "1.53.0", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "time"] }\n',
+                  'tokio = { version = "1.53.0", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "time"] }\ntokio-rustls = "0.26.4"\n',
+                  'tokio-rustls dependency',
+              )
+          if 'rcgen = "0.13"' not in text:
+              text = replace_once(
+                  text,
+                  'predicates = "3.1.3"\n',
+                  'predicates = "3.1.3"\n# Self-signed certificates for local TLS test servers only.\nrcgen = "0.13"\n',
+                  'rcgen dev dependency',
+              )
+          cargo.write_text(text)
+
+          main = Path('src/main.rs')
+          text = main.read_text()
+          if 'mod readiness_tls;' not in text:
+              text = replace_once(text, 'mod readiness_preflight;\n', 'mod readiness_preflight;\nmod readiness_tls;\n', 'TLS module declaration')
+          if 'readiness_tls::matches(&argv)' not in text:
+              marker = '    let cli = match cli::Cli::try_parse_from(&argv) {'
+              block = '''    if readiness_tls::matches(&argv) {\n        let _telemetry = telemetry::init(&env);\n        let span = tracing::info_span!("canonical.readiness.tls");\n        return readiness_tls::run(&argv).instrument(span).await;\n    }\n\n'''
+              text = replace_once(text, marker, block + marker, 'TLS route')
+          main.write_text(text)
+
+          verifier = Path('scripts/verify-flags-contract.py')
+          text = verifier.read_text()
+          if 'ROOT / "src" / "readiness_tls.rs"' not in text:
+              marker = '    ROOT / "src" / "readiness_host_posture.rs",\n'
+              text = replace_once(text, marker, marker + '    ROOT / "src" / "readiness_tls.rs",\n', 'verifier source list')
+          if '"readiness_tls::matches(&argv)"' not in text:
+              marker = '            "readiness_host_posture::matches(&argv)",\n'
+              text = replace_once(text, marker, marker + '            "readiness_tls::matches(&argv)",\n', 'verifier route order')
+          verifier.write_text(text)
+
+          old_lines = Path(sys.argv[1]).read_text().splitlines()
+          prefix = '[commands.readiness.commands.tls'
+          block = []
+          collecting = False
+          for line in old_lines:
+              if line.startswith(prefix):
+                  collecting = True
+              elif collecting and line.startswith('[') and not line.startswith(prefix):
+                  break
+              if collecting:
+                  block.append(line)
+          if not block:
+              raise SystemExit('TLS flags block not found in candidate')
+          flags = Path('.cli-flags.toml')
+          text = flags.read_text()
+          if '[commands.readiness.commands.tls]' not in text:
+              text = text.rstrip() + '\n\n' + '\n'.join(block).rstrip() + '\n'
+          flags.write_text(text)
+          PY
+
+          # Resolve only the dependency/feature additions needed by this merged manifest.
+          cargo check --all-targets
+          cargo fmt --all
+          git diff --check
+
+      - name: Exact CI policy and contract gates
+        shell: bash
+        working-directory: canonical-cli
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/verify-ci-policy.py
+          python3 scripts/verify-flags-contract.py
+          python3 scripts/verify-vendored-client.py
+
+      - name: Format
+        shell: bash
+        working-directory: canonical-cli
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        shell: bash
+        working-directory: canonical-cli
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Test
+        shell: bash
+        working-directory: canonical-cli
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo test --locked --all-targets
+
+      - name: Release build
+        shell: bash
+        working-directory: canonical-cli
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo build --locked --release
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@c44f6b046f1c29ae5918b1e0bfdbb2f1813836fd
+        with:
+          tool: cargo-audit@0.22.2
+
+      - name: Audit locked Rust dependencies
+        shell: bash
+        working-directory: canonical-cli
+        run: cargo audit --deny warnings
+
+      - name: Persist tested source head
+        shell: bash
+        working-directory: canonical-cli
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          git config user.name 'ORESoftware CI Reconciler'
+          git config user.email 'noreply@oresoftware.com'
+          git add .cli-flags.toml Cargo.toml Cargo.lock docs/readiness-tls.md examples/readiness-tls.json scripts/verify-flags-contract.py src/main.rs src/readiness_tls.rs tests/readiness_tls_cli.rs
+          git diff --cached --check
+          git commit -m 'Reconcile TLS readiness onto current main'
+          tested_sha="$(git rev-parse HEAD)"
+          printf 'TESTED_SOURCE_SHA=%s\n' "$tested_sha"
+          git push --force-with-lease=refs/heads/$SOURCE_BRANCH:$EXPECTED_OLD_HEAD origin HEAD:refs/heads/$SOURCE_BRANCH
+          test "$(git ls-remote origin refs/heads/$SOURCE_BRANCH | cut -f1)" = "$tested_sha"
