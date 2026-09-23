@@ -37,81 +37,48 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          up = Path('src/up_orchestrator.rs')
-          text = up.read_text()
-          old = '''        let replica_policies = parse_compose_replica_runtime_policies(&input, &project)
-              .map_err(|error| error.to_string())?;
-          let replica_plans = plan_project_replicas(&project, &replica_policies)
-              .map_err(|error| error.to_string())?;
-          preflight_project_execution(&project, &replica_plans)?;
-          let shutdown_waves =
-              plan_project_shutdown_waves(&project).map_err(|error| error.to_string())?;
-          '''
-          # Keep indentation exact by deriving from the actual source block below.
-          old = '''        let replica_policies = parse_compose_replica_runtime_policies(&input, &project)
-              .map_err(|error| error.to_string())?;
-          ''' if False else '''        let replica_policies = parse_compose_replica_runtime_policies(&input, &project)
-            .map_err(|error| error.to_string())?;
-        let replica_plans = plan_project_replicas(&project, &replica_policies)
-            .map_err(|error| error.to_string())?;
-        preflight_project_execution(&project, &replica_plans)?;
-        let shutdown_waves =
-            plan_project_shutdown_waves(&project).map_err(|error| error.to_string())?;
-'''
-          new = '''        let replica_policies = parse_compose_replica_runtime_policies(&input, &project)
-            .map_err(|error| error.to_string())?;
-        let service_environment_policies =
-            parse_compose_service_environment_policies(&input, &project)
-                .map_err(|error| error.to_string())?;
-        let mut replica_plans = plan_project_replicas(&project, &replica_policies)
-            .map_err(|error| error.to_string())?;
-        let build_environments =
-            admit_service_environments(&project, &service_environment_policies, &mut replica_plans)?;
-        preflight_project_execution(&project, &replica_plans)?;
-        let shutdown_waves =
-            plan_project_shutdown_waves(&project).map_err(|error| error.to_string())?;
-'''
-          if text.count(old) != 1:
-              raise SystemExit(f'expected one orchestrator admission block, found {text.count(old)}')
-          text = text.replace(old, new, 1)
-
-          old_call = '''            runtime.block_on(run_waves(
-                project.project.as_str(),
-                waves,
-                replica_plans,
-                shutdown_waves,
-            ))
-'''
-          new_call = '''            runtime.block_on(run_waves(
-                project.project.as_str(),
-                waves,
-                replica_plans,
-                build_environments,
-                shutdown_waves,
-            ))
-'''
-          if text.count(old_call) != 1:
-              raise SystemExit(f'expected one run_waves call, found {text.count(old_call)}')
-          up.write_text(text.replace(old_call, new_call, 1))
-
-          env = Path('src/service_environment.rs')
-          text = env.read_text()
-          old_match = '''            ServiceEnvironmentError::InvalidResolvedEnvironmentValue { key }
-                if key == "BUILD_SERVER_GITHUB_WEBHOOK_SECRET"
-'''
-          new_match = '''            ServiceEnvironmentError::InvalidResolvedEnvironmentValue { ref key }
-                if key == "BUILD_SERVER_GITHUB_WEBHOOK_SECRET"
-'''
-          if text.count(old_match) != 1:
-              raise SystemExit(f'expected one partial-move match, found {text.count(old_match)}')
-          env.write_text(text.replace(old_match, new_match, 1))
-          PY
-
+          cat > /tmp/ores-compose-154.patch <<'PATCH'
+          diff --git a/src/up_orchestrator.rs b/src/up_orchestrator.rs
+          --- a/src/up_orchestrator.rs
+          +++ b/src/up_orchestrator.rs
+          @@ -47,8 +47,13 @@ mod runtime {
+                   let replica_policies = parse_compose_replica_runtime_policies(&input, &project)
+                       .map_err(|error| error.to_string())?;
+          -        let replica_plans = plan_project_replicas(&project, &replica_policies)
+          +        let service_environment_policies =
+          +            parse_compose_service_environment_policies(&input, &project)
+          +                .map_err(|error| error.to_string())?;
+          +        let mut replica_plans = plan_project_replicas(&project, &replica_policies)
+                       .map_err(|error| error.to_string())?;
+          +        let build_environments =
+          +            admit_service_environments(&project, &service_environment_policies, &mut replica_plans)?;
+                   preflight_project_execution(&project, &replica_plans)?;
+                   let shutdown_waves =
+                       plan_project_shutdown_waves(&project).map_err(|error| error.to_string())?;
+          @@ -112,6 +117,7 @@ mod runtime {
+                       project.project.as_str(),
+                       waves,
+                       replica_plans,
+          +            build_environments,
+                       shutdown_waves,
+                   ))
+               })();
+          diff --git a/src/service_environment.rs b/src/service_environment.rs
+          --- a/src/service_environment.rs
+          +++ b/src/service_environment.rs
+          @@ -429,7 +429,7 @@ mod tests {
+                   .expect_err("oversized resolved secret must fail closed");
+                   assert!(matches!(
+                       error,
+          -            ServiceEnvironmentError::InvalidResolvedEnvironmentValue { key }
+          +            ServiceEnvironmentError::InvalidResolvedEnvironmentValue { ref key }
+                           if key == "BUILD_SERVER_GITHUB_WEBHOOK_SECRET"
+                   ));
+                   let diagnostic = error.to_string();
+          PATCH
+          git apply --check /tmp/ores-compose-154.patch
+          git apply /tmp/ores-compose-154.patch
           mapfile -t changed < <(git diff --name-only)
-          printf 'changed: %s\n' "${changed[*]}"
           test "${#changed[@]}" -eq 2
           for path in "${changed[@]}"; do
             case "$path" in
@@ -126,17 +93,10 @@ jobs:
           set -Eeuo pipefail
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt
           rustup default 1.98.1
-          rustfmt --edition 2021 --config skip_children=true \
-            src/up_orchestrator.rs src/service_environment.rs
+          rustfmt --edition 2021 --config skip_children=true src/up_orchestrator.rs src/service_environment.rs
           git diff --check
           mapfile -t changed < <(git diff --name-only)
           test "${#changed[@]}" -eq 2
-          for path in "${changed[@]}"; do
-            case "$path" in
-              src/up_orchestrator.rs|src/service_environment.rs) ;;
-              *) echo "unexpected post-rustfmt change: $path" >&2; exit 1 ;;
-            esac
-          done
 
       - name: Compile all targets before push
         shell: bash
