@@ -63,13 +63,7 @@ jobs:
         working-directory: subject
         run: zed validate
 
-      - name: Run package-level conformance authority
-        working-directory: subject
-        shell: bash
-        run: sh conformance/check.sh
-
-      - name: Diagnostic only - materialize full dependency closure
-        continue-on-error: true
+      - name: Materialize dependency closure in disposable copy
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -77,6 +71,13 @@ jobs:
           cd "$RUNNER_TEMP/zed-subject"
           zed install --allow-build --install-mode copy
           zed validate --require-lock
+
+      - name: Run package-level conformance authority
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd "$RUNNER_TEMP/zed-subject"
+          sh conformance/check.sh
 
       - name: Final immutable source guard
         if: always()
