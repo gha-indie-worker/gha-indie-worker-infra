@@ -1,0 +1,97 @@
+name: repair canonical-cli strict clippy baseline
+
+on:
+  push:
+    branches:
+      - ci/certify-canonical-cli-47-20260922
+    paths:
+      - '.github/workflows/repair-canonical-cli-clippy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXPECTED_SOURCE_SHA: e36197963e97d301b0cb3f493f1ee4ef20736632
+      SOURCE_BRANCH: fix/clippy-baseline-20260922
+    steps:
+      - name: Checkout exact canonical-cli baseline branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: canonical-cloud/canonical-cli
+          ref: ${{ env.SOURCE_BRANCH }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: canonical-cli
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Assert source identity and configure private Git reads
+        shell: bash
+        working-directory: canonical-cli
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          gh auth setup-git
+
+      - name: Install Rust 1.95
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.95.0
+
+      - name: Apply machine-applicable compiler and Clippy repairs
+        shell: bash
+        working-directory: canonical-cli
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          set -Eeuo pipefail
+          cargo fix --locked --all-targets --allow-dirty --allow-staged
+          cargo clippy --fix --locked --all-targets --allow-dirty --allow-staged -- -D warnings || true
+          cargo fmt --all
+          git diff --check
+
+      - name: Strict Clippy
+        shell: bash
+        working-directory: canonical-cli
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Test and release build
+        shell: bash
+        working-directory: canonical-cli
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          set -Eeuo pipefail
+          cargo test --locked --all-targets
+          cargo build --locked --release
+          python3 scripts/verify-ci-policy.py
+          python3 scripts/verify-flags-contract.py
+          python3 scripts/verify-vendored-client.py
+          cargo fmt --all --check
+          git diff --check
+
+      - name: Persist strict baseline repair
+        shell: bash
+        working-directory: canonical-cli
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ORESoftware CI Repair'
+          git config user.email 'noreply@oresoftware.com'
+          git add -u
+          git diff --cached --check
+          git diff --cached --quiet && { echo 'No repair changes'; exit 1; }
+          git commit -m 'fix(ci): restore strict Clippy baseline'
+          repaired_sha="$(git rev-parse HEAD)"
+          echo "REPAIRED_SOURCE_SHA=$repaired_sha"
+          git push --force-with-lease=refs/heads/$SOURCE_BRANCH:$EXPECTED_SOURCE_SHA origin HEAD:refs/heads/$SOURCE_BRANCH
+          test "$(git ls-remote origin refs/heads/$SOURCE_BRANCH | cut -f1)" = "$repaired_sha"
