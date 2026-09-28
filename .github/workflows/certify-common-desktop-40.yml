@@ -61,6 +61,17 @@ jobs:
         working-directory: common-desktop
         run: rustfmt --edition 2021 --check conformance/rust/src/bin/validate_appliance_contract.rs
 
+      - name: Generate deterministic lock candidate
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo generate-lockfile
+          sha256sum Cargo.lock | tee "${RUNNER_TEMP}/common-desktop-cargo-lock.sha256"
+          cp Cargo.lock "${RUNNER_TEMP}/common-desktop-Cargo.lock"
+
       - name: Locked workspace check
         working-directory: common-desktop
         env:
@@ -90,6 +101,26 @@ jobs:
           set -Eeuo pipefail
           cargo build --locked -p ores-common-desktop-conformance --bin validate_appliance_contract
           test -x target/debug/validate_appliance_contract
+
+      - name: Upload reviewed lock candidate
+        if: always() && hashFiles(format('{0}/common-desktop-Cargo.lock', runner.temp)) != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-cargo-lock-${{ env.EXPECTED_SHA }}
+          path: |
+            ${{ runner.temp }}/common-desktop-Cargo.lock
+            ${{ runner.temp }}/common-desktop-cargo-lock.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Restore source checkout
+        if: always()
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git checkout -- Cargo.lock
+          git clean -fd -- target
 
       - name: Assert candidate remained immutable
         if: always()
