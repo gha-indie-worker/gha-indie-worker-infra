@@ -33,7 +33,29 @@ Use `scripts/update-app-pin.sh` only to deliberately review and stage a newer mo
 
 This repository is the single `.ores-compose.yaml` authority. The manifest pins the same exact monorepo commit as `_apps/gha-monorepo`; laptop and Codespaces must not substitute a moving branch or a second service graph.
 
-Use `scripts/dev/bootstrap`, then `scripts/dev/doctor`. The doctor currently fails intentionally while the pinned API/web server revisions are print-and-exit stubs, so the Access-protected Cloudflare tunnel cannot be mistaken for a healthy runtime. When the listener work and upstream ores-compose source stack are promoted, `scripts/dev/tunnel` accepts only an external fail-closed config for `local.indiebuild.dev` or `codespace.indiebuild.dev`. See `docs/local-development.md`.
+Use `scripts/dev/bootstrap`, then `scripts/dev/doctor`. The doctor fails closed if required local tools are missing, the app checkout is not at the exact reviewed revision, the API/web pins regress to the known print-and-exit stub revisions, or the shared Codespaces edge status contract is unavailable. The current pinned API and web revisions contain real loopback listeners with `/readyz` endpoints, so those old stub revisions are no longer an intentional runtime blocker.
+
+After doctor passes, the local application graph is validated and started with:
+
+```sh
+ores-compose check .ores-compose.yaml
+ores-compose plan .ores-compose.yaml
+ores-compose up .ores-compose.yaml
+curl -fsS http://127.0.0.1:18090/readyz
+curl -fsS http://127.0.0.1:18091/readyz
+```
+
+The shared Codespaces edge wrappers then remain:
+
+```sh
+just codespace-edge-up
+just codespace-edge-status
+just codespace-edge-down
+```
+
+`codespace-edge-up` needs the reviewed private-source credential expected by the `Justfile` for `ORESoftware/codespaces-cluster`; do not replace that boundary with a public or mutable fallback.
+
+When the local application and edge checks are healthy, `scripts/dev/tunnel` accepts only an external fail-closed config for `local.indiebuild.dev` or `codespace.indiebuild.dev`. See `docs/local-development.md`.
 
 ## Database isolation tests
 
