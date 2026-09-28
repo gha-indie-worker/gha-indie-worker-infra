@@ -6,7 +6,7 @@
 #
 # Release automation MUST replace the deliberately invalid image digest below
 # with an immutable image built from gha-indie-worker.rs source revision:
-# 1ce63055b7ccfc303dd982a2f5c302e165104025
+# 843dc9bd2890a515bf2b14cfd258c334c59ce3d6
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -42,7 +42,7 @@ spec:
         app: gha-indie-worker-build-server
         plane: product
       annotations:
-        indiebuild.dev/source-revision: "1ce63055b7ccfc303dd982a2f5c302e165104025"
+        indiebuild.dev/source-revision: "843dc9bd2890a515bf2b14cfd258c334c59ce3d6"
         indiebuild.dev/execution-provider: "scintilla"
     spec:
       serviceAccountName: gha-indie-worker-build-server
