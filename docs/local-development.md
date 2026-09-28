@@ -37,7 +37,7 @@ The edge's own `/healthz`, `/readyz`, and `/routes` endpoints remain control-pla
 A fresh/rebuilt devcontainer provisions the reviewed private tools needed by this lifecycle:
 
 - `ORESoftware/ores-cli@d37aa4c1a0b79a292a31e2f16db8622144b0831f`, with the reviewed revision recorded in `config/ores-cli.rev`;
-- `ORESoftware/ores-compose@ceb2134c4f90f1a66e4a07166f1ea04d64be6b89`, with the reviewed revision recorded in `config/ores-compose.rev`;
+- `ORESoftware/ores-compose@c52d08c875e73892acb88897c3b4a8969ad37ff2`, with the reviewed revision recorded in `config/ores-compose.rev`;
 - the shared `ORESoftware/codespaces-cluster` source is materialized later at exact commit `367a68adf04bf853ff2923c234808cdc538ee21a`, recorded in `config/codespaces-cluster.rev`.
 
 The three `config/*.rev` files are review authorities for private bootstrap/runtime tooling. They must contain exactly one full 40-hex commit SHA. The Rust dev-runtime validator, contract tests, devcontainer install commands, and Codespace edge workflow cross-check those values so a pin cannot move in only one surface.

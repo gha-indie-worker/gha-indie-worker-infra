@@ -60,7 +60,7 @@ jobs:
           ! grep -Fq -- '--rev c854130ee147e9793a3af8736e90241630a5c934' .devcontainer/devcontainer.json
 
           ores_compose_rev="$(tr -d '[:space:]' < config/ores-compose.rev)"
-          test "$ores_compose_rev" = 'ceb2134c4f90f1a66e4a07166f1ea04d64be6b89'
+          test "$ores_compose_rev" = 'c52d08c875e73892acb88897c3b4a8969ad37ff2'
           [[ "$ores_compose_rev" =~ ^[0-9a-f]{40}$ ]]
           grep -Fq -- "--rev $ores_compose_rev" .devcontainer/devcontainer.json
 
@@ -99,7 +99,7 @@ jobs:
           grep -Fq 'Port `8080` is reserved exclusively' docs/local-development.md
           grep -Fq 'read-only Contents access limited to exactly those three repositories' docs/local-development.md
           grep -Fq 'd37aa4c1a0b79a292a31e2f16db8622144b0831f' docs/local-development.md
-          grep -Fq 'ceb2134c4f90f1a66e4a07166f1ea04d64be6b89' docs/local-development.md
+          grep -Fq 'c52d08c875e73892acb88897c3b4a8969ad37ff2' docs/local-development.md
           grep -Fq '367a68adf04bf853ff2923c234808cdc538ee21a' docs/local-development.md
 
           ! grep -Fq 'http://127.0.0.1:8080/readyz' .ores-compose.yaml
