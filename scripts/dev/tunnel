@@ -11,6 +11,15 @@ fi
 mode="$1"
 config="$2"
 
+# Cargo-installed developer tools commonly live here even when the caller's
+# shell PATH (or a macOS-launched process) does not include them. Prepend the
+# directory so the Rust doctor/runtime can resolve ores-compose and peers via
+# their normal command names. Respect CARGO_HOME when it is explicitly set.
+cargo_bin="${CARGO_HOME:-$HOME/.cargo}/bin"
+if [[ -d "$cargo_bin" ]]; then
+    export PATH="$cargo_bin:$PATH"
+fi
+
 # On macOS, keep a developer laptop awake while the tunnel supervisor is
 # attached. The Rust runtime remains authoritative for config validation and
 # cloudflared invocation; this wrapper only owns host sleep/restart behavior.
