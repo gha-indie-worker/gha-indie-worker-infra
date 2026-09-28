@@ -44,21 +44,20 @@ export SCINTILLA_BASE_URL="http://127.0.0.1:8080"
 scintilla dev --project .
 ```
 
-For the desktop appliance used by GIW, run the Scintilla desktop substrate at `127.0.0.1:8765` and GIW's adapter at `127.0.0.1:8770` as documented in `local-desktop-cloudflare-bringup.md`. The standalone Scintilla appliance bootstrap is:
+For the desktop appliance used by GIW, run the exact Scintilla desktop substrate pinned by `giw-desktop-infra/appliance.json`. The Rust-first local daemon path is the repository's ORES Compose contract:
 
 ```sh
 cd "$HOME/src/scintilla-desktop-infra"
-./scripts/bootstrap.sh
-python3 scripts/render_runtime_manifest.py \
-  --ingress-bin /absolute/path/to/scintilla-ingress \
-  --ingress-root /absolute/path/to/runtime \
-  --cloudflared-credentials /absolute/path/to/.cloudflared/TUNNEL-ID.json
-./scripts/doctor.sh
-./scripts/up.sh
-./scripts/status.sh
+ores-compose check .ores-compose.yaml
+ores-compose plan .ores-compose.yaml
+ores-compose up .ores-compose.yaml
 ```
 
-To install the audited persistent OS service instead of keeping a foreground terminal open:
+That keeps the Scintilla machine-control API on `127.0.0.1:8765`. GIW's `giw-desktop-daemon` remains a separate loopback adapter on `127.0.0.1:8770`.
+
+For the fuller standalone Scintilla appliance (BEAM ingress, worker pools, persistent OS service, and optional substrate-managed Cloudflare connector), use the Scintilla repository's audited bootstrap/service lifecycle and its current reviewed runtime manifest. GIW deliberately does not duplicate or extend the legacy Python manifest renderer; that tooling remains migration debt until Scintilla replaces it with the Rust-first equivalent.
+
+To install the audited persistent OS service after the Scintilla runtime manifest is prepared:
 
 ```sh
 ./scripts/install-service.sh
