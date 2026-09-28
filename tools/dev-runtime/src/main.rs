@@ -9,7 +9,7 @@ use std::{
 };
 
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
-const EXPECTED_MONOREPO: &str = "c6c1ed4ab6718f4ae00e2ec794c070377bc05766";
+const EXPECTED_MONOREPO: &str = "68de4b122d06621805bfb810367488bd171272c7";
 const ORES_CLI_REV_PATH: &str = "config/ores-cli.rev";
 const ORES_COMPOSE_REV_PATH: &str = "config/ores-compose.rev";
 const STUB_API_PIN: &str = "90cfc8a86660d36683fc96d629af843c347e6667";
@@ -276,10 +276,11 @@ fn tunnel(root: &Path, mode: &str, config: &Path) -> Result<(), Box<dyn Error>> 
             &["service: http://127.0.0.1:8080"],
         ),
         "standalone" => (
-            &["hostname: indiebuild.dev", "hostname: api.indiebuild.dev"],
+            &["hostname: local.indiebuild.dev"],
             &[
-                "service: http://127.0.0.1:18091",
+                "path: ^/v1/.*",
                 "service: http://127.0.0.1:18090",
+                "service: http://127.0.0.1:18091",
             ],
         ),
         _ => return Err("tunnel mode must be laptop, codespace, or standalone".into()),
