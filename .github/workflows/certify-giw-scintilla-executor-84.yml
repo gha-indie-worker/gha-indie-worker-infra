@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      GIW_SHA: 30e0d68757fb1f12ef9c225afe967cf85aea2376
-      K8S_DONOR_SHA: cc675fd772d56e917d6b19e03a9c62e98d02248d
+      GIW_SHA: 45123796c708278daf37d4a24a819a2311ef2419
+      LIBS_SHA: c8bdc06d74746acc6439f9527ebd02697fdf028b
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -29,26 +29,21 @@ jobs:
           path: remote/deployments/build-server-rs
           persist-credentials: false
 
-      - name: Check out exact shared-library donor
+      - name: Check out exact shared-libs gitlink
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          repository: ORESoftware/k8s-cluster
-          ref: ${{ env.K8S_DONOR_SHA }}
+          repository: ORESoftware/k8s-libs-and-shared-defs
+          ref: ${{ env.LIBS_SHA }}
           token: ${{ secrets.ORE_SOURCE_PAT }}
-          path: donor
+          path: remote/libs
           persist-credentials: false
-          sparse-checkout: |
-            remote/libs
-          sparse-checkout-cone-mode: true
 
-      - name: Recreate canonical remote/libs dependency layout
+      - name: Assert canonical dependency layout
         shell: bash
         run: |
           set -euo pipefail
           test "$(git -C remote/deployments/build-server-rs rev-parse HEAD)" = "$GIW_SHA"
-          test "$(git -C donor rev-parse HEAD)" = "$K8S_DONOR_SHA"
-          mkdir -p remote
-          cp -a donor/remote/libs remote/libs
+          test "$(git -C remote/libs rev-parse HEAD)" = "$LIBS_SHA"
           test -f remote/libs/telemetry-rs/Cargo.toml
           test -f remote/libs/runtime-config-client-rs/Cargo.toml
           test -f remote/libs/nats/subject-defs/generated/rust/Cargo.toml
@@ -99,6 +94,6 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C remote/deployments/build-server-rs rev-parse HEAD)" = "$GIW_SHA"
-          test "$(git -C donor rev-parse HEAD)" = "$K8S_DONOR_SHA"
+          test "$(git -C remote/libs rev-parse HEAD)" = "$LIBS_SHA"
           test -z "$(git -C remote/deployments/build-server-rs status --porcelain)"
-          test -z "$(git -C donor status --porcelain)"
+          test -z "$(git -C remote/libs status --porcelain)"
