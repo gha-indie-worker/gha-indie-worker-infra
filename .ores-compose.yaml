@@ -18,6 +18,7 @@ services:
   api:
     name: api
     runtime: host
+    inherit_env: [PATH]
     command:
       - env
       - GHA_INDIE_WORKER_API_BIND=127.0.0.1:18090
@@ -34,6 +35,7 @@ services:
   web:
     name: web
     runtime: host
+    inherit_env: [PATH]
     command:
       - env
       - GHA_INDIE_WORKER_WEB_BIND=127.0.0.1:18091
