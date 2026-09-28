@@ -1,0 +1,26 @@
+# Copy this file outside the repository before use. Never commit real tunnel
+# credentials or tokens.
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /Users/REPLACE/.cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+# Defense in depth. These values come from the Terraform laptop_ingress output
+# and the Cloudflare Zero Trust team configuration.
+originRequest:
+  connectTimeout: 5s
+  access:
+    required: true
+    teamName: REPLACE_WITH_ACCESS_TEAM_NAME
+    audTag:
+      - REPLACE_WITH_LAPTOP_ACCESS_AUD
+
+ingress:
+  # The standalone stack keeps one first-level hostname. API routes are matched
+  # first; everything else goes to the local web server.
+  - hostname: local.indiebuild.dev
+    path: ^/v1/.*
+    service: http://127.0.0.1:18090
+  - hostname: local.indiebuild.dev
+    service: http://127.0.0.1:18091
+
+  # Required fail-closed catch-all.
+  - service: http_status:404
