@@ -1,0 +1,101 @@
+name: certify common desktop #40
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-common-desktop-40.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-common-desktop-40-20260928'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXPECTED_SHA: 72dad26c3b868234f7bfea0ba34b266e66a56589
+      EXPECTED_BASE_SHA: 6c5a9d3dd3e58ab51274fc96addc4008f5d60ccb
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact common desktop candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-common-desktop-infra
+          ref: ${{ env.EXPECTED_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: common-desktop
+          persist-credentials: false
+          fetch-depth: 64
+
+      - name: Assert exact source and review surface
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
+          actual="$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | sort | tr '\n' ' ')"
+          expected='conformance/README.md conformance/rust/Cargo.toml conformance/rust/src/bin/validate_appliance_contract.rs '
+          test "$actual" = "$expected"
+          git diff --check "$EXPECTED_BASE_SHA"..HEAD
+
+      - name: Configure private Cargo Git reads
+        working-directory: common-desktop
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+
+      - name: Install pinned Rust
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.82.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.82.0
+          rustc --version | grep -F 'rustc 1.82.0'
+
+      - name: Rust format
+        working-directory: common-desktop
+        run: cargo fmt --all -- --check
+
+      - name: Locked workspace check
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo check --locked --workspace --all-targets
+
+      - name: Strict Clippy
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: Locked workspace tests
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo test --locked --workspace --all-targets
+
+      - name: Validate fleet runtime contracts
+        working-directory: common-desktop
+        run: cargo run --locked -p ores-common-desktop-conformance --bin validate_runtime_contracts
+
+      - name: Exercise appliance validator help boundary
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo build --locked -p ores-common-desktop-conformance --bin validate_appliance_contract
+          test -x target/debug/validate_appliance_contract
+
+      - name: Assert candidate remained immutable
+        if: always()
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
