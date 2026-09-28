@@ -3,12 +3,13 @@ project: gha-indie-worker
 allow_lazy_start: false
 source:
   repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git
-  commit: c6c1ed4ab6718f4ae00e2ec794c070377bc05766
+  commit: 68de4b122d06621805bfb810367488bd171272c7
   checkout_dir: .ores/sources/gha-indie-worker-monorepo
 
 # Policy authority for service selection. Port 8080 is intentionally NOT owned
-# by this application stack; the shared codespaces-cluster Rust edge may own it
-# when present. Standalone desktop mode tunnels the explicit web/api listeners.
+# by this application stack; the shared laptop/codespaces Rust ingress may own it
+# when present. The optional tunnel service consumes an external fail-closed
+# cloudflared config; the repository never stores tunnel credentials.
 load_balancer:
   strategy: round-robin
   max_attempts: 2
