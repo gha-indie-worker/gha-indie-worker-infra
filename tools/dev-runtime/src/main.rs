@@ -181,10 +181,11 @@ fn probe_command(program: &Path) -> Result<ExitStatus, std::io::Error> {
         .status()
 }
 
-fn require_command(name: &str) -> Result<(), Box<dyn Error>> {
-    match probe_command(Path::new(name)) {
+fn resolve_command(name: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let path_candidate = PathBuf::from(name);
+    match probe_command(&path_candidate) {
         Ok(status) if status.success() => {
-            return Ok(());
+            return Ok(path_candidate);
         }
 
         Ok(status) => {
@@ -204,7 +205,7 @@ fn require_command(name: &str) -> Result<(), Box<dyn Error>> {
 
             match probe_command(&fallback) {
                 Ok(status) if status.success() => {
-                    return Ok(());
+                    return Ok(fallback);
                 }
 
                 Ok(status) => {
@@ -234,12 +235,17 @@ fn require_command(name: &str) -> Result<(), Box<dyn Error>> {
     }
 }
 
+fn require_command(name: &str) -> Result<(), Box<dyn Error>> {
+    resolve_command(name)?;
+    Ok(())
+}
+
 fn verify_edge_cli(root: &Path) -> Result<(), Box<dyn Error>> {
-    let status = Command::new("oresc")
+    let oresc = resolve_command("oresc")?;
+    let status = Command::new(oresc)
         .current_dir(root)
         .args(["--no-json", "codespace", "edge", "status"])
-        .status()
-        .map_err(|error| format!("required command is unavailable: oresc ({error})"))?;
+        .status()?;
 
     match status.code() {
         Some(0 | 2) => Ok(()),
@@ -268,7 +274,6 @@ fn doctor(root: &Path) -> Result<(), Box<dyn Error>> {
     for command in ["git", "cargo", "curl", "ores-compose", "cloudflared", "just"] {
         require_command(command)?;
     }
-    verify_edge_cli(root)?;
 
     let monorepo = root.join(MONOREPO_PATH);
     if !monorepo.join(".git").exists() && !monorepo.join(".gitmodules").exists() {
@@ -289,6 +294,12 @@ fn doctor(root: &Path) -> Result<(), Box<dyn Error>> {
     }
 
     println!("local application backends are admitted on 127.0.0.1:18090 and 127.0.0.1:18091");
+    Ok(())
+}
+
+fn doctor_codespace(root: &Path) -> Result<(), Box<dyn Error>> {
+    doctor(root)?;
+    verify_edge_cli(root)?;
     Ok(())
 }
 
@@ -315,7 +326,12 @@ fn bootstrap(root: &Path) -> Result<(), Box<dyn Error>> {
 }
 
 fn tunnel(root: &Path, mode: &str, config: &Path) -> Result<(), Box<dyn Error>> {
-    doctor(root)?;
+    match mode {
+        "laptop" => doctor(root)?,
+        "codespace" => doctor_codespace(root)?,
+        _ => return Err("tunnel mode must be laptop or codespace".into()),
+    }
+
     let config = config.canonicalize()?;
     let repo = root.canonicalize()?;
     if config.starts_with(&repo) {
@@ -325,7 +341,7 @@ fn tunnel(root: &Path, mode: &str, config: &Path) -> Result<(), Box<dyn Error>> 
     let expected_host = match mode {
         "laptop" => "hostname: local.indiebuild.dev",
         "codespace" => "hostname: codespace.indiebuild.dev",
-        _ => return Err("tunnel mode must be laptop or codespace".into()),
+        _ => unreachable!("tunnel mode validated before config admission"),
     };
     for required in [
         expected_host,
