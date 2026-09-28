@@ -1,0 +1,87 @@
+name: certify ores-compose version boundary
+
+on:
+  push:
+    branches:
+      - ci/certify-ores-compose-325-20260928
+    paths:
+      - '.github/workflows/certify-ores-compose-325.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/certify-ores-compose-325.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: >-
+      (github.event_name == 'push' && github.ref_name == 'ci/certify-ores-compose-325-20260928') ||
+      github.head_ref == 'ci/certify-ores-compose-325-20260928'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ORES_COMPOSE_SHA: f8e2df74c45495f635217507d319f8a3f06718de
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact ores-compose repair
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-compose
+          ref: ${{ env.ORES_COMPOSE_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: ores-compose
+          persist-credentials: false
+
+      - name: Assert exact source
+        working-directory: ores-compose
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$ORES_COMPOSE_SHA"
+          git diff --check
+          grep -F 'if version_requested(&argv)' src/bin/ores-compose-f2e.rs
+          grep -F 'CARGO_BIN_EXE_ores-compose' tests/cli_version.rs
+
+      - name: Configure private Cargo Git reads
+        working-directory: ores-compose
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+
+      - name: Install Rust 1.98.1
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.98.1 --profile minimal --component clippy,rustfmt
+          rustup default 1.98.1
+          rustc --version | grep -F 'rustc 1.98.1'
+
+      - name: Format and compile
+        working-directory: ores-compose
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --all --check
+          cargo check --locked --all-targets
+
+      - name: Run process-level version regression
+        working-directory: ores-compose
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo test --locked --test cli_version -- --nocapture
+
+      - name: Build release binary and execute both version spellings
+        working-directory: ores-compose
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo build --locked --release --bin ores-compose
+          test "$(./target/release/ores-compose --version)" = 'ores-compose 0.1.0'
+          test "$(./target/release/ores-compose -V)" = 'ores-compose 0.1.0'
+          ./target/release/ores-compose --help >/dev/null
