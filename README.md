@@ -33,7 +33,7 @@ Use `scripts/update-app-pin.sh` only to deliberately review and stage a newer mo
 
 This repository is the single `.ores-compose.yaml` authority. The manifest pins the same exact monorepo commit as `_apps/gha-monorepo`; laptop and Codespaces must not substitute a moving branch or a second service graph.
 
-Use `scripts/dev/bootstrap`, then `scripts/dev/doctor`. The doctor currently fails intentionally while the pinned API/web server revisions are print-and-exit stubs, so the Access-protected Cloudflare tunnel cannot be mistaken for a healthy runtime. When the listener work and upstream ores-compose source stack are promoted, `scripts/dev/tunnel` accepts only an external fail-closed config for `local.indiebuild.dev` or `codespace.indiebuild.dev`. See `docs/local-development.md`.
+Use `scripts/dev/bootstrap`, then `scripts/dev/doctor`. The pinned API/web revisions now run real loopback HTTP listeners, so `ores-compose up .ores-compose.yaml` can supervise the local application and a named Cloudflare Tunnel in one graph when `GIW_CLOUDFLARED_CONFIG` points at an external fail-closed tunnel config. `scripts/dev/tunnel standalone <config>` validates an explicit `indiebuild.dev` + `api.indiebuild.dev` mapping to ports `18091` and `18090`; laptop/codespace modes remain available for the shared port-8080 edge. See `docs/local-development.md`.
 
 ## Database isolation tests
 
