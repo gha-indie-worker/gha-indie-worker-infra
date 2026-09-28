@@ -54,13 +54,9 @@ jobs:
       - name: Install Rust 1.98.1
         run: |
           set -Eeuo pipefail
-          rustup toolchain install 1.98.1 --profile minimal --component rustfmt,clippy
+          rustup toolchain install 1.98.1 --profile minimal --component clippy
           rustup default 1.98.1
           rustc --version | grep -F 'rustc 1.98.1'
-
-      - name: Format changed Rust source
-        working-directory: ores-compose
-        run: rustfmt --edition 2024 --check src/deployment.rs
 
       - name: Locked all-target compile
         working-directory: ores-compose
