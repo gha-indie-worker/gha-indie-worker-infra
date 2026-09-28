@@ -1,6 +1,11 @@
 name: certify and publish ores-compose OCI repair
 
 on:
+  push:
+    branches:
+      - ci/certify-ores-compose-317-20260928
+    paths:
+      - '.github/workflows/certify-ores-compose-317.yml'
   pull_request:
     paths:
       - '.github/workflows/certify-ores-compose-317.yml'
@@ -10,7 +15,9 @@ permissions:
 
 jobs:
   certify:
-    if: github.head_ref == 'ci/certify-ores-compose-317-20260928'
+    if: >-
+      (github.event_name == 'push' && github.ref_name == 'ci/certify-ores-compose-317-20260928') ||
+      github.head_ref == 'ci/certify-ores-compose-317-20260928'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
