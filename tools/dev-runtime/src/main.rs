@@ -103,7 +103,7 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
     for required in [
         "schema_version: ores.compose.v1",
         "repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git",
-        "checkout_dir: .ores/sources/gha-indie-worker-monorepo",
+        "checkout_dir: tmp/dev/gha-indie-worker-monorepo",
         "load_balancer:",
         "strategy: round-robin",
         "max_attempts: 2",
