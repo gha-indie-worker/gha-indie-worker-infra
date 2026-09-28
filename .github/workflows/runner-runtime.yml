@@ -19,11 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-kubectl@v4
-        with:
-          version: v1.31.0
       - name: Render runner substrate
-        run: kubectl kustomize k8s/runners > /tmp/giw-runners.yaml
+        run: |
+          kubectl version --client
+          kubectl kustomize k8s/runners > /tmp/giw-runners.yaml
       - name: Assert isolation invariants
         shell: bash
         run: |
