@@ -5,7 +5,7 @@ use std::{
     error::Error,
     fs,
     path::{Path, PathBuf},
-    process::{Command, ExitStatus},
+    process::{Command, ExitStatus, Stdio},
 };
 
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
@@ -173,19 +173,65 @@ fn cargo_bin_command(name: &str) -> Option<PathBuf> {
     Some(cargo_home.join("bin").join(name))
 }
 
-fn command_can_spawn(program: &Path) -> bool {
-    Command::new(program).arg("--version").output().is_ok()
+fn probe_command(program: &Path) -> Result<ExitStatus, std::io::Error> {
+    Command::new(program)
+        .arg("--help")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
 }
 
-fn command_available(name: &str) -> bool {
-    if command_can_spawn(Path::new(name)) {
-        return true;
-    }
+fn require_command(name: &str) -> Result<(), Box<dyn Error>> {
+    match probe_command(Path::new(name)) {
+        Ok(status) if status.success() => {
+            return Ok(());
+        }
 
-    cargo_bin_command(name)
-        .as_deref()
-        .map(command_can_spawn)
-        .unwrap_or(false)
+        Ok(status) => {
+            return Err(format!(
+                "required command {name:?} was found but its health check exited with {status}"
+            )
+            .into());
+        }
+
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let Some(fallback) = cargo_bin_command(name) else {
+                return Err(format!(
+                    "required command {name:?} could not be executed: {error}"
+                )
+                .into());
+            };
+
+            match probe_command(&fallback) {
+                Ok(status) if status.success() => {
+                    return Ok(());
+                }
+
+                Ok(status) => {
+                    return Err(format!(
+                        "required command {name:?} was found at {} but its health check exited with {status}",
+                        fallback.display()
+                    )
+                    .into());
+                }
+
+                Err(fallback_error) => {
+                    return Err(format!(
+                        "required command {name:?} could not be executed from PATH ({error}) or Cargo bin {} ({fallback_error})",
+                        fallback.display()
+                    )
+                    .into());
+                }
+            }
+        }
+
+        Err(error) => {
+            return Err(format!(
+                "required command {name:?} could not be executed: {error}"
+            )
+            .into());
+        }
+    }
 }
 
 fn verify_edge_cli(root: &Path) -> Result<(), Box<dyn Error>> {
@@ -220,9 +266,7 @@ fn doctor(root: &Path) -> Result<(), Box<dyn Error>> {
     validate(root)?;
 
     for command in ["git", "cargo", "curl", "ores-compose", "cloudflared", "just"] {
-        if !command_available(command) {
-            return Err(format!("required command is unavailable: {command}").into());
-        }
+        require_command(command)?;
     }
     verify_edge_cli(root)?;
 
