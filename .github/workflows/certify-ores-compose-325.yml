@@ -59,14 +59,15 @@ jobs:
           rustup default 1.98.1
           rustc --version | grep -F 'rustc 1.98.1'
 
-      - name: Format and compile
+      - name: Rustfmt check
+        working-directory: ores-compose
+        run: cargo fmt --all --check
+
+      - name: Compile all targets
         working-directory: ores-compose
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-        run: |
-          set -Eeuo pipefail
-          cargo fmt --all --check
-          cargo check --locked --all-targets
+        run: cargo check --locked --all-targets
 
       - name: Run process-level version regression
         working-directory: ores-compose
