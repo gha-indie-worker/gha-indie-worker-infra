@@ -1,4 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-exec cargo run --locked --manifest-path "$root/tools/dev-runtime/Cargo.toml" -- tunnel "$@"
+
+if [[ "$#" -ne 2 ]]; then
+    echo "usage: $0 <laptop|codespace> <config-path>" >&2
+    exit 2
+fi
+
+mode="$1"
+config="$2"
+
+# On macOS, keep a developer laptop awake while the tunnel supervisor is
+# attached. The Rust runtime remains authoritative for config validation and
+# cloudflared invocation; this wrapper only owns host sleep/restart behavior.
+if [[ "$mode" == "laptop" ]] \
+    && [[ "$(uname -s)" == "Darwin" ]] \
+    && command -v caffeinate >/dev/null 2>&1 \
+    && [[ "${GHA_INDIE_WORKER_TUNNEL_CAFFEINATED:-0}" != "1" ]]; then
+    exec caffeinate -i env \
+        GHA_INDIE_WORKER_TUNNEL_CAFFEINATED=1 \
+        "$0" "$@"
+fi
+
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+while true; do
+    set +e
+    cargo run \
+        --locked \
+        --manifest-path "$root/tools/dev-runtime/Cargo.toml" \
+        -- tunnel "$mode" "$config"
+    status="$?"
+    set -e
+
+    echo "tunnel process exited with status $status; restarting in 2 seconds..." >&2
+    sleep 2
+done
