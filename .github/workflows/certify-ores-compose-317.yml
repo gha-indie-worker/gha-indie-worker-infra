@@ -1,4 +1,4 @@
-name: certify ores-compose compile repair chain
+name: certify and publish ores-compose OCI repair
 
 on:
   pull_request:
@@ -14,37 +14,62 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      EXPECTED_SHA: 24bc19401e6f8ef8837b2bb9e86e3cca01dabe8f
-      EXPECTED_BASE_SHA: 3b99e89139dedc5482838efff419ba0840f0884d
+      SOURCE_BRANCH: fix/oci-error-contract-and-clippy-20260928
+      EXPECTED_BASE_SHA: 374d322b8cdecb813d999a695ecec27b086b5d2e
+      EXPECTED_PREPATCH_SHA: 607d53e643a82d159b4a408da033c16dd3c353da
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
 
-      - name: Checkout exact ores-compose candidate
+      - name: Checkout exact ores-compose repair branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: ORESoftware/ores-compose
-          ref: ${{ env.EXPECTED_SHA }}
+          ref: ${{ env.SOURCE_BRANCH }}
           token: ${{ secrets.ORE_SOURCE_PAT }}
           path: ores-compose
-          persist-credentials: false
+          persist-credentials: true
           fetch-depth: 32
 
-      - name: Assert exact one-line review surface
+      - name: Assert and apply exact two-file repair
         working-directory: ores-compose
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_PREPATCH_SHA"
           git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
-          actual="$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | sort | tr '\n' ' ')"
-          test "$actual" = 'src/machine_event.rs '
-          git diff --check "$EXPECTED_BASE_SHA"..HEAD
-          changed="$(git diff --numstat "$EXPECTED_BASE_SHA"..HEAD -- src/machine_event.rs)"
-          test "$changed" = $'1\t1\tsrc/machine_event.rs'
-          grep -F 'let newest = log.append_enqueued(job("2"), false).expect("second");' src/machine_event.rs
-          ! grep -F '.expect("second").event_id();' src/machine_event.rs
+          python3 - <<'PY'
+          from pathlib import Path
+
+          deployment = Path('src/deployment.rs')
+          text = deployment.read_text()
+          old = '        let canonical_digest = Sha256Digest::new(digest.to_string())?;\n'
+          new = '''        let canonical_digest = Sha256Digest::new(digest.to_string())\n            .map_err(|_| DeploymentPlanError::InvalidOciImageDigestRef)?;\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one OCI digest propagation site, found {text.count(old)}')
+          deployment.write_text(text.replace(old, new, 1))
+
+          runtime = Path('src/runtime_control.rs')
+          text = runtime.read_text()
+          import_line = 'use std::env;\n'
+          if text.count(import_line) != 1:
+              raise SystemExit(f'expected one std::env import, found {text.count(import_line)}')
+          text = text.replace(import_line, '', 1)
+          old_temp = '        let root = env::temp_dir().join(format!("ores-compose-runtime-control-{nonce}"));\n'
+          new_temp = '        let root = std::env::temp_dir().join(format!("ores-compose-runtime-control-{nonce}"));\n'
+          if text.count(old_temp) != 1:
+              raise SystemExit(f'expected one test temp-dir call, found {text.count(old_temp)}')
+          runtime.write_text(text.replace(old_temp, new_temp, 1))
+          PY
+          rm .github/workflows/autofix-oci-error-contract.yml
+          cargo fmt --all
+          git diff --check
+          actual="$(git diff --name-only "$EXPECTED_BASE_SHA" | sort | tr '\n' ' ')"
+          test "$actual" = 'src/deployment.rs src/runtime_control.rs '
+          grep -F '.map_err(|_| DeploymentPlanError::InvalidOciImageDigestRef)?;' src/deployment.rs
+          ! grep -F '^use std::env;' src/runtime_control.rs
+          grep -F 'let root = std::env::temp_dir().join' src/runtime_control.rs
 
       - name: Configure private Cargo Git reads
         working-directory: ores-compose
@@ -55,9 +80,13 @@ jobs:
       - name: Install Rust 1.98.1
         run: |
           set -Eeuo pipefail
-          rustup toolchain install 1.98.1 --profile minimal --component clippy
+          rustup toolchain install 1.98.1 --profile minimal --component clippy,rustfmt
           rustup default 1.98.1
           rustc --version | grep -F 'rustc 1.98.1'
+
+      - name: Format check
+        working-directory: ores-compose
+        run: cargo fmt --all --check
 
       - name: Locked all-target compile
         working-directory: ores-compose
@@ -77,12 +106,18 @@ jobs:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
-      - name: Assert candidate remained immutable
-        if: always()
+      - name: Commit and publish certified repair
         working-directory: ores-compose
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          test -z "$(git status --porcelain)"
-          echo ORES_COMPOSE_318_CERT_PASS
+          git config user.name 'ORESoftware certification'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/deployment.rs src/runtime_control.rs
+          git add -u .github/workflows/autofix-oci-error-contract.yml
+          git commit -m 'fix: preserve OCI reference error boundary'
+          actual="$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | sort | tr '\n' ' ')"
+          test "$actual" = 'src/deployment.rs src/runtime_control.rs '
+          git diff --check "$EXPECTED_BASE_SHA"..HEAD
+          git push origin "HEAD:$SOURCE_BRANCH"
+          echo "ORES_COMPOSE_CERTIFIED_SHA=$(git rev-parse HEAD)"
