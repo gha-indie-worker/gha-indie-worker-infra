@@ -166,11 +166,25 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn cargo_bin_command(name: &str) -> Option<PathBuf> {
+    let cargo_home = env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))?;
+    Some(cargo_home.join("bin").join(name))
+}
+
+fn command_can_spawn(program: &Path) -> bool {
+    Command::new(program).arg("--version").output().is_ok()
+}
+
 fn command_available(name: &str) -> bool {
-    Command::new(name)
-        .arg("--version")
-        .output()
-        .map(|output| output.status.success())
+    if command_can_spawn(Path::new(name)) {
+        return true;
+    }
+
+    cargo_bin_command(name)
+        .as_deref()
+        .map(command_can_spawn)
         .unwrap_or(false)
 }
 
