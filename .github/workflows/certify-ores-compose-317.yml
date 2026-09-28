@@ -70,7 +70,6 @@ jobs:
           runtime.write_text(text.replace(old_temp, new_temp, 1))
           PY
           rm .github/workflows/autofix-oci-error-contract.yml
-          cargo fmt --all
           git diff --check
           actual="$(git diff --name-only "$EXPECTED_BASE_SHA" | sort | tr '\n' ' ')"
           test "$actual" = 'src/deployment.rs src/runtime_control.rs '
