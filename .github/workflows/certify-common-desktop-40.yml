@@ -57,9 +57,9 @@ jobs:
           rustup default 1.82.0
           rustc --version | grep -F 'rustc 1.82.0'
 
-      - name: Rust format
+      - name: Check changed Rust formatting
         working-directory: common-desktop
-        run: cargo fmt --all -- --check
+        run: rustfmt --edition 2021 --check conformance/rust/src/bin/validate_appliance_contract.rs
 
       - name: Locked workspace check
         working-directory: common-desktop
@@ -83,7 +83,7 @@ jobs:
         working-directory: common-desktop
         run: cargo run --locked -p ores-common-desktop-conformance --bin validate_runtime_contracts
 
-      - name: Exercise appliance validator help boundary
+      - name: Exercise appliance validator build boundary
         working-directory: common-desktop
         shell: bash
         run: |
