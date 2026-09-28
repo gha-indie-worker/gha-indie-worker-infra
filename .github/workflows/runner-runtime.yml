@@ -1,0 +1,41 @@
+name: runner-runtime
+
+on:
+  pull_request:
+    paths:
+      - "k8s/runners/**"
+      - ".github/workflows/runner-runtime.yml"
+  push:
+    branches: [main]
+    paths:
+      - "k8s/runners/**"
+      - ".github/workflows/runner-runtime.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.31.0
+      - name: Render runner substrate
+        run: kubectl kustomize k8s/runners > /tmp/giw-runners.yaml
+      - name: Assert isolation invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest=/tmp/giw-runners.yaml
+          grep -q 'pod-security.kubernetes.io/enforce: restricted' "$manifest"
+          grep -q 'automountServiceAccountToken: false' "$manifest"
+          grep -q 'kind: NetworkPolicy' "$manifest"
+          grep -q 'name: default-deny' "$manifest"
+          grep -q 'name: runner-budget' "$manifest"
+          grep -q 'name: runner-defaults' "$manifest"
+          if grep -Eq 'privileged:[[:space:]]*true|hostNetwork:[[:space:]]*true|hostPID:[[:space:]]*true|hostIPC:[[:space:]]*true|hostPath:' "$manifest"; then
+            echo "unsafe runner substrate setting detected" >&2
+            exit 1
+          fi
