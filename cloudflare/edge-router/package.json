@@ -10,7 +10,7 @@
     "tail": "wrangler tail"
   },
   "dependencies": {
-    "@oresoftware/ores-edge-router": "github:ORESoftware/ores-edge-router#eff2c6c6161a8b8b53ff26c41bd4c45dbbb004d5"
+    "@oresoftware/ores-edge-router": "github:ORESoftware/ores-edge-router#22ac502369068ca6f154b9124b0866b2f633e1ca"
   },
   "devDependencies": {
     "wrangler": "4.30.0"
