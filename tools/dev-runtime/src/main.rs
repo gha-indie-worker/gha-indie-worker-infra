@@ -9,7 +9,7 @@ use std::{
 };
 
 const MONOREPO_PATH: &str = "_apps/gha-monorepo";
-const EXPECTED_MONOREPO: &str = "68de4b122d06621805bfb810367488bd171272c7";
+const EXPECTED_MONOREPO: &str = "c6c1ed4ab6718f4ae00e2ec794c070377bc05766";
 const ORES_CLI_REV_PATH: &str = "config/ores-cli.rev";
 const ORES_COMPOSE_REV_PATH: &str = "config/ores-compose.rev";
 const STUB_API_PIN: &str = "90cfc8a86660d36683fc96d629af843c347e6667";
@@ -116,6 +116,8 @@ fn validate(root: &Path) -> Result<(), Box<dyn Error>> {
         "GHA_INDIE_WORKER_API_HTTP_BASE=http://127.0.0.1:18090",
         "./target/debug/gha-indie-worker-api-server",
         "./target/debug/gha-indie-worker-web-server",
+        "GIW_CLOUDFLARED_CONFIG",
+        "cloudflared",
         "http://127.0.0.1:18090/readyz",
         "http://127.0.0.1:18091/readyz",
     ] {
@@ -264,17 +266,30 @@ fn tunnel(root: &Path, mode: &str, config: &Path) -> Result<(), Box<dyn Error>> 
         return Err("real cloudflared config/credentials must live outside the repository".into());
     }
     let text = fs::read_to_string(&config)?;
-    let expected_host = match mode {
-        "laptop" => "hostname: local.indiebuild.dev",
-        "codespace" => "hostname: codespace.indiebuild.dev",
-        _ => return Err("tunnel mode must be laptop or codespace".into()),
+    let (expected_hosts, expected_services): (&[&str], &[&str]) = match mode {
+        "laptop" => (
+            &["hostname: local.indiebuild.dev"],
+            &["service: http://127.0.0.1:8080"],
+        ),
+        "codespace" => (
+            &["hostname: codespace.indiebuild.dev"],
+            &["service: http://127.0.0.1:8080"],
+        ),
+        "standalone" => (
+            &["hostname: indiebuild.dev", "hostname: api.indiebuild.dev"],
+            &[
+                "service: http://127.0.0.1:18091",
+                "service: http://127.0.0.1:18090",
+            ],
+        ),
+        _ => return Err("tunnel mode must be laptop, codespace, or standalone".into()),
     };
-    for required in [
-        expected_host,
-        "service: http://127.0.0.1:8080",
-        "service: http_status:404",
-        "credentials-file:",
-    ] {
+    for required in expected_hosts
+        .iter()
+        .chain(expected_services.iter())
+        .copied()
+        .chain(["service: http_status:404", "credentials-file:"])
+    {
         if !text.contains(required) {
             return Err(format!("tunnel config missing fail-closed field {required:?}").into());
         }
@@ -295,7 +310,7 @@ fn tunnel(root: &Path, mode: &str, config: &Path) -> Result<(), Box<dyn Error>> 
 }
 
 fn usage() -> ! {
-    eprintln!("usage: gha-indie-worker-dev-runtime <validate|bootstrap|doctor|tunnel> [laptop|codespace] [config-path]");
+    eprintln!("usage: gha-indie-worker-dev-runtime <validate|bootstrap|doctor|tunnel> [laptop|codespace|standalone] [config-path]");
     std::process::exit(2)
 }
 
