@@ -1,0 +1,268 @@
+# GIW build/profile control plane backed by Scintilla.
+#
+# This pod validates authenticated build-server.v1 requests and delegates the
+# actual workload to a pre-provisioned Scintilla function. It deliberately does
+# NOT mount containerd/Docker/Kubernetes sockets and local execution is disabled.
+#
+# Release automation MUST replace the deliberately invalid image digest below
+# with an immutable image built from gha-indie-worker.rs source revision:
+# 843dc9bd2890a515bf2b14cfd258c334c59ce3d6
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gha-indie-worker-build-server
+  namespace: gha-indie-worker
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gha-indie-worker-build-server
+  namespace: gha-indie-worker
+  labels:
+    app: gha-indie-worker-build-server
+    plane: product
+spec:
+  # Keep one authoritative HTTP/job-log process until job status/log retrieval
+  # is externalized. The Scintilla execution itself is independently isolated.
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: gha-indie-worker-build-server
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: gha-indie-worker-build-server
+        plane: product
+      annotations:
+        indiebuild.dev/source-revision: "843dc9bd2890a515bf2b14cfd258c334c59ce3d6"
+        indiebuild.dev/execution-provider: "scintilla"
+    spec:
+      serviceAccountName: gha-indie-worker-build-server
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: build-server
+          image: ghcr.io/gha-indie-worker/gha-indie-worker.rs@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8100
+          env:
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "8100"
+            - name: RUST_LOG
+              value: "info"
+            - name: BUILD_SERVER_WORK_ROOT
+              value: "/var/lib/dd-build-server/jobs"
+            - name: BUILD_SERVER_LOCAL_ENABLED
+              value: "false"
+            - name: BUILD_SERVER_DEFAULT_EXECUTOR
+              value: "scintilla"
+            - name: BUILD_SERVER_SCINTILLA_ENABLED
+              value: "true"
+            - name: BUILD_SERVER_SCINTILLA_API_URL
+              value: "http://scintilla-api-server.scintilla.svc.cluster.local:8080"
+            - name: BUILD_SERVER_LAMBDA_ENABLED
+              value: "false"
+            - name: BUILD_SERVER_DEPLOY_ENABLED
+              value: "false"
+            - name: BUILD_SERVER_PUSH_ENABLED
+              value: "false"
+            - name: BUILD_SERVER_ECR_LOGIN_ENABLED
+              value: "false"
+            - name: BUILD_SERVER_KEEP_WORKDIRS
+              value: "false"
+            - name: BUILD_SERVER_ALLOWED_REPO_PREFIXES
+              value: "https://github.com/gha-indie-worker/,https://github.com/ORESoftware/"
+            - name: BUILD_SERVER_ALLOWED_PROFILE_REPO_PREFIXES
+              value: "https://github.com/gha-indie-worker/,https://github.com/ORESoftware/"
+            - name: BUILD_SERVER_ALLOWED_IMAGE_PREFIXES
+              value: "ghcr.io/gha-indie-worker/"
+            - name: BUILD_SERVER_JOB_TIMEOUT_SECONDS
+              value: "1800"
+            - name: BUILD_SERVER_JOB_DEADLINE_SECONDS
+              value: "21600"
+            - name: BUILD_SERVER_MAX_CONCURRENT_BUILDS
+              value: "16"
+            - name: BUILD_SERVER_MAX_QUEUED
+              value: "64"
+            - name: BUILD_SERVER_MAX_JOBS
+              value: "1000"
+            - name: BUILD_SERVER_NATS_ENABLED
+              value: "false"
+            - name: BUILD_SERVER_NATS_INTAKE_ENABLED
+              value: "false"
+            - name: BUILD_SERVER_COORDINATION_ENABLED
+              value: "false"
+            - name: BUILD_SERVER_COORDINATION_REQUIRED
+              value: "false"
+            - name: BUILD_SERVER_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-build-server
+                  key: server-auth-secret
+            - name: BUILD_SERVER_SCINTILLA_FUNCTION_ID
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-build-server
+                  key: scintilla-function-id
+            - name: BUILD_SERVER_SCINTILLA_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-build-server
+                  key: scintilla-auth-token
+            - name: BUILD_SERVER_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: gha-indie-worker-build-server
+                  key: database-url
+                  optional: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+              ephemeral-storage: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+              ephemeral-storage: "1Gi"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 3
+            failureThreshold: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: work
+              mountPath: /var/lib/dd-build-server/jobs
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: work
+          emptyDir:
+            sizeLimit: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gha-indie-worker-build-server
+  namespace: gha-indie-worker
+spec:
+  type: ClusterIP
+  selector:
+    app: gha-indie-worker-build-server
+  ports:
+    - name: http
+      port: 8100
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gha-indie-worker-build-server
+  namespace: gha-indie-worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gha-indie-worker-build-server
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gha-indie-worker-build-server
+  namespace: gha-indie-worker
+spec:
+  podSelector:
+    matchLabels:
+      app: gha-indie-worker-build-server
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Product-plane callers only. There is intentionally no public ingress rule.
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8100
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: scintilla
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Optional externally hosted Postgres (Neon/Supabase). Private cluster
+    # ranges and metadata/link-local ranges remain unavailable.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 0.0.0.0/8
+              - 10.0.0.0/8
+              - 100.64.0.0/10
+              - 127.0.0.0/8
+              - 169.254.0.0/16
+              - 172.16.0.0/12
+              - 192.0.0.0/24
+              - 192.168.0.0/16
+              - 198.18.0.0/15
+              - 224.0.0.0/4
+              - 240.0.0.0/4
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6543

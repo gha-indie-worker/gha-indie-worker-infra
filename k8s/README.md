@@ -29,6 +29,49 @@ kubectl apply -f k8s/web-server.yaml -f k8s/api-server.yaml
 kubectl apply -f k8s/admin-api-server.yaml -f k8s/admin-web-server.yaml
 ```
 
+
+## Scintilla-backed build/profile server
+
+`build-server.yaml` adds the internal GIW build/profile control plane. The pod
+does **not** execute repositories with local Docker/containerd/kubectl. Production
+sets:
+
+- `BUILD_SERVER_LOCAL_ENABLED=false`;
+- `BUILD_SERVER_DEFAULT_EXECUTOR=scintilla`;
+- `BUILD_SERVER_SCINTILLA_ENABLED=true`;
+- `BUILD_SERVER_DEPLOY_ENABLED=false` and `BUILD_SERVER_PUSH_ENABLED=false`.
+
+The build server validates the existing `build-server.v1` request, allowlists,
+idempotency identity, job budget and profile before sending the structured
+request to a pre-provisioned Scintilla function. The Scintilla credential and
+function UUID come from the `gha-indie-worker-build-server` Secret keys
+`scintilla-auth-token` and `scintilla-function-id`; the build-server API
+credential is `server-auth-secret`. An optional `database-url` key preserves
+job history.
+
+The manifest deliberately contains an all-zero image digest. Promotion must
+replace it with the immutable image built from the source revision recorded in
+the pod annotation. Mutable tags are not accepted as the production contract.
+
+The deployment is intentionally one replica for now. Job detail/log endpoints
+still use process-local state/files, so scaling the control plane horizontally
+before externalizing those reads would produce inconsistent responses. Scintilla
+workloads themselves are independently scalable and isolated. Horizontal GIW
+control-plane scaling is a separate promotion gate, not a reason to weaken
+correctness.
+
+Apply it after the namespaces and before exposing any product path:
+
+```console
+kubectl apply --dry-run=server -f k8s/build-server.yaml
+kubectl apply -f k8s/build-server.yaml
+```
+
+There is no ingress resource for the build server. Product-plane services call
+the ClusterIP service; the network policy allows the build server to reach only
+DNS, the Scintilla namespace on port 8080, and bounded public HTTPS/Postgres
+destinations.
+
 ## Two namespaces, and why the admin one is default-deny
 
 The admin plane is a separate namespace whose baseline is *nothing*:
