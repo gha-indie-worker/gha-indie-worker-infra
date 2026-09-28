@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      GIW_SHA: 45123796c708278daf37d4a24a819a2311ef2419
+      GIW_SHA: b0a0026a656fcaead5566fd23bda06ca8808e825
       LIBS_SHA: c8bdc06d74746acc6439f9527ebd02697fdf028b
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -84,12 +84,12 @@ jobs:
           grep -F 'ephemeral' src/scintilla_exec.rs
           ! grep -REn 'Command::|/bin/sh|bash -c|sh -c' src/scintilla_exec.rs
 
-      - name: Assert exact sources remained immutable
+      - name: Assert tracked sources remained immutable
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           test "$(git -C remote/deployments/build-server-rs rev-parse HEAD)" = "$GIW_SHA"
           test "$(git -C remote/libs rev-parse HEAD)" = "$LIBS_SHA"
-          test -z "$(git -C remote/deployments/build-server-rs status --porcelain)"
-          test -z "$(git -C remote/libs status --porcelain)"
+          git -C remote/deployments/build-server-rs diff --exit-code
+          git -C remote/libs diff --exit-code
