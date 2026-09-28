@@ -1,0 +1,44 @@
+name: build-server-contract
+
+on:
+  pull_request:
+    paths:
+      - "k8s/build-server.yaml"
+      - ".github/workflows/build-server-contract.yml"
+  push:
+    branches: [main]
+    paths:
+      - "k8s/build-server.yaml"
+      - ".github/workflows/build-server-contract.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert hardened Scintilla control-plane contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          f=k8s/build-server.yaml
+          grep -q 'BUILD_SERVER_LOCAL_ENABLED' "$f"
+          grep -A1 'BUILD_SERVER_LOCAL_ENABLED' "$f" | grep -q '"false"'
+          grep -q 'BUILD_SERVER_DEFAULT_EXECUTOR' "$f"
+          grep -A1 'BUILD_SERVER_DEFAULT_EXECUTOR' "$f" | grep -q '"scintilla"'
+          grep -q 'BUILD_SERVER_SCINTILLA_ENABLED' "$f"
+          grep -q 'readOnlyRootFilesystem: true' "$f"
+          grep -q 'allowPrivilegeEscalation: false' "$f"
+          grep -q 'runAsNonRoot: true' "$f"
+          grep -q 'automountServiceAccountToken: false' "$f"
+          grep -q 'kind: NetworkPolicy' "$f"
+          if grep -Eq 'privileged:[[:space:]]*true|hostNetwork:[[:space:]]*true|hostPID:[[:space:]]*true|hostIPC:[[:space:]]*true|hostPath:' "$f"; then
+            echo "unsafe host/container setting detected" >&2
+            exit 1
+          fi
+          if grep -Eq 'image: .*:(latest|main)([[:space:]]|$)' "$f"; then
+            echo "mutable production image tag detected" >&2
+            exit 1
+          fi
