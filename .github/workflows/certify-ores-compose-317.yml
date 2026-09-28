@@ -90,9 +90,19 @@ jobs:
           rustup default 1.98.1
           rustc --version | grep -F 'rustc 1.98.1'
 
-      - name: Format check
+      - name: Format repair and reassert exact diff
         working-directory: ores-compose
-        run: cargo fmt --all --check
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --all
+          cargo fmt --all --check
+          git diff --check
+          actual="$(git diff --name-only "$EXPECTED_BASE_SHA" | sort | tr '\n' ' ')"
+          test "$actual" = 'src/deployment.rs src/runtime_control.rs '
+          grep -F 'DeploymentPlanError::InvalidOciImageDigestRef' src/deployment.rs
+          ! grep -F '^use std::env;' src/runtime_control.rs
+          grep -F 'let root = std::env::temp_dir().join' src/runtime_control.rs
 
       - name: Locked all-target compile
         working-directory: ores-compose
