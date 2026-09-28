@@ -44,3 +44,25 @@ Run `npm ci --ignore-scripts && npm test` in `infra-isolation/` for the canonica
 Nothing applies on merge. CI formats, initializes without production state where appropriate, validates, and may produce reviewed plans. Human applies use `scripts/apply-terraform.sh <environment/root> --apply` against the existing state for that root.
 
 See `docs/planes.md` for why the admin plane has no public fallback.
+
+
+## Remote CI runner substrate
+
+Remote/prod untrusted CI execution is isolated under `k8s/runners/`. GIW does
+not operate a reusable shared runner pool: the product control plane creates one
+ephemeral execution per job, while the Kubernetes namespace enforces restricted
+Pod Security, quotas, bounded defaults, a tokenless runner service account, and
+default-deny networking.
+
+Apply the namespace/policy substrate before enabling remote job placement:
+
+```sh
+kubectl kustomize k8s/runners
+kubectl apply --dry-run=server -k k8s/runners
+kubectl apply -k k8s/runners
+```
+
+The actual per-job Job/Pod spec is produced by the GIW/Scintilla execution
+adapter and must satisfy the invariants documented in
+`k8s/runners/README.md`. A mutable long-lived runner Deployment is not an
+acceptable substitute.
