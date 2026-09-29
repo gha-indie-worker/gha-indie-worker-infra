@@ -15,6 +15,7 @@ jobs:
     timeout-minutes: 25
     env:
       EXPECTED_SHA: 849e83ae3f6c669603dfc94d69a2c797688b2185
+      EXPECTED_BASE_SHA: dbd9b22a24e532eda5c5ca97e435a5248da18f16
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -34,9 +35,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          base="$(git merge-base HEAD origin/main)"
-          git diff --check "$base"..HEAD
-          mapfile -t files < <(git diff --name-only "$base"..HEAD)
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
+          git diff --check "$EXPECTED_BASE_SHA"..HEAD
+          mapfile -t files < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)
           test "${#files[@]}" -eq 4
           printf '%s\n' "${files[@]}" | grep -Fx '.github/workflows/intelligence.yml'
           printf '%s\n' "${files[@]}" | grep -Fx '.gitignore'
@@ -78,6 +79,7 @@ jobs:
     timeout-minutes: 25
     env:
       EXPECTED_SHA: 09e0616d832a55410889f847fcf933b444bdcaed
+      EXPECTED_BASE_SHA: dbd9b22a24e532eda5c5ca97e435a5248da18f16
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -99,9 +101,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test ! -e .github/workflows/tmp-regression-restricted-feature-hardening.yml
           test ! -e .github/tmp/regression-hardening-trigger.txt
-          base="$(git merge-base HEAD origin/main)"
-          git diff --check "$base"..HEAD
-          mapfile -t files < <(git diff --name-only "$base"..HEAD)
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
+          git diff --check "$EXPECTED_BASE_SHA"..HEAD
+          mapfile -t files < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)
           test "${#files[@]}" -eq 3
           printf '%s\n' "${files[@]}" | grep -Fx 'src/lib.rs'
           printf '%s\n' "${files[@]}" | grep -Fx 'src/regression.rs'
