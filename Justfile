@@ -9,7 +9,7 @@ codespace-origin-up:
 # Full GHA Codespace lifecycle: application backends first, shared Rust edge
 # second, Cloudflare connector last.
 codespace-edge-up:
-    bash scripts/dev/codespace-origin-up; root="${ORES_CODESPACE_CLUSTER_DIR:-$HOME/.cache/ores/codespaces-cluster}"; export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"; if ! oresc --no-json codespace edge up; then set +e; (cd "$root" && CODESPACES_CLUSTER_CONFIG="$PWD/config/codespaces-cluster.toml" just local-cluster-down); ORES_CODESPACES_CLUSTER_MANIFEST=.ores-compose.yaml ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app ORES_CODESPACES_CLUSTER_READY_PORT=18091 ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app "$root/target/debug/codespaces-cluster-ctl" down; exit 1; fi
+    repo="$PWD"; bash scripts/dev/codespace-origin-up; root="${ORES_CODESPACE_CLUSTER_DIR:-$HOME/.cache/ores/codespaces-cluster}"; export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"; if ! oresc --no-json codespace edge up; then set +e; (cd "$root" && CODESPACES_CLUSTER_CONFIG="$repo/config/codespaces-cluster.toml" just local-cluster-down); ORES_CODESPACES_CLUSTER_MANIFEST=.ores-compose.yaml ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app ORES_CODESPACES_CLUSTER_READY_PORT=18091 ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app "$root/target/debug/codespaces-cluster-ctl" down; exit 1; fi
 
 # Status/down deliberately do not fetch. They inspect or stop the exact shared
 # checkout/controller binary that owns the running supervisors.
