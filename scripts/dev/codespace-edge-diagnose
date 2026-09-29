@@ -8,8 +8,6 @@ receipt_dir="${ORES_TOOL_PIN_RECEIPT_DIR:-$cache_home/ores/tool-pins/codespaces-
 cargo_home="${CARGO_HOME:-${HOME:?HOME is required}/.cargo}"
 flags="$receipt_dir/oresc.contract"
 controller="$cluster_root/target/debug/codespaces-cluster-ctl"
-expected_cluster_rev="$(tr -d '[:space:]' < "$repo_root/config/codespaces-cluster.rev" 2>/dev/null || true)"
-expected_ores_cli_rev="$(tr -d '[:space:]' < "$repo_root/config/ores-cli.rev" 2>/dev/null || true)"
 
 export PATH="$cargo_home/bin:$PATH"
 
@@ -40,8 +38,28 @@ hash_file() {
 read_one_line() {
     local path="$1"
     [[ -f "$path" && ! -L "$path" ]] || return 1
-    tr -d '\r\n' < "$path"
+    awk '
+        NR == 1 { value = $0; next }
+        { exit 1 }
+        END {
+            if (NR != 1 || index(value, "\r") != 0) {
+                exit 1
+            }
+            print value
+        }
+    ' "$path"
 }
+
+expected_cluster_rev="$(read_one_line "$repo_root/config/codespaces-cluster.rev" 2>/dev/null || true)"
+expected_ores_cli_rev="$(read_one_line "$repo_root/config/ores-cli.rev" 2>/dev/null || true)"
+if [[ ! "$expected_cluster_rev" =~ ^[0-9a-f]{40}$ ]]; then
+    fail "shared_edge_expected" "invalid-authority"
+else
+    say "shared_edge_expected" "$expected_cluster_rev"
+fi
+if [[ ! "$expected_ores_cli_rev" =~ ^[0-9a-f]{40}$ ]]; then
+    fail "oresc_expected" "invalid-authority"
+fi
 
 verify_receipt() {
     local binary="$1"
@@ -120,11 +138,10 @@ probe_http_200() {
 }
 
 say "repo_head" "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unavailable)"
-say "shared_edge_expected" "$expected_cluster_rev"
 
 if [[ -d "$cluster_root/.git" ]]; then
     actual_cluster_rev="$(git -C "$cluster_root" rev-parse HEAD 2>/dev/null || true)"
-    if [[ "$actual_cluster_rev" == "$expected_cluster_rev" ]]; then
+    if [[ -n "$expected_cluster_rev" && "$actual_cluster_rev" == "$expected_cluster_rev" ]]; then
         say "shared_edge_checkout" "ok"
     else
         fail "shared_edge_checkout" "${actual_cluster_rev:-unavailable}"
@@ -163,7 +180,10 @@ else
 fi
 
 if command -v cloudflared >/dev/null 2>&1; then
-    cloudflared_version="$(cloudflared --version 2>/dev/null | head -n 1 || true)"
+    cloudflared_version="$(
+        env -u ORES_CLI_READ_TOKEN -u GH_TOKEN -u GITHUB_TOKEN -u TUNNEL_TOKEN -u CF_TUNNEL_TOKEN \
+            cloudflared --version 2>/dev/null | head -n 1 || true
+    )"
     say "cloudflared" "${cloudflared_version:-present}"
 else
     fail "cloudflared" "missing"
@@ -192,9 +212,13 @@ public_code="$(curl --silent --show-error --output /dev/null \
     --connect-timeout 4 --max-time 8 \
     --write-out '%{http_code}' https://local.indiebuild.dev/ 2>/dev/null || true)"
 say "public_http_status" "${public_code:-000}"
-if [[ -z "$public_code" || "$public_code" == "000" || "$public_code" == "502" ]]; then
-    failures=$((failures + 1))
-fi
+case "$public_code" in
+    2??|3??|401|403)
+        ;;
+    *)
+        failures=$((failures + 1))
+        ;;
+esac
 
 say "diagnostic_failures" "$failures"
 if (( failures != 0 )); then
