@@ -20,7 +20,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-
       - name: Checkout exact codespaces-cluster candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -30,7 +29,6 @@ jobs:
           path: codespaces-cluster
           persist-credentials: false
           fetch-depth: 64
-
       - name: Assert exact source and review surface
         working-directory: codespaces-cluster
         shell: bash
@@ -47,18 +45,15 @@ jobs:
           git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx 'scripts/bootstrap-pinned-cargo-tool.sh'
           git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx 'test/bootstrap-pinned-cargo-tool.sh'
           test ! -e Cargo.lock
-
       - name: Install pinned Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
         with:
           toolchain: '1.88'
           components: rustfmt, clippy
-
       - name: Install Node 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-
       - name: Bootstrap security regression tests
         working-directory: codespaces-cluster
         shell: bash
@@ -67,7 +62,6 @@ jobs:
           bash -n scripts/bootstrap-pinned-cargo-tool.sh
           bash -n test/bootstrap-pinned-cargo-tool.sh
           bash test/bootstrap-pinned-cargo-tool.sh
-
       - name: Worker syntax and unit tests
         working-directory: codespaces-cluster
         shell: bash
@@ -79,7 +73,6 @@ jobs:
           node --check test/router.test.js
           node --check test/render-wrangler.test.js
           node --test
-
       - name: Generate deterministic lock candidate
         working-directory: codespaces-cluster
         shell: bash
@@ -88,17 +81,18 @@ jobs:
           cargo generate-lockfile
           sha256sum Cargo.lock | tee "${RUNNER_TEMP}/codespaces-cluster-12-cargo-lock.sha256"
           cp Cargo.lock "${RUNNER_TEMP}/codespaces-cluster-12-Cargo.lock"
-
-      - name: Locked Rust verification
+      - name: Rust format
         working-directory: codespaces-cluster
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cargo fmt --check
-          cargo check --locked --all-targets
-          cargo clippy --locked --all-targets -- -D warnings
-          cargo test --locked --all-targets
-
+        run: cargo fmt --check
+      - name: Locked Rust check
+        working-directory: codespaces-cluster
+        run: cargo check --locked --all-targets
+      - name: Locked strict Clippy
+        working-directory: codespaces-cluster
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Locked Rust tests
+        working-directory: codespaces-cluster
+        run: cargo test --locked --all-targets
       - name: Lifecycle locked-build contract
         working-directory: codespaces-cluster
         shell: bash
@@ -110,7 +104,6 @@ jobs:
           grep -Fq 'recorded_repository' scripts/bootstrap-pinned-cargo-tool.sh
           grep -Fq 'recorded_package' scripts/bootstrap-pinned-cargo-tool.sh
           grep -Fq '! -L "$installed_binary"' scripts/bootstrap-pinned-cargo-tool.sh
-
       - name: Upload resolver-generated lock candidate
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -121,7 +114,6 @@ jobs:
             ${{ runner.temp }}/codespaces-cluster-12-cargo-lock.sha256
           if-no-files-found: warn
           retention-days: 7
-
       - name: Restore candidate and assert source immutability
         if: always()
         working-directory: codespaces-cluster
