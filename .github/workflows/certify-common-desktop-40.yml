@@ -14,8 +14,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      EXPECTED_SHA: 752fc8e12a3ace8f375eaff1f37db44670d283fc
+      EXPECTED_SHA: d52ff834a0d701d5be0ca8fdf4762d22409a2684
       EXPECTED_BASE_SHA: 6c5a9d3dd3e58ab51274fc96addc4008f5d60ccb
+      EXPECTED_LOCK_SHA256: 9bc7675b694b3aecec4a80b87f2913ff001081affbde10f141c20db5fd9bfa71
+      EXPECTED_ROUTER_SHA256: 1ed4e74babbc13322364311021c1cf9d949d8f6cde38fb5a86ac4df4c2de0abe
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -39,9 +41,11 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
           actual="$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | sort | tr '\n' ' ')"
-          expected='conformance/README.md conformance/rust/Cargo.toml conformance/rust/src/bin/validate_appliance_contract.rs '
+          expected='Cargo.lock conformance/README.md conformance/rust/Cargo.toml conformance/rust/src/bin/validate_appliance_contract.rs daemon/rust/src/state.rs router/rust/src/lib.rs '
           test "$actual" = "$expected"
           git diff --check "$EXPECTED_BASE_SHA"..HEAD
+          test "$(sha256sum Cargo.lock | awk '{print $1}')" = "$EXPECTED_LOCK_SHA256"
+          test "$(sha256sum router/rust/src/lib.rs | awk '{print $1}')" = "$EXPECTED_ROUTER_SHA256"
 
       - name: Configure private Cargo Git reads
         working-directory: common-desktop
@@ -59,23 +63,12 @@ jobs:
 
       - name: Check changed Rust formatting
         working-directory: common-desktop
-        run: rustfmt --edition 2021 --check conformance/rust/src/bin/validate_appliance_contract.rs
-
-      - name: Generate reviewed lock and router cleanup candidates
-        working-directory: common-desktop
-        env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$(grep -Fxc '        let mut value = generation(1, "main");' router/rust/src/lib.rs)" -eq 1
-          sed -i 's/        let mut value = generation(1, "main");/        let value = generation(1, "main");/' router/rust/src/lib.rs
-          test "$(grep -Fxc '        let value = generation(1, "main");' router/rust/src/lib.rs)" -eq 1
-          cargo generate-lockfile
-          sha256sum Cargo.lock | tee "${RUNNER_TEMP}/common-desktop-cargo-lock.sha256"
-          sha256sum router/rust/src/lib.rs | tee "${RUNNER_TEMP}/common-desktop-router-lib.sha256"
-          cp Cargo.lock "${RUNNER_TEMP}/common-desktop-Cargo.lock"
-          cp router/rust/src/lib.rs "${RUNNER_TEMP}/common-desktop-router-lib.rs"
+          rustfmt --edition 2021 --check conformance/rust/src/bin/validate_appliance_contract.rs
+          rustfmt --edition 2021 --check daemon/rust/src/state.rs
+          rustfmt --edition 2021 --check router/rust/src/lib.rs
 
       - name: Locked workspace check
         working-directory: common-desktop
@@ -107,28 +100,6 @@ jobs:
           cargo build --locked -p ores-common-desktop-conformance --bin validate_appliance_contract
           test -x target/debug/validate_appliance_contract
 
-      - name: Upload reviewed source candidates
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: common-desktop-source-candidates-${{ env.EXPECTED_SHA }}
-          path: |
-            ${{ runner.temp }}/common-desktop-Cargo.lock
-            ${{ runner.temp }}/common-desktop-cargo-lock.sha256
-            ${{ runner.temp }}/common-desktop-router-lib.rs
-            ${{ runner.temp }}/common-desktop-router-lib.sha256
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Restore source checkout
-        if: always()
-        working-directory: common-desktop
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          git checkout -- Cargo.lock router/rust/src/lib.rs
-          git clean -fd -- target
-
       - name: Assert candidate remained immutable
         if: always()
         working-directory: common-desktop
@@ -136,4 +107,5 @@ jobs:
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git clean -fd -- target
           test -z "$(git status --porcelain)"
