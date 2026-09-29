@@ -1,0 +1,132 @@
+name: certify common desktop #42
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-common-desktop-42.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-common-desktop-42-20260928'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXPECTED_SHA: 8d7abb3519854428cc0a4e5313d86766793dbd50
+      EXPECTED_BASE_SHA: 6c5a9d3dd3e58ab51274fc96addc4008f5d60ccb
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact runtime-generation candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-common-desktop-infra
+          ref: ${{ env.EXPECTED_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: common-desktop
+          persist-credentials: false
+          fetch-depth: 64
+
+      - name: Assert exact source and focused review surface
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
+          git diff --check "$EXPECTED_BASE_SHA"..HEAD
+          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | wc -l | tr -d ' ')" -eq 20
+          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx 'Cargo.toml'
+          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Ec '^(runtime-generation/|runtime/contracts/|runtime/conformance/|docs/runtime-(generation|activation)-contract\.md$)')" -eq 19
+          ! git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Eq '^(daemon/|desktop-app/|flutter/|ingress/|packaging/)'
+
+      - name: Configure private Cargo Git reads
+        working-directory: common-desktop
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+
+      - name: Install pinned Rust
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.82.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.82.0
+          rustc --version | grep -F 'rustc 1.82.0'
+
+      - name: Check runtime-generation formatting
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for file in runtime-generation/rust/src/*.rs; do
+            rustfmt --edition 2021 --check "$file"
+          done
+
+      - name: Generate deterministic lock candidate
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo generate-lockfile
+          sha256sum Cargo.lock | tee "${RUNNER_TEMP}/common-desktop-42-cargo-lock.sha256"
+          cp Cargo.lock "${RUNNER_TEMP}/common-desktop-42-Cargo.lock"
+
+      - name: Locked workspace check
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo check --locked --workspace --all-targets
+
+      - name: Strict Clippy except intentional explicit returns
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings -A clippy::needless-return
+
+      - name: Locked workspace tests
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo test --locked --workspace --all-targets
+
+      - name: Validate JSON contract fixtures
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          jq -e . runtime/contracts/runtime-generation.schema.json >/dev/null
+          jq -e . runtime/contracts/runtime-activation.schema.json >/dev/null
+          jq -e . runtime/contracts/instances/runtime-generation.valid.json >/dev/null
+          jq -e . runtime/contracts/activation-instances/activation-intent.valid.json >/dev/null
+          jq -e . runtime/conformance/fencing-retirement.v1.json >/dev/null
+          jq -e . runtime/conformance/route-precedence.v1.json >/dev/null
+          jq -e . runtime/conformance/transaction.v1.json >/dev/null
+
+      - name: Upload lock candidate
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-42-lock-${{ env.EXPECTED_SHA }}
+          path: |
+            ${{ runner.temp }}/common-desktop-42-Cargo.lock
+            ${{ runner.temp }}/common-desktop-42-cargo-lock.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Restore candidate and assert immutability
+        if: always()
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git checkout -- Cargo.lock || true
+          git clean -fd -- target
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
