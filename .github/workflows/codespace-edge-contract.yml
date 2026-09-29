@@ -10,6 +10,7 @@ on:
       - 'config/ores-cli.rev'
       - 'config/ores-compose.rev'
       - 'Justfile'
+      - 'scripts/dev/**'
       - 'tools/dev-runtime/**'
       - 'docs/local-development.md'
       - '.github/workflows/codespace-edge-contract.yml'
@@ -23,6 +24,7 @@ on:
       - 'config/ores-cli.rev'
       - 'config/ores-compose.rev'
       - 'Justfile'
+      - 'scripts/dev/**'
       - 'tools/dev-runtime/**'
       - 'docs/local-development.md'
       - '.github/workflows/codespace-edge-contract.yml'
@@ -68,22 +70,32 @@ jobs:
           grep -Fq 'ORESoftware/codespaces-cluster' .devcontainer/devcontainer.json
           grep -Fq 'gh repo view ORESoftware/codespaces-cluster --json name' .devcontainer/devcontainer.json
           grep -Fq 'just codespace-edge-check' .devcontainer/devcontainer.json
+          grep -Fq 'codespace-origin-up:' Justfile
           grep -Fq 'codespace-edge-up:' Justfile
+          grep -Fq 'codespace-origin-status:' Justfile
           grep -Fq 'codespace-edge-status:' Justfile
           grep -Fq 'codespace-edge-down:' Justfile
           grep -Fq 'codespace-edge-check:' Justfile
-          grep -Fq 'GH_TOKEN="$token" gh repo clone ORESoftware/codespaces-cluster' Justfile
-          grep -Fq 'GH_TOKEN="$token" git -C "$root" fetch --prune origin main' Justfile
-          grep -Fq 'GH_TOKEN="$token" just codespace-edge-bootstrap' Justfile
-          ! grep -Fq 'export GH_TOKEN=' Justfile
-          grep -Fq 'ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app' Justfile
-          grep -Fq 'ORES_CODESPACES_CLUSTER_READY_PORT=18091' Justfile
-          grep -Fq 'CODESPACES_CLUSTER_CONFIG="$repo/config/codespaces-cluster.toml"' Justfile
-          grep -Fq 'http://127.0.0.1:8080/api/readyz' Justfile
+          grep -Fq 'bash scripts/dev/codespace-origin-up' Justfile
+
+          origin_up=scripts/dev/codespace-origin-up
+          bash -n "$origin_up"
+          grep -Fq 'GH_TOKEN="$token" gh repo clone ORESoftware/codespaces-cluster' "$origin_up"
+          grep -Fq 'GH_TOKEN="$token" gh auth setup-git' "$origin_up"
+          grep -Fq 'GH_TOKEN="$token" git -C "$cluster_root" fetch --no-tags origin "$revision"' "$origin_up"
+          grep -Fq 'ORES_CLI_READ_TOKEN="$token" just codespace-edge-bootstrap' "$origin_up"
+          grep -Fq 'gh auth token' "$origin_up"
+          ! grep -Fq 'export GH_TOKEN=' "$origin_up"
+          ! grep -Fq 'GH_TOKEN="$token" ORES_CODESPACES_CLUSTER_' "$origin_up"
+          ! grep -Fq 'GH_TOKEN="$token" CODESPACES_CLUSTER_CONFIG=' "$origin_up"
+          grep -Fq 'ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app' "$origin_up"
+          grep -Fq 'ORES_CODESPACES_CLUSTER_READY_PORT=18091' "$origin_up"
+          grep -Fq 'CODESPACES_CLUSTER_CONFIG="$repo_root/config/codespaces-cluster.toml"' "$origin_up"
+          grep -Fq 'http://127.0.0.1:8080/api/readyz' "$origin_up"
           grep -Fq '"onAutoForward": "ignore"' .devcontainer/devcontainer.json
 
           rev="$(tr -d '[:space:]' < config/codespaces-cluster.rev)"
-          test "$rev" = '367a68adf04bf853ff2923c234808cdc538ee21a'
+          test "$rev" = 'fe61abec77af464dd31944f6bf1fdd6ddfd0a65c'
           [[ "$rev" =~ ^[0-9a-f]{40}$ ]]
 
           cfg=config/codespaces-cluster.toml
@@ -99,6 +111,7 @@ jobs:
           grep -Fq 'web: `127.0.0.1:18091`' docs/local-development.md
           grep -Fq 'Port `8080` is reserved exclusively' docs/local-development.md
           grep -Fq 'read-only Contents access limited to exactly those three repositories' docs/local-development.md
+          grep -Fq 'codespace-origin-up' docs/local-development.md
           grep -Fq "$ores_cli_rev" docs/local-development.md
           grep -Fq "$ores_compose_rev" docs/local-development.md
           grep -Fq "$rev" docs/local-development.md
