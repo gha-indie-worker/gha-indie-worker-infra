@@ -92,14 +92,18 @@ jobs:
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
-      - name: Require all compose gates
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          test '${{ steps.compose_fmt.outcome }}' = success
-          test '${{ steps.compose_check.outcome }}' = success
-          test '${{ steps.compose_tests.outcome }}' = success
-          test '${{ steps.compose_clippy.outcome }}' = success
+      - name: Require compose formatting
+        if: always()
+        run: test '${{ steps.compose_fmt.outcome }}' = success
+      - name: Require compose check
+        if: always()
+        run: test '${{ steps.compose_check.outcome }}' = success
+      - name: Require compose tests
+        if: always()
+        run: test '${{ steps.compose_tests.outcome }}' = success
+      - name: Require compose Clippy
+        if: always()
+        run: test '${{ steps.compose_clippy.outcome }}' = success
       - name: Assert immutable source
         if: always()
         working-directory: ores-compose
@@ -194,14 +198,18 @@ jobs:
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo clippy --locked --all-targets -- -D warnings
-      - name: Require all consumer gates
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          test '${{ steps.consumer_fmt.outcome }}' = success
-          test '${{ steps.consumer_check.outcome }}' = success
-          test '${{ steps.consumer_tests.outcome }}' = success
-          test '${{ steps.consumer_clippy.outcome }}' = success
+      - name: Require consumer formatting
+        if: always()
+        run: test '${{ steps.consumer_fmt.outcome }}' = success
+      - name: Require consumer check
+        if: always()
+        run: test '${{ steps.consumer_check.outcome }}' = success
+      - name: Require consumer tests
+        if: always()
+        run: test '${{ steps.consumer_tests.outcome }}' = success
+      - name: Require consumer Clippy
+        if: always()
+        run: test '${{ steps.consumer_clippy.outcome }}' = success
       - name: Assert immutable source
         if: always()
         working-directory: proc-isolation
