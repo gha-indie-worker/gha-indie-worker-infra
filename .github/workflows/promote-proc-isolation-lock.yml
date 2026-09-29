@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
+      GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
       SOURCE_REPO: ORESoftware/ores-proc-isolation-cli
       SOURCE_BRANCH: hardening/refresh-lock-strict-clippy-20260929
       EXPECTED_HEAD: c9a6bf85958751b361030a432b57253cb4bf3d05
@@ -35,8 +36,6 @@ jobs:
 
       - name: Configure authenticated private Git reads and push
         working-directory: source
-        env:
-          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
         run: gh auth setup-git
 
       - name: Assert exact parent and clean source
