@@ -55,9 +55,27 @@ jobs:
           rustup default 1.82.0
           rustc --version | grep -F 'rustc 1.82.0'
 
-      - name: Rustfmt exact changed file
+      - name: Capture exact rustfmt patch
         working-directory: common-desktop
-        run: rustfmt --edition 2021 --check conformance/rust/src/bin/validate_rust_distribution.rs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          file='conformance/rust/src/bin/validate_rust_distribution.rs'
+          rustfmt --edition 2021 "$file"
+          git diff -- "$file" > "${RUNNER_TEMP}/common-desktop-47-rustfmt.patch"
+          if ! git diff --quiet -- "$file"; then
+            echo 'distribution validator is not rustfmt-clean; exact patch uploaded as evidence' >&2
+            exit 1
+          fi
+
+      - name: Upload rustfmt patch
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-47-rustfmt-${{ env.EXPECTED_SHA }}
+          path: ${{ runner.temp }}/common-desktop-47-rustfmt.patch
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Strict validator Clippy
         working-directory: common-desktop
@@ -83,6 +101,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          git checkout -- conformance/rust/src/bin/validate_rust_distribution.rs
           git clean -fd -- target
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test -z "$(git status --porcelain)"
