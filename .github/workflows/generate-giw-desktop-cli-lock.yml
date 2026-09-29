@@ -34,7 +34,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          git diff --check HEAD^..HEAD
+          test -z "$(git status --porcelain)"
 
       - name: Install Rust 1.90
         shell: bash
