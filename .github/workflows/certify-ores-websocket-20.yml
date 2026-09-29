@@ -57,6 +57,31 @@ jobs:
         working-directory: ores-websocket
         run: cargo fmt --all -- --check
 
+      - name: Generate exact lockfile candidate
+        working-directory: ores-websocket
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cp Cargo.lock "${RUNNER_TEMP}/ores-websocket-20-Cargo.lock.before"
+          cargo generate-lockfile
+          cp Cargo.lock "${RUNNER_TEMP}/ores-websocket-20-Cargo.lock"
+          sha256sum Cargo.lock | tee "${RUNNER_TEMP}/ores-websocket-20-Cargo.lock.sha256"
+          if ! cmp -s Cargo.lock "${RUNNER_TEMP}/ores-websocket-20-Cargo.lock.before"; then
+            echo 'Cargo.lock is stale; exact generated lockfile uploaded as evidence' >&2
+            exit 1
+          fi
+
+      - name: Upload lockfile candidate
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ores-websocket-20-lock-${{ env.EXPECTED_SHA }}
+          path: |
+            ${{ runner.temp }}/ores-websocket-20-Cargo.lock
+            ${{ runner.temp }}/ores-websocket-20-Cargo.lock.sha256
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Strict Clippy all features
         working-directory: ores-websocket
         run: cargo clippy --locked --all-targets --all-features -- -D warnings -A clippy::needless-return
@@ -68,4 +93,7 @@ jobs:
       - name: Assert source checkout stayed immutable
         if: always()
         working-directory: ores-websocket
-        run: test -z "$(git status --porcelain)"
+        shell: bash
+        run: |
+          git checkout -- Cargo.lock || true
+          test -z "$(git status --porcelain)"
