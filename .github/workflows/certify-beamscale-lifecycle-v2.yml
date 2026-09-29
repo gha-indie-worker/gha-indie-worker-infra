@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      EXPECTED_SHA: 3b7814d34fc89d7aaec22c14d61175b86b256c49
+      EXPECTED_SHA: 1204116bfe607b365c8e0ca080e5f63cb4a56dbe
       EXPECTED_BASE_SHA: 655168c912ce38b0699b14d039aee95d049fbbe3
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
