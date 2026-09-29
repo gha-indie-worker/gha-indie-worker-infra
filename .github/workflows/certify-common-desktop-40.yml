@@ -78,11 +78,11 @@ jobs:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo check --locked --workspace --all-targets
 
-      - name: Strict Clippy
+      - name: Strict Clippy except intentional explicit returns
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings -A clippy::needless-return
 
       - name: Locked workspace tests
         working-directory: common-desktop
@@ -103,7 +103,7 @@ jobs:
           test -x target/debug/validate_appliance_contract
 
       - name: Upload reviewed lock candidate
-        if: always() && hashFiles(format('{0}/common-desktop-Cargo.lock', runner.temp)) != ''
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: common-desktop-cargo-lock-${{ env.EXPECTED_SHA }}
