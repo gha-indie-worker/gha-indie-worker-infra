@@ -1,4 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cargo_home="${CARGO_HOME:-${HOME:?HOME is required}/.cargo}"
+reviewed_ores_compose="$cargo_home/bin/ores-compose"
+active_ores_compose="$(command -v ores-compose || true)"
+
+if [[ -x "$reviewed_ores_compose" && "$active_ores_compose" != "$reviewed_ores_compose" ]]; then
+  printf >&2 'error: PATH resolves ores-compose to %s but cargo installed the reviewed binary at %s\n' \
+    "${active_ores_compose:-<missing>}" "$reviewed_ores_compose"
+  printf >&2 'fix: export PATH="%s/bin:$PATH" (or invoke %s directly) before running local GIW commands\n' \
+    "$cargo_home" "$reviewed_ores_compose"
+  exit 78
+fi
+
 exec cargo run --locked --manifest-path "$root/tools/dev-runtime/Cargo.toml" -- doctor
