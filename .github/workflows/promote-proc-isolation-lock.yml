@@ -33,6 +33,12 @@ jobs:
           persist-credentials: false
           fetch-depth: 2
 
+      - name: Configure authenticated private Git reads and push
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+
       - name: Assert exact parent and clean source
         working-directory: source
         shell: bash
@@ -42,12 +48,6 @@ jobs:
           test -z "$(git status --porcelain)"
           remote_head="$(git ls-remote origin "refs/heads/$SOURCE_BRANCH" | awk '{print $1}')"
           test "$remote_head" = "$EXPECTED_HEAD"
-
-      - name: Configure authenticated private Git reads and push
-        working-directory: source
-        env:
-          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
-        run: gh auth setup-git
 
       - name: Install MSRV Rust
         shell: bash
