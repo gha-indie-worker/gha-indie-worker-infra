@@ -38,7 +38,7 @@ A fresh/rebuilt devcontainer provisions the reviewed private tools needed by thi
 
 - `ORESoftware/ores-cli@d37aa4c1a0b79a292a31e2f16db8622144b0831f`, with the reviewed revision recorded in `config/ores-cli.rev`;
 - `ORESoftware/ores-compose@a9758b8a48c2a264c4bff38f1dc166cba0e9caa1`, with the reviewed revision recorded in `config/ores-compose.rev`;
-- the shared `ORESoftware/codespaces-cluster` source is materialized later at exact commit `fe61abec77af464dd31944f6bf1fdd6ddfd0a65c`, recorded in `config/codespaces-cluster.rev`.
+- the shared `ORESoftware/codespaces-cluster` source is materialized later at exact commit `8fd2e2a2d30010510bcd94f1f34a1c8aa3ca7a4c`, recorded in `config/codespaces-cluster.rev`.
 
 The three `config/*.rev` files are review authorities for private bootstrap/runtime tooling. They must contain exactly one full 40-hex commit SHA. The Rust dev-runtime validator, contract tests, devcontainer install commands, and Codespace edge workflow cross-check those values so a pin cannot move in only one surface.
 
