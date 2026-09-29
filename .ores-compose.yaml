@@ -24,7 +24,7 @@ services:
       - GHA_INDIE_WORKER_API_BIND=127.0.0.1:18090
       - ./target/debug/gha-indie-worker-api-server
     build:
-      - ["cargo", "build", "--bin", "gha-indie-worker-api-server"]
+      - ["cargo", "build", "--target-dir", "target", "--bin", "gha-indie-worker-api-server"]
     working_dir: apps/gha-indie-worker-api-server.rs
     replicas: 1
     healthcheck:
@@ -42,7 +42,7 @@ services:
       - GHA_INDIE_WORKER_API_HTTP_BASE=http://127.0.0.1:18090
       - ./target/debug/gha-indie-worker-web-server
     build:
-      - ["cargo", "build", "--bin", "gha-indie-worker-web-server"]
+      - ["cargo", "build", "--target-dir", "target", "--bin", "gha-indie-worker-web-server"]
     working_dir: apps/gha-indie-worker-web-server.rs
     replicas: 1
     depends_on: [api]
