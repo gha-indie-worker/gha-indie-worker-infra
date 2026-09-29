@@ -14,7 +14,7 @@ k8s_origin_ip = "203.0.113.10"
 # Leave empty until there is an AWS edge.
 aws_origin_ip = ""
 
-# Cloud Run hostnames, from `terraform -chdir=terraform/gcp output cloud_run_hosts`.
+# Cloud Run hostnames, from the GCP Cloud Run environment outputs.
 cloud_run_web_host       = ""
 cloud_run_api_host       = ""
 cloud_run_admin_web_host = ""
@@ -27,9 +27,22 @@ manage_auth_record = false
 auth_origin_target = ""
 
 # ---- Access ------------------------------------------------------------------
-admin_access_emails   = ["alexander.d.mills@gmail.com"]
+admin_access_emails   = ["operator@example.com"]
 admin_access_group_id = ""
 access_require_mfa    = true
+
+# ---- laptop ingress -----------------------------------------------------------
+# UUID CNAME target for the remotely managed tunnel used by local.indiebuild.dev.
+# The target/UUID is not secret; the connector token is supplied outside Terraform.
+laptop_tunnel_cname = ""
+# Enable only when the named tunnel is dedicated exclusively to laptop ingress.
+# Terraform will own its complete remote ingress list:
+#   local.indiebuild.dev -> http://127.0.0.1:8080
+#   catch-all             -> http_status:404
+laptop_manage_dedicated_tunnel_config = false
+laptop_ingress_subdomain              = "local"
+laptop_ingress_require_access          = true
+access_team_domain                     = ""
 
 # ---- WAF ---------------------------------------------------------------------
 api_rate_limit_requests = 600
