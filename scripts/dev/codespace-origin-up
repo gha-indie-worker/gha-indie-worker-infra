@@ -5,6 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cluster_root="${ORES_CODESPACE_CLUSTER_DIR:-${HOME:?HOME is required}/.cache/ores/codespaces-cluster}"
 revision="$(tr -d '[:space:]' < "$repo_root/config/codespaces-cluster.rev")"
 token="${ORES_CLI_READ_TOKEN:-}"
+controller="$cluster_root/target/debug/codespaces-cluster-ctl"
 
 if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
   echo >&2 "error: invalid config/codespaces-cluster.rev"
@@ -73,9 +74,18 @@ fi
   ORES_CLI_READ_TOKEN="$token" just codespace-edge-bootstrap
 )
 
+if [[ ! -x "$controller" ]]; then
+  echo >&2 "error: codespaces-cluster bootstrap did not materialize controller at reviewed path"
+  echo >&2 "expected: $controller"
+  exit 70
+fi
+
 app_up=false
 edge_attempted=false
-cleanup_started_layers() {
+cleanup_started_layers() (
+  # Cleanup is intentionally isolated in a subshell. Never disable errexit in
+  # the parent ERR trap context, or a failed startup can fall through to the
+  # success receipt.
   set +e
 
   if [[ "$edge_attempted" == true ]]; then
@@ -92,9 +102,9 @@ cleanup_started_layers() {
     ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app \
     ORES_CODESPACES_CLUSTER_READY_PORT=18091 \
     ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app \
-      "$cluster_root/target/debug/codespaces-cluster-ctl" down
+      "$controller" down
   fi
-}
+)
 trap cleanup_started_layers ERR
 
 cd "$repo_root"
@@ -102,7 +112,7 @@ ORES_CODESPACES_CLUSTER_MANIFEST=.ores-compose.yaml \
 ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app \
 ORES_CODESPACES_CLUSTER_READY_PORT=18091 \
 ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app \
-  "$cluster_root/target/debug/codespaces-cluster-ctl" up
+  "$controller" up
 app_up=true
 
 edge_attempted=true
