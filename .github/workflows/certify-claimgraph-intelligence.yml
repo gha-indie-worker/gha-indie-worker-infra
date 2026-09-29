@@ -9,81 +9,18 @@ permissions:
   contents: read
 
 jobs:
-  fleet-conformance:
-    if: github.head_ref == 'ci/certify-claimgraph-intelligence-20260929'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    env:
-      EXPECTED_SHA: 849e83ae3f6c669603dfc94d69a2c797688b2185
-      EXPECTED_BASE_SHA: dbd9b22a24e532eda5c5ca97e435a5248da18f16
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - name: Checkout exact ClaimGraph conformance head
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: ClaimGraph/claimgraph-intelligence.rs
-          ref: ${{ env.EXPECTED_SHA }}
-          token: ${{ secrets.ORE_SOURCE_PAT }}
-          path: claimgraph-conformance
-          persist-credentials: false
-          fetch-depth: 8
-      - name: Assert exact source and scoped diff
-        working-directory: claimgraph-conformance
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
-          git diff --check "$EXPECTED_BASE_SHA"..HEAD
-          mapfile -t files < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)
-          test "${#files[@]}" -eq 4
-          printf '%s\n' "${files[@]}" | grep -Fx '.github/workflows/intelligence.yml'
-          printf '%s\n' "${files[@]}" | grep -Fx '.gitignore'
-          printf '%s\n' "${files[@]}" | grep -Fx '.zpkg.toml'
-          printf '%s\n' "${files[@]}" | grep -Fx 'AGENTS.md'
-      - name: Verify canonical package repository metadata
-        working-directory: claimgraph-conformance
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          awk '
-            $0 == "[package.repository]" { in_repo=1; next }
-            /^\[/ && in_repo { exit }
-            in_repo && $0 == "vcs = \"git\"" { vcs=1 }
-            in_repo && $0 == "url = \"https://github.com/ClaimGraph/claimgraph-intelligence.rs\"" { url=1 }
-            END { exit !(vcs && url) }
-          ' .zpkg.toml
-          grep -Fx '/target' .gitignore
-          grep -Fx 'tmp/' .gitignore
-          grep -Fx 'temp/' .gitignore
-          grep -F 'persist-credentials: false' .github/workflows/intelligence.yml
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
-        with:
-          components: rustfmt, clippy
-      - name: Rust gates
-        working-directory: claimgraph-conformance
-        run: |
-          cargo fmt --all -- --check
-          cargo clippy --locked --all-targets -- -D warnings
-          cargo test --locked
-      - name: Assert checkout stayed immutable
-        if: always()
-        working-directory: claimgraph-conformance
-        run: test -z "$(git status --porcelain)"
-
   regression:
     if: github.head_ref == 'ci/certify-claimgraph-intelligence-20260929'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      EXPECTED_SHA: 09e0616d832a55410889f847fcf933b444bdcaed
-      EXPECTED_BASE_SHA: dbd9b22a24e532eda5c5ca97e435a5248da18f16
+      EXPECTED_SHA: 11f3fd215bf66e5cabf05ba26ba7c4d6f7578856
+      EXPECTED_BASE_SHA: 7e6bf255b9109b69b89a2d8959c71c6d9bb80341
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+
       - name: Checkout exact ClaimGraph regression head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -92,8 +29,9 @@ jobs:
           token: ${{ secrets.ORE_SOURCE_PAT }}
           path: claimgraph-regression
           persist-credentials: false
-          fetch-depth: 16
-      - name: Assert exact source and no temporary mutable CI
+          fetch-depth: 32
+
+      - name: Assert exact source and scoped feature diff
         working-directory: claimgraph-regression
         shell: bash
         run: |
@@ -108,45 +46,28 @@ jobs:
           printf '%s\n' "${files[@]}" | grep -Fx 'src/lib.rs'
           printf '%s\n' "${files[@]}" | grep -Fx 'src/regression.rs'
           printf '%s\n' "${files[@]}" | grep -Fx 'tests/regression_restricted_feature_normalization.rs'
+
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
         with:
           components: rustfmt, clippy
-      - name: Capture exact rustfmt output
+
+      - name: Rustfmt
         working-directory: claimgraph-regression
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cargo fmt --all
-          git diff -- src/lib.rs src/regression.rs tests/regression_restricted_feature_normalization.rs > "${RUNNER_TEMP}/claimgraph-regression-rustfmt.patch"
-          if ! git diff --quiet -- src/lib.rs src/regression.rs tests/regression_restricted_feature_normalization.rs; then
-            echo 'ClaimGraph regression source is not rustfmt-clean; exact patch and formatted files are uploaded' >&2
-            exit 1
-          fi
-      - name: Upload rustfmt evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: claimgraph-regression-rustfmt-${{ env.EXPECTED_SHA }}
-          path: |
-            ${{ runner.temp }}/claimgraph-regression-rustfmt.patch
-            claimgraph-regression/src/lib.rs
-            claimgraph-regression/src/regression.rs
-            claimgraph-regression/tests/regression_restricted_feature_normalization.rs
-          if-no-files-found: error
-          retention-days: 7
+        run: cargo fmt --all -- --check
+
       - name: Strict Clippy
         working-directory: claimgraph-regression
         run: cargo clippy --locked --all-targets -- -D warnings
+
       - name: Full locked tests
         working-directory: claimgraph-regression
         run: cargo test --locked
+
       - name: Restricted-feature negative control
         working-directory: claimgraph-regression
         run: cargo test --locked --test regression_restricted_feature_normalization
+
       - name: Assert checkout stayed immutable
         if: always()
         working-directory: claimgraph-regression
-        shell: bash
-        run: |
-          git checkout -- src/lib.rs src/regression.rs tests/regression_restricted_feature_normalization.rs || true
-          test -z "$(git status --porcelain)"
+        run: test -z "$(git status --porcelain)"
