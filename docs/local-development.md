@@ -40,7 +40,7 @@ A fresh/rebuilt devcontainer provisions the reviewed private tools needed by thi
 
 - `ORESoftware/ores-cli@d37aa4c1a0b79a292a31e2f16db8622144b0831f`, with the reviewed revision recorded in `config/ores-cli.rev`;
 - `ORESoftware/ores-compose@a9758b8a48c2a264c4bff38f1dc166cba0e9caa1`, with the reviewed revision recorded in `config/ores-compose.rev`;
-- the shared `ORESoftware/codespaces-cluster` source is materialized later at exact commit `9a9a774d95e8ad8f4d29394caf301d205507c1c3`, recorded in `config/codespaces-cluster.rev`.
+- the shared `ORESoftware/codespaces-cluster` source is materialized later at exact commit `c5d02793b273624134e14629c380de080ab2ed5a`, recorded in `config/codespaces-cluster.rev`.
 
 The three `config/*.rev` files are review authorities for private bootstrap/runtime tooling. They must contain exactly one full 40-hex commit SHA. The Rust dev-runtime validator, contract tests, devcontainer install commands, and Codespace edge workflow cross-check those values so a pin cannot move in only one surface.
 
@@ -50,7 +50,7 @@ The pinned `oresc` revision independently sanitizes child command environments. 
 
 The shared cluster bootstrap does not treat `command -v` as proof. It binds installed executables to the exact Git repository, exact revision, Cargo package, binary SHA-256, and—where required—the exact package-owned flags contract. Those authority receipts live outside the managed Git checkout and reject symlink aliases. The flags contract is materialized before executable replacement, carries its own exact revision/hash, and lifecycle invocations bind it with `FLAGS2ENV_CONFIG`; a caller repository's `.cli-flags.toml` is never accidental authority.
 
-Controller builds force the managed checkout's own `target/` directory, preventing a global Cargo target-dir from moving `codespaces-cluster-ctl` away from its ownership state. Shared-cluster `status`/`down` are build-independent.
+Controller builds force the managed checkout's own `target/` directory, preventing a global Cargo target-dir from moving `codespaces-cluster-ctl` away from its ownership state. Shared-cluster `status`/`down` are build-independent. The pinned shared-edge head also contains the resolver-generated Cargo v4 lockfile required for `cargo build --locked`; a pin advance must preserve that lockfile and locked-build discipline.
 
 All three repositories are private and cross-owner from `gha-indie-worker`. `ORES_CLI_READ_TOKEN` remains supported as a fine-grained bootstrap secret with **read-only Contents access limited to exactly those three repositories**. On an interactive laptop, `scripts/dev/codespace-origin-up` may instead use the credential already available through `gh auth token`. Private Git authentication is injected through command-scoped Git config; bootstrap does not mutate the user's global Git credential-helper configuration. Credentials are scoped to private clone/fetch/tool-install operations and are not exported to the long-running application controller, shared Rust edge, `oresc` connector supervisor, or `cloudflared`.
 
