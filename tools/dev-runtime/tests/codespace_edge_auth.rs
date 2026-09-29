@@ -137,10 +137,19 @@ fn managed_public_edge_has_one_tunnel_authority() {
     let laptop_docs = read("cloudflare/laptop-ingress/README.md");
     let tunnel_config = read("modules/cloudflare/platform/laptop-ingress.tf");
 
-    let token_guard = justfile
+    let recipe_start = justfile
+        .find("codespace-edge-up:\n")
+        .expect("managed edge recipe must exist");
+    let after_recipe_start = &justfile[recipe_start..];
+    let recipe_end = after_recipe_start
+        .find("\n\n# Status/down")
+        .unwrap_or(after_recipe_start.len());
+    let managed_recipe = &after_recipe_start[..recipe_end];
+
+    let token_guard = managed_recipe
         .find("TUNNEL_TOKEN (preferred) or CF_TUNNEL_TOKEN is required")
         .expect("managed edge must fail early without a tunnel token");
-    let origin_start = justfile
+    let origin_start = managed_recipe
         .find("bash scripts/dev/codespace-origin-up")
         .expect("managed edge must invoke origin lifecycle");
     assert!(
@@ -148,7 +157,7 @@ fn managed_public_edge_has_one_tunnel_authority() {
         "tunnel-token admission must happen before any local origin startup"
     );
 
-    assert!(justfile.contains("FLAGS2ENV_CONFIG=\"$flags\" oresc --no-json codespace edge up"));
+    assert!(managed_recipe.contains("FLAGS2ENV_CONFIG=\"$flags\" oresc --no-json codespace edge up"));
     assert!(docs.contains("remotely managed Cloudflare connector"));
     assert!(docs.contains("laptop_manage_dedicated_tunnel_config = true"));
     assert!(laptop_docs.contains("remotely managed Cloudflare Tunnel"));
