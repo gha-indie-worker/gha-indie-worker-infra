@@ -16,7 +16,7 @@ stamp_file="$stamp_dir/ores-stack.rev"
 stamped_rev="$(cat "$stamp_file" 2>/dev/null || true)"
 
 if [[ ! -x "$reviewed_ores_stack" || "$stamped_rev" != "$ores_stack_rev" ]]; then
-  token="${ORES_STACK_READ_TOKEN:-${ORES_CLI_READ_TOKEN:-}}"
+  token="${ORES_STACK_READ_TOKEN:-}"
   if [[ -z "$token" ]] && command -v gh >/dev/null 2>&1; then
     token="$(gh auth token 2>/dev/null || true)"
   fi
