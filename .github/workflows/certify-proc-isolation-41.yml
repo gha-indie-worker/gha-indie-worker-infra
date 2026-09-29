@@ -1,0 +1,104 @@
+name: certify proc-isolation #41
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-proc-isolation-41.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-proc-isolation-41-20260929'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXPECTED_SHA: 0c2f534cc833a094a6dd36db34edb3dfebf1ab3d
+      EXPECTED_BASE_SHA: a32a7d638497bddc2478019f9c5cde156b248760
+      EXPECTED_LOCK_SHA256: 66aef0a31c9607936314607e068bc11f23c864c6ce63e91bfaafa97fef4704b6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact source repair
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-proc-isolation-cli
+          ref: ${{ env.EXPECTED_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 8
+
+      - name: Assert exact three-file repair surface
+        working-directory: source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
+          git diff --check "$EXPECTED_BASE_SHA"..HEAD
+          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | wc -l | tr -d ' ')" -eq 3
+          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx Cargo.lock
+          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx Cargo.toml
+          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx tests/self_update_dispatch.rs
+          test "$(sha256sum Cargo.lock | awk '{print $1}')" = "$EXPECTED_LOCK_SHA256"
+          grep -Fq 'needless_return = "allow"' Cargo.toml
+          grep -Fq '//! CLI-dispatch regression coverage' tests/self_update_dispatch.rs
+
+      - name: Configure private Cargo Git reads
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+
+      - name: Install exact MSRV toolchain
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.88.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.88.0
+          rustc --version | grep -F 'rustc 1.88.0'
+
+      - name: Prove committed lock is resolver-stable
+        working-directory: source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo generate-lockfile
+          test "$(sha256sum Cargo.lock | awk '{print $1}')" = "$EXPECTED_LOCK_SHA256"
+          git diff --exit-code -- Cargo.lock
+
+      - name: Rust format
+        working-directory: source
+        run: cargo fmt --all -- --check
+
+      - name: Locked check
+        working-directory: source
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo check --locked --all-targets
+
+      - name: Locked tests
+        working-directory: source
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo test --locked --all-targets --no-fail-fast
+
+      - name: Locked strict Clippy
+        working-directory: source
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Assert source immutability
+        if: always()
+        working-directory: source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git clean -fd -- target
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
