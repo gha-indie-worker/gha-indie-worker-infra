@@ -52,17 +52,54 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt,clippy
           rustup default 1.98.1
           rustc --version | grep -F 'rustc 1.98.1'
-      - name: Locked compose verification
+      - name: Capture compose rustfmt patch
+        id: compose_fmt
+        continue-on-error: true
         working-directory: ores-compose
-        env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
-          cargo fmt --all -- --check
-          cargo check --locked --all-targets --all-features
-          cargo test --locked --all-targets --all-features --no-fail-fast
-          cargo clippy --locked --all-targets --all-features -- -D warnings
+          cargo fmt --all
+          git diff -- . > "${RUNNER_TEMP}/ores-compose-340-rustfmt.patch"
+          git checkout -- .
+          test ! -s "${RUNNER_TEMP}/ores-compose-340-rustfmt.patch"
+      - name: Upload compose rustfmt patch
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ores-compose-340-rustfmt-${{ env.EXPECTED_SHA }}
+          path: ${{ runner.temp }}/ores-compose-340-rustfmt.patch
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Locked compose check
+        id: compose_check
+        continue-on-error: true
+        working-directory: ores-compose
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo check --locked --all-targets --all-features
+      - name: Locked compose tests
+        id: compose_tests
+        continue-on-error: true
+        working-directory: ores-compose
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo test --locked --all-targets --all-features --no-fail-fast
+      - name: Locked compose strict Clippy
+        id: compose_clippy
+        continue-on-error: true
+        working-directory: ores-compose
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Require all compose gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test '${{ steps.compose_fmt.outcome }}' = success
+          test '${{ steps.compose_check.outcome }}' = success
+          test '${{ steps.compose_tests.outcome }}' = success
+          test '${{ steps.compose_clippy.outcome }}' = success
       - name: Assert immutable source
         if: always()
         working-directory: ores-compose
@@ -117,17 +154,54 @@ jobs:
           rustup toolchain install 1.88.0 --profile minimal --component rustfmt,clippy
           rustup default 1.88.0
           rustc --version | grep -F 'rustc 1.88.0'
-      - name: Locked consumer verification
+      - name: Capture consumer rustfmt patch
+        id: consumer_fmt
+        continue-on-error: true
         working-directory: proc-isolation
-        env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
-          cargo fmt --all -- --check
-          cargo check --locked --all-targets
-          cargo test --locked --all-targets --no-fail-fast
-          cargo clippy --locked --all-targets -- -D warnings
+          cargo fmt --all
+          git diff -- . > "${RUNNER_TEMP}/ores-proc-isolation-39-rustfmt.patch"
+          git checkout -- .
+          test ! -s "${RUNNER_TEMP}/ores-proc-isolation-39-rustfmt.patch"
+      - name: Upload consumer rustfmt patch
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ores-proc-isolation-39-rustfmt-${{ env.EXPECTED_SHA }}
+          path: ${{ runner.temp }}/ores-proc-isolation-39-rustfmt.patch
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Locked consumer check
+        id: consumer_check
+        continue-on-error: true
+        working-directory: proc-isolation
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo check --locked --all-targets
+      - name: Locked consumer tests
+        id: consumer_tests
+        continue-on-error: true
+        working-directory: proc-isolation
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo test --locked --all-targets --no-fail-fast
+      - name: Locked consumer strict Clippy
+        id: consumer_clippy
+        continue-on-error: true
+        working-directory: proc-isolation
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Require all consumer gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test '${{ steps.consumer_fmt.outcome }}' = success
+          test '${{ steps.consumer_check.outcome }}' = success
+          test '${{ steps.consumer_tests.outcome }}' = success
+          test '${{ steps.consumer_clippy.outcome }}' = success
       - name: Assert immutable source
         if: always()
         working-directory: proc-isolation
