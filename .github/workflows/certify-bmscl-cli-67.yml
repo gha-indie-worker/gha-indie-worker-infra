@@ -43,17 +43,22 @@ jobs:
           test "$(git rev-parse HEAD)" = "$BMSCL_SHA"
           test -z "$(git status --porcelain)"
 
-      - name: Install exact Rust toolchain
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
-        with:
-          toolchain: "1.90.0"
-          components: rustfmt, clippy
+      - name: Install exact Rust toolchain with runner rustup
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
+          rustc +1.90.0 --version | grep -F 'rustc 1.90.0'
+          cargo +1.90.0 --version
 
-      - name: Install exact Erlang runtime
-        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124
-        with:
-          otp-version: "29.1.1"
-          version-type: strict
+      - name: Install runner Erlang compiler
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends erlang-base erlang-dev
+          erlc -version
+          erl -noshell -eval 'io:format("OTP_RELEASE=~s~n", [erlang:system_info(otp_release)]), halt().' 
 
       - name: Compile persistent Erlang dev bridge
         working-directory: bmscl-cli
