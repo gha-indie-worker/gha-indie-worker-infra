@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      EXPECTED_SHA: 5008fa76c31809db5e3b89e9c46c0a983d672b62
+      EXPECTED_SHA: c5d02793b273624134e14629c380de080ab2ed5a
       EXPECTED_BASE_SHA: e8cd4fe3a748709e31e0b29d4a3a09ab9f4bfc57
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -37,14 +37,21 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
           git diff --check "$EXPECTED_BASE_SHA"..HEAD
-          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | wc -l | tr -d ' ')" -eq 6
-          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx '.github/workflows/ci.yml'
-          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx 'Justfile'
-          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx 'config/ores-compose.rev'
-          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx 'docs/bootstrap-toolchain.md'
-          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx 'scripts/bootstrap-pinned-cargo-tool.sh'
-          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx 'test/bootstrap-pinned-cargo-tool.sh'
-          test ! -e Cargo.lock
+          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | wc -l | tr -d ' ')" -eq 10
+          for path in \
+            .github/workflows/ci.yml \
+            Cargo.lock \
+            Justfile \
+            config/ores-compose.rev \
+            docs/bootstrap-toolchain.md \
+            rust/ctl.rs \
+            rust/edge.rs \
+            rust/service.rs \
+            scripts/bootstrap-pinned-cargo-tool.sh \
+            test/bootstrap-pinned-cargo-tool.sh; do
+            git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx "$path"
+          done
+          test -f Cargo.lock
       - name: Install pinned Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
         with:
@@ -73,14 +80,17 @@ jobs:
           node --check test/router.test.js
           node --check test/render-wrangler.test.js
           node --test
-      - name: Generate deterministic lock candidate
+      - name: Prove committed lock is resolver-stable
+        id: lock_stability
+        continue-on-error: true
         working-directory: codespaces-cluster
         shell: bash
         run: |
           set -Eeuo pipefail
-          cargo generate-lockfile
-          sha256sum Cargo.lock | tee "${RUNNER_TEMP}/codespaces-cluster-12-cargo-lock.sha256"
           cp Cargo.lock "${RUNNER_TEMP}/codespaces-cluster-12-Cargo.lock"
+          sha256sum Cargo.lock | tee "${RUNNER_TEMP}/codespaces-cluster-12-cargo-lock.sha256"
+          cargo generate-lockfile
+          git diff --exit-code -- Cargo.lock
       - name: Capture rustfmt patch
         id: rustfmt
         continue-on-error: true
@@ -115,7 +125,7 @@ jobs:
         continue-on-error: true
         working-directory: codespaces-cluster
         run: cargo test --locked --all-targets
-      - name: Lifecycle locked-build contract
+      - name: Lifecycle hardening contract
         id: lifecycle_contract
         continue-on-error: true
         working-directory: codespaces-cluster
@@ -128,7 +138,13 @@ jobs:
           grep -Fq 'recorded_repository' scripts/bootstrap-pinned-cargo-tool.sh
           grep -Fq 'recorded_package' scripts/bootstrap-pinned-cargo-tool.sh
           grep -Fq '! -L "$installed_binary"' scripts/bootstrap-pinned-cargo-tool.sh
-      - name: Upload resolver-generated lock candidate
+          local_down="$(grep -A1 '^local-cluster-down:' Justfile)"
+          local_status="$(grep -A1 '^local-cluster-status:' Justfile)"
+          edge_down="$(grep -A1 '^codespace-edge-down:' Justfile)"
+          ! grep -Fq 'cargo build' <<<"$local_down"
+          ! grep -Fq 'cargo build' <<<"$local_status"
+          ! grep -Fq 'cargo build' <<<"$edge_down"
+      - name: Upload committed lock evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -138,6 +154,9 @@ jobs:
             ${{ runner.temp }}/codespaces-cluster-12-cargo-lock.sha256
           if-no-files-found: warn
           retention-days: 7
+      - name: Require lock stability
+        if: always()
+        run: test '${{ steps.lock_stability.outcome }}' = success
       - name: Require Rust check
         if: always()
         run: test '${{ steps.rust_check.outcome }}' = success
@@ -153,13 +172,13 @@ jobs:
       - name: Require formatting
         if: always()
         run: test '${{ steps.rustfmt.outcome }}' = success
-      - name: Restore candidate and assert source immutability
+      - name: Assert immutable source
         if: always()
         working-directory: codespaces-cluster
         shell: bash
         run: |
           set -Eeuo pipefail
-          rm -f Cargo.lock
+          git checkout -- .
           git clean -fd -- target
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test -z "$(git status --porcelain)"
