@@ -53,7 +53,7 @@ fn bootstrap_git_auth_is_command_scoped() {
     assert!(bootstrap.contains("GIT_CONFIG_VALUE_0="));
     assert!(bootstrap.contains("GIT_CONFIG_KEY_1=credential.https://github.com.helper"));
     assert!(bootstrap.contains("GIT_CONFIG_VALUE_1=!gh auth git-credential"));
-    assert!(bootstrap.contains("env \"\${git_auth_env[@]}\" GH_TOKEN=\"$token\""));
+    assert!(bootstrap.contains(r#"env "${git_auth_env[@]}" GH_TOKEN="$token""#));
     assert!(!bootstrap.contains("git config --global"));
 }
 
