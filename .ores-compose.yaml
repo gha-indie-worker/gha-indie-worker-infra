@@ -3,7 +3,7 @@ project: gha-indie-worker
 allow_lazy_start: false
 source:
   repository: https://github.com/gha-indie-worker/gha-indie-worker-monorepo.git
-  commit: 68de4b122d06621805bfb810367488bd171272c7
+  commit: 059114e04a786bb78c86b40fbe4aea985afde586
   checkout_dir: tmp/dev/gha-indie-worker-monorepo
 
 # Policy authority for service selection. Port 8080 is intentionally NOT owned
