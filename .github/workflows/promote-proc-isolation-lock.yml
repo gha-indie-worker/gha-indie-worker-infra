@@ -1,0 +1,88 @@
+name: promote proc-isolation resolver lock
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/promote-proc-isolation-lock.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    if: github.head_ref == 'ci/promote-proc-isolation-lock-20260929'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_REPO: ORESoftware/ores-proc-isolation-cli
+      SOURCE_BRANCH: hardening/refresh-lock-strict-clippy-20260929
+      EXPECTED_HEAD: c9a6bf85958751b361030a432b57253cb4bf3d05
+      EXPECTED_LOCK_SHA256: 66aef0a31c9607936314607e068bc11f23c864c6ce63e91bfaafa97fef4704b6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact repair branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ env.SOURCE_BRANCH }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Assert exact parent and clean source
+        working-directory: source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test -z "$(git status --porcelain)"
+          remote_head="$(git ls-remote origin "refs/heads/$SOURCE_BRANCH" | awk '{print $1}')"
+          test "$remote_head" = "$EXPECTED_HEAD"
+
+      - name: Configure authenticated private Git reads and push
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+
+      - name: Install MSRV Rust
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.88.0 --profile minimal
+          rustup default 1.88.0
+          rustc --version | grep -F 'rustc 1.88.0'
+
+      - name: Regenerate and verify exact resolver lock
+        working-directory: source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo generate-lockfile
+          test "$(sha256sum Cargo.lock | awk '{print $1}')" = "$EXPECTED_LOCK_SHA256"
+          test "$(git status --porcelain)" = ' M Cargo.lock'
+          git diff --check -- Cargo.lock
+
+      - name: Commit only the generated lock
+        working-directory: source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ORESoftware CI'
+          git config user.email 'noreply@oresoftware.com'
+          git add -- Cargo.lock
+          test "$(git diff --cached --name-only)" = 'Cargo.lock'
+          git commit -m 'build: refresh deterministic Cargo lock'
+
+          # Re-attest the remote tip immediately before the fast-forward push.
+          remote_head="$(git ls-remote origin "refs/heads/$SOURCE_BRANCH" | awk '{print $1}')"
+          test "$remote_head" = "$EXPECTED_HEAD"
+          git push origin "HEAD:refs/heads/$SOURCE_BRANCH"
+
+      - name: Report promoted head
+        working-directory: source
+        run: git rev-parse HEAD
