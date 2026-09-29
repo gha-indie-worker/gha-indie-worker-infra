@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
-      BMSCL_SHA: dfe7711bc59a6484c9430744e5c9d9126f446423
+      BMSCL_SHA: 9a73155e12d0b529b8ae3d8d441aa08e90a90d91
     steps:
       - name: Check out carrier exact head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
