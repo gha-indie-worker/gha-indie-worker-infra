@@ -44,13 +44,14 @@ jobs:
           git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx deploy/baremetal/process-lifecycle.md
           git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx scripts/check-lifecycle-agent-contract.mjs
 
-      - name: Install Node 24
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: '24'
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+      - name: Install Nix parser from Ubuntu
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --version
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends nix-bin
+          nix-instantiate --version
 
       - name: Parse exact NixOS lifecycle module
         working-directory: source
