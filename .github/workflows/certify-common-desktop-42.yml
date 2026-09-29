@@ -68,17 +68,19 @@ jobs:
           done
           git diff -- runtime-generation/rust/src > "${RUNNER_TEMP}/common-desktop-42-rustfmt.patch"
           if ! git diff --quiet -- runtime-generation/rust/src; then
-            echo 'runtime-generation Rust sources are not rustfmt-clean; exact patch uploaded as evidence' >&2
+            echo 'runtime-generation Rust sources are not rustfmt-clean; exact patch and formatted sources uploaded as evidence' >&2
             exit 1
           fi
 
-      - name: Upload rustfmt patch
+      - name: Upload rustfmt evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: common-desktop-42-rustfmt-${{ env.EXPECTED_SHA }}
-          path: ${{ runner.temp }}/common-desktop-42-rustfmt.patch
-          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/common-desktop-42-rustfmt.patch
+            common-desktop/runtime-generation/rust/src/*.rs
+          if-no-files-found: error
           retention-days: 7
 
       - name: Generate deterministic lock candidate
