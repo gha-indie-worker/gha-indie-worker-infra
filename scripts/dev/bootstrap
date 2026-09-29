@@ -31,7 +31,8 @@ if [[ ! -x "$reviewed_ores_stack" || "$stamped_rev" != "$ores_stack_rev" ]]; the
     --force \
     --git https://github.com/ORESoftware/ores-stack.git \
     --rev "$ores_stack_rev" \
-    --bin ores-stack
+    --bin ores-stack \
+    ores-stack-cli
 
   mkdir -p "$stamp_dir"
   printf '%s\n' "$ores_stack_rev" > "$stamp_file"
