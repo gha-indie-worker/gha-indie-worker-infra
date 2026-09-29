@@ -15,6 +15,7 @@ jobs:
     timeout-minutes: 30
     env:
       EXPECTED_SHA: 2860a9d63c25a167c1832d300591aea4f2fd15a9
+      EXPECTED_BASE_SHA: f745f77660fa6096aff15318eebd9044f434435e
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -36,10 +37,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          base="$(git merge-base HEAD origin/main)"
-          test "$(git diff --name-only "$base"..HEAD | wc -l | tr -d ' ')" -eq 1
-          test "$(git diff --name-only "$base"..HEAD)" = 'conformance/rust/src/bin/validate_rust_distribution.rs'
-          git diff --check "$base"..HEAD
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
+          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | wc -l | tr -d ' ')" -eq 1
+          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)" = 'conformance/rust/src/bin/validate_rust_distribution.rs'
+          git diff --check "$EXPECTED_BASE_SHA"..HEAD
 
       - name: Configure private Cargo Git reads
         working-directory: common-desktop
