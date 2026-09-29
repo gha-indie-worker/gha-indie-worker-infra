@@ -1,0 +1,92 @@
+name: certify ores-compose #340
+
+on:
+  push:
+    branches:
+      - ci/certify-ores-compose-340-20260929
+    paths:
+      - '.github/workflows/certify-ores-compose-340.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/certify-ores-compose-340.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: >-
+      (github.event_name == 'push' && github.ref_name == 'ci/certify-ores-compose-340-20260929') ||
+      github.head_ref == 'ci/certify-ores-compose-340-20260929'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      ORES_COMPOSE_SHA: e7b77e086984912ebf8e8ddecd46919973cacda6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact ores-compose security head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-compose
+          ref: ${{ env.ORES_COMPOSE_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: ores-compose
+          persist-credentials: false
+
+      - name: Assert exact source
+        working-directory: ores-compose
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$ORES_COMPOSE_SHA"
+          git diff --check
+          grep -F 'TRUSTED_ISOLATION_POLICY_ROOT' src/local_up_process.rs
+          grep -F -- '--config-sha256' src/local_up_process.rs
+          grep -F 'channel = "1.98.1"' rust-toolchain.toml
+
+      - name: Configure private Cargo Git reads
+        working-directory: ores-compose
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.98.1 --profile minimal --component clippy,rustfmt
+          rustup default 1.98.1
+          rustc --version | grep -F 'rustc 1.98.1'
+
+      - name: Rustfmt
+        working-directory: ores-compose
+        run: cargo fmt --all --check
+
+      - name: Locked all-target compile
+        working-directory: ores-compose
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo check --locked --all-targets --all-features
+
+      - name: Locked strict Clippy
+        working-directory: ores-compose
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      - name: Locked all-target tests
+        working-directory: ores-compose
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo test --locked --all-targets --all-features
+
+      - name: Verify source immutability
+        working-directory: ores-compose
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$ORES_COMPOSE_SHA"
+          test -z "$(git status --short)"
