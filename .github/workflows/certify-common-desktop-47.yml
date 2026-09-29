@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      EXPECTED_SHA: 006acf29d3143f45471614372f2fbb02d763b1a0
+      EXPECTED_SHA: 2860a9d63c25a167c1832d300591aea4f2fd15a9
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -36,7 +36,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          base="$(git rev-parse HEAD^)"
+          base="$(git merge-base HEAD origin/main)"
           test "$(git diff --name-only "$base"..HEAD | wc -l | tr -d ' ')" -eq 1
           test "$(git diff --name-only "$base"..HEAD)" = 'conformance/rust/src/bin/validate_rust_distribution.rs'
           git diff --check "$base"..HEAD
@@ -55,27 +55,9 @@ jobs:
           rustup default 1.82.0
           rustc --version | grep -F 'rustc 1.82.0'
 
-      - name: Capture exact rustfmt patch
+      - name: Verify rustfmt-clean source
         working-directory: common-desktop
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          file='conformance/rust/src/bin/validate_rust_distribution.rs'
-          rustfmt --edition 2021 "$file"
-          git diff -- "$file" > "${RUNNER_TEMP}/common-desktop-47-rustfmt.patch"
-          if ! git diff --quiet -- "$file"; then
-            echo 'distribution validator is not rustfmt-clean; exact patch uploaded as evidence' >&2
-            exit 1
-          fi
-
-      - name: Upload rustfmt patch
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: common-desktop-47-rustfmt-${{ env.EXPECTED_SHA }}
-          path: ${{ runner.temp }}/common-desktop-47-rustfmt.patch
-          if-no-files-found: ignore
-          retention-days: 7
+        run: rustfmt --edition 2021 --check conformance/rust/src/bin/validate_rust_distribution.rs
 
       - name: Strict validator Clippy
         working-directory: common-desktop
@@ -101,7 +83,6 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          git checkout -- conformance/rust/src/bin/validate_rust_distribution.rs
           git clean -fd -- target
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test -z "$(git status --porcelain)"
