@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      EXPECTED_SHA: 26fd2e895fbb61ee324c2ac39d5a009d0c13c373
+      EXPECTED_SHA: 89163fa61bd4d564f41e3bfc16714c6ec93b7ab1
       EXPECTED_BASE_SHA: e8cd4fe3a748709e31e0b29d4a3a09ab9f4bfc57
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -37,7 +37,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
           git diff --check "$EXPECTED_BASE_SHA"..HEAD
-          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | wc -l | tr -d ' ')" -eq 10
+          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | wc -l | tr -d ' ')" -eq 11
           for path in \
             .github/workflows/ci.yml \
             Cargo.lock \
@@ -48,7 +48,8 @@ jobs:
             rust/edge.rs \
             rust/service.rs \
             scripts/bootstrap-pinned-cargo-tool.sh \
-            test/bootstrap-pinned-cargo-tool.sh; do
+            test/bootstrap-pinned-cargo-tool.sh \
+            test/bootstrap-receipt-permissions.sh; do
             git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx "$path"
           done
           test -f Cargo.lock
@@ -68,7 +69,9 @@ jobs:
           set -Eeuo pipefail
           bash -n scripts/bootstrap-pinned-cargo-tool.sh
           bash -n test/bootstrap-pinned-cargo-tool.sh
+          bash -n test/bootstrap-receipt-permissions.sh
           bash test/bootstrap-pinned-cargo-tool.sh
+          bash test/bootstrap-receipt-permissions.sh
       - name: Worker syntax and unit tests
         working-directory: codespaces-cluster
         shell: bash
@@ -138,6 +141,8 @@ jobs:
           grep -Fq 'recorded_repository' scripts/bootstrap-pinned-cargo-tool.sh
           grep -Fq 'recorded_package' scripts/bootstrap-pinned-cargo-tool.sh
           grep -Fq '! -L "$installed_binary"' scripts/bootstrap-pinned-cargo-tool.sh
+          grep -Fq 'chmod 700 "$receipt_dir"' scripts/bootstrap-pinned-cargo-tool.sh
+          grep -Fq 'ensure_private_receipt_file' scripts/bootstrap-pinned-cargo-tool.sh
           local_down="$(grep -A1 '^local-cluster-down:' Justfile)"
           local_status="$(grep -A1 '^local-cluster-status:' Justfile)"
           edge_down="$(grep -A1 '^codespace-edge-down:' Justfile)"
