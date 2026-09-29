@@ -21,14 +21,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      CODESPACES_CLUSTER_SHA: 9a9a774d95e8ad8f4d29394caf301d205507c1c3
-      CODESPACES_CLUSTER_BRANCH: fix/pinned-bootstrap-receipts-20260928
+      CODESPACES_CLUSTER_SHA: c5d02793b273624134e14629c380de080ab2ed5a
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
 
-      - name: Checkout exact codespaces-cluster head
+      - name: Checkout exact certified codespaces-cluster head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: ORESoftware/codespaces-cluster
@@ -37,18 +36,23 @@ jobs:
           path: codespaces-cluster
           persist-credentials: false
 
-      - name: Assert exact source and missing lock
+      - name: Assert exact promoted source
         working-directory: codespaces-cluster
         shell: bash
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$CODESPACES_CLUSTER_SHA"
           git diff --check
-          test ! -e Cargo.lock
+          test -s Cargo.lock
           test "$(grep -F 'rust-version = "1.88"' Cargo.toml)" = 'rust-version = "1.88"'
-          grep -F '.route("/routes", get(routes))' rust/edge.rs
-          grep -F 'async fn routes(' rust/edge.rs
-          grep -F 'use axum::body::{Body, to_bytes};' rust/service.rs
+          grep -F '.route("/routes", get(routes_handler))' rust/edge.rs
+          grep -F 'async fn routes_handler(' rust/edge.rs
+          grep -F 'trusted_header(request.headers(), "x-ores-edge-request-id")' rust/edge.rs
+          grep -F 'trusted_attempt(request.headers())' rust/edge.rs
+          grep -F 'trusted_header(request.headers(), "x-ores-edge-original-host")' rust/edge.rs
+          grep -F 'trusted_proto(request.headers())' rust/edge.rs
+          grep -F 'use axum::body::to_bytes;' rust/service.rs
+          sha256sum Cargo.lock | grep -F '0ad81e9ea18189c0bd105f77d9e3c856a666502be3692b254629e60692642a7a'
 
       - name: Install Rust 1.88.0
         shell: bash
@@ -59,41 +63,7 @@ jobs:
           rustc --version | grep -F 'rustc 1.88.0'
           cargo --version
 
-      - name: Repair compile and Clippy defects
-        working-directory: codespaces-cluster
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          sed -i 's/\.route("\/routes", get(routes))/\.route("\/routes", get(routes_handler))/' rust/edge.rs
-          sed -i 's/^async fn routes(/async fn routes_handler(/' rust/edge.rs
-          sed -i 's/^use axum::body::{Body, to_bytes};$/use axum::body::to_bytes;/' rust/service.rs
-          sed -i 's/trusted_header(&request.headers(),/trusted_header(request.headers(),/' rust/edge.rs
-          sed -i 's/trusted_attempt(&request.headers())/trusted_attempt(request.headers())/' rust/edge.rs
-          sed -i 's/trusted_proto(&request.headers())/trusted_proto(request.headers())/' rust/edge.rs
-          grep -F '.route("/routes", get(routes_handler))' rust/edge.rs
-          grep -F 'async fn routes_handler(' rust/edge.rs
-          grep -F 'trusted_header(request.headers(), "x-ores-edge-request-id")' rust/edge.rs
-          grep -F 'trusted_attempt(request.headers())' rust/edge.rs
-          grep -F 'trusted_header(request.headers(), "x-ores-edge-original-host")' rust/edge.rs
-          grep -F 'trusted_proto(request.headers())' rust/edge.rs
-          grep -F 'use axum::body::to_bytes;' rust/service.rs
-
-      - name: Materialize rustfmt repair and resolver-owned lockfile
-        working-directory: codespaces-cluster
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cargo fmt --all
-          cargo generate-lockfile
-          test -s Cargo.lock
-          git diff --check
-          changed="$(git diff --name-only | LC_ALL=C sort)"
-          expected="$(printf '%s\n' rust/ctl.rs rust/edge.rs rust/service.rs | LC_ALL=C sort)"
-          test "$changed" = "$expected"
-          test "$(git status --short | grep -Fc '?? Cargo.lock')" -eq 1
-          sha256sum Cargo.lock
-
-      - name: Rustfmt check after deterministic repair
+      - name: Rustfmt
         working-directory: codespaces-cluster
         run: cargo fmt --all --check
 
@@ -118,28 +88,10 @@ jobs:
           bash -n test/bootstrap-pinned-cargo-tool.sh
           bash test/bootstrap-pinned-cargo-tool.sh
 
-      - name: Commit certified repair locally
+      - name: Verify source immutability
         working-directory: codespaces-cluster
         shell: bash
         run: |
           set -Eeuo pipefail
-          git add Cargo.lock rust/ctl.rs rust/edge.rs rust/service.rs
-          git diff --cached --check
-          git config user.name 'ORESoftware'
-          git config user.email 'alex@oresoftware.com'
-          git commit -m 'fix: certify locked Rust edge build'
-          echo "CERTIFIED_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-
-      - name: Fast-forward source branch with certified repair
-        working-directory: codespaces-cluster
-        env:
-          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          test "$(git rev-parse HEAD^)" = "$CODESPACES_CLUSTER_SHA"
-          gh auth setup-git
-          git fetch --no-tags origin "$CODESPACES_CLUSTER_BRANCH"
-          test "$(git rev-parse FETCH_HEAD)" = "$CODESPACES_CLUSTER_SHA"
-          git push origin "HEAD:refs/heads/$CODESPACES_CLUSTER_BRANCH"
-          echo "certified source commit: $CERTIFIED_COMMIT"
+          test "$(git rev-parse HEAD)" = "$CODESPACES_CLUSTER_SHA"
+          test -z "$(git status --short)"
