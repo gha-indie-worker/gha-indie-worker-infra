@@ -81,8 +81,10 @@ jobs:
           origin_up=scripts/dev/codespace-origin-up
           bash -n "$origin_up"
           grep -Fq 'GH_TOKEN="$token" gh repo clone ORESoftware/codespaces-cluster' "$origin_up"
-          grep -Fq 'GH_TOKEN="$token" gh auth setup-git' "$origin_up"
-          grep -Fq 'GH_TOKEN="$token" git -C "$cluster_root" fetch --no-tags origin "$revision"' "$origin_up"
+          ! grep -Fq 'gh auth setup-git' "$origin_up"
+          grep -Fq 'GIT_CONFIG_VALUE_1=!gh auth git-credential' "$origin_up"
+          grep -Fq 'env "${git_auth_env[@]}" GH_TOKEN="$token"' "$origin_up"
+          grep -Fq 'git -C "$cluster_root" fetch --no-tags origin "$revision"' "$origin_up"
           grep -Fq 'ORES_CLI_READ_TOKEN="$token" just codespace-edge-bootstrap' "$origin_up"
           grep -Fq 'gh auth token' "$origin_up"
           ! grep -Fq 'export GH_TOKEN=' "$origin_up"
