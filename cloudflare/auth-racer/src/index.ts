@@ -18,6 +18,54 @@ type VerifyFailure = {
   status: number;
 };
 
+const allowedOrigins = new Set([
+  "https://app.indiebuild.dev",
+  "https://local.indiebuild.dev",
+  "https://codespace.indiebuild.dev",
+]);
+
+function corsOrigin(request: Request): string | null {
+  const origin = request.headers.get("origin");
+  if (!origin) return null;
+  if (allowedOrigins.has(origin)) return origin;
+  try {
+    const url = new URL(origin);
+    if ((url.hostname === "127.0.0.1" || url.hostname === "localhost") &&
+        (url.protocol === "http:" || url.protocol === "https:")) {
+      return origin;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function withCors(request: Request, response: Response): Response {
+  const origin = corsOrigin(request);
+  if (!origin) return response;
+  const wrapped = new Response(response.body, response);
+  wrapped.headers.set("access-control-allow-origin", origin);
+  wrapped.headers.set("access-control-allow-credentials", "false");
+  wrapped.headers.set("access-control-expose-headers", "x-auth-authority");
+  wrapped.headers.append("vary", "Origin");
+  return wrapped;
+}
+
+function preflight(request: Request): Response {
+  const origin = corsOrigin(request);
+  if (!origin) return new Response(null, { status: 403 });
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "access-control-allow-origin": origin,
+      "access-control-allow-methods": "GET, POST, OPTIONS",
+      "access-control-allow-headers": "authorization, content-type",
+      "access-control-max-age": "600",
+      "vary": "Origin",
+    },
+  });
+}
+
 function json(body: unknown, status = 200, headers: HeadersInit = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -171,25 +219,26 @@ async function proxySupabaseAuth(request: Request, env: Env): Promise<Response> 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === "OPTIONS") return preflight(request);
 
+    let response: Response;
     if (url.pathname === "/healthz" || url.pathname === "/readyz") {
-      return json({ ok: true, service: "gha-indie-worker-auth-racer" });
-    }
-
-    if (url.pathname === "/v1/auth/verify") {
+      response = json({ ok: true, service: "gha-indie-worker-auth-racer" });
+    } else if (url.pathname === "/v1/auth/verify") {
       const verified = await firstVerified(request, env);
-      if (!verified) return json({ ok: false, error: "unauthenticated" }, 401);
-      return json(verified, 200, { "x-auth-authority": verified.authority });
+      response = verified
+        ? json(verified, 200, { "x-auth-authority": verified.authority })
+        : json({ ok: false, error: "unauthenticated" }, 401);
+    } else if (url.pathname.startsWith("/auth/")) {
+      // Signup/login/refresh are intentionally single-authority writes. We do not
+      // duplicate or race writes across Supabase and Neon because that can create
+      // split-brain identities. Neon receives product/session projections through
+      // the backend's idempotent persistence path.
+      response = await proxySupabaseAuth(request, env);
+    } else {
+      response = json({ error: "not_found" }, 404);
     }
 
-    // Signup/login/refresh are intentionally single-authority writes. We do not
-    // duplicate or race writes across Supabase and Neon because that can create
-    // split-brain identities. Neon receives product/session projections through
-    // the backend's idempotent persistence path.
-    if (url.pathname.startsWith("/auth/")) {
-      return proxySupabaseAuth(request, env);
-    }
-
-    return json({ error: "not_found" }, 404);
+    return withCors(request, response);
   },
 } satisfies ExportedHandler<Env>;
