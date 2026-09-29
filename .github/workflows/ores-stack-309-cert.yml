@@ -24,6 +24,7 @@ jobs:
         with:
           repository: ORESoftware/ores-stack
           ref: 82bf7281e73497f2913a3e4afbb7c6098e3d88ed
+          token: ${{ secrets.ORES_STACK_READ_TOKEN }}
           persist-credentials: false
       - name: Verify exact source
         shell: bash
