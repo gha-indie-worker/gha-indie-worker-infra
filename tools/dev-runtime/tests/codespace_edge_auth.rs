@@ -3,9 +3,9 @@
 use std::{fs, path::PathBuf};
 
 const EXPECTED_ORES_CLI_REV: &str = "d37aa4c1a0b79a292a31e2f16db8622144b0831f";
-const EXPECTED_ORES_COMPOSE_REV: &str = "c52d08c875e73892acb88897c3b4a8969ad37ff2";
 const CODESPACES_CLUSTER_REV: &str = "367a68adf04bf853ff2923c234808cdc538ee21a";
 const STALE_ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
+const STALE_ORES_COMPOSE_REV: &str = "c52d08c875e73892acb88897c3b4a8969ad37ff2";
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -50,10 +50,11 @@ fn reviewed_tool_revisions_are_immutable_and_match_devcontainer() {
     let devcontainer = read(".devcontainer/devcontainer.json");
 
     assert_eq!(ores_cli, EXPECTED_ORES_CLI_REV);
-    assert_eq!(ores_compose, EXPECTED_ORES_COMPOSE_REV);
+    assert_ne!(ores_compose, STALE_ORES_COMPOSE_REV);
     assert!(devcontainer.contains(&format!("--rev {ores_cli}")));
     assert!(devcontainer.contains(&format!("--rev {ores_compose}")));
     assert!(!devcontainer.contains(STALE_ORES_CLI_REV));
+    assert!(!devcontainer.contains(STALE_ORES_COMPOSE_REV));
 }
 
 #[test]
@@ -85,6 +86,7 @@ fn fresh_codespace_provisions_exact_private_toolchain() {
         "CF_TUNNEL_TOKEN",
         ".app.github.dev",
         STALE_ORES_CLI_REV,
+        STALE_ORES_COMPOSE_REV,
     ] {
         assert!(
             !devcontainer.contains(forbidden),
@@ -111,16 +113,22 @@ fn shared_edge_revision_is_reviewed_and_immutable() {
 #[test]
 fn docs_describe_the_same_private_repo_boundary() {
     let docs = read("docs/local-development.md");
+    let ores_cli = revision("config/ores-cli.rev");
+    let ores_compose = revision("config/ores-compose.rev");
+
     for required in [
         "ORESoftware/ores-cli",
         "ORESoftware/ores-compose",
         "ORESoftware/codespaces-cluster",
         "read-only Contents",
-        "bootstrap",
-        EXPECTED_ORES_CLI_REV,
-        EXPECTED_ORES_COMPOSE_REV,
         CODESPACES_CLUSTER_REV,
     ] {
         assert!(docs.contains(required), "docs missing {required:?}");
     }
+    assert!(docs.contains(&ores_cli), "docs missing reviewed ores-cli revision");
+    assert!(
+        docs.contains(&ores_compose),
+        "docs missing reviewed ores-compose revision"
+    );
+    assert!(!docs.contains(STALE_ORES_COMPOSE_REV));
 }

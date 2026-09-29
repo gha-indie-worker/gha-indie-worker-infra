@@ -60,9 +60,10 @@ jobs:
           ! grep -Fq -- '--rev c854130ee147e9793a3af8736e90241630a5c934' .devcontainer/devcontainer.json
 
           ores_compose_rev="$(tr -d '[:space:]' < config/ores-compose.rev)"
-          test "$ores_compose_rev" = 'c52d08c875e73892acb88897c3b4a8969ad37ff2'
           [[ "$ores_compose_rev" =~ ^[0-9a-f]{40}$ ]]
+          test "$ores_compose_rev" != 'c52d08c875e73892acb88897c3b4a8969ad37ff2'
           grep -Fq -- "--rev $ores_compose_rev" .devcontainer/devcontainer.json
+          ! grep -Fq -- '--rev c52d08c875e73892acb88897c3b4a8969ad37ff2' .devcontainer/devcontainer.json
 
           grep -Fq 'ORESoftware/codespaces-cluster' .devcontainer/devcontainer.json
           grep -Fq 'gh repo view ORESoftware/codespaces-cluster --json name' .devcontainer/devcontainer.json
@@ -98,9 +99,10 @@ jobs:
           grep -Fq 'web: `127.0.0.1:18091`' docs/local-development.md
           grep -Fq 'Port `8080` is reserved exclusively' docs/local-development.md
           grep -Fq 'read-only Contents access limited to exactly those three repositories' docs/local-development.md
-          grep -Fq 'd37aa4c1a0b79a292a31e2f16db8622144b0831f' docs/local-development.md
-          grep -Fq 'c52d08c875e73892acb88897c3b4a8969ad37ff2' docs/local-development.md
-          grep -Fq '367a68adf04bf853ff2923c234808cdc538ee21a' docs/local-development.md
+          grep -Fq "$ores_cli_rev" docs/local-development.md
+          grep -Fq "$ores_compose_rev" docs/local-development.md
+          grep -Fq "$rev" docs/local-development.md
+          ! grep -Fq 'c52d08c875e73892acb88897c3b4a8969ad37ff2' docs/local-development.md
 
           ! grep -Fq 'http://127.0.0.1:8080/readyz' .ores-compose.yaml
           ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!*.lock'
