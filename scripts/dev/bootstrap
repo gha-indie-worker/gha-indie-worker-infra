@@ -25,8 +25,14 @@ if [[ ! -x "$reviewed_ores_stack" || "$stamped_rev" != "$ores_stack_rev" ]]; the
     exit 78
   fi
 
-  GH_TOKEN="$token" gh auth setup-git >/dev/null
-  GH_TOKEN="$token" CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install \
+  git_auth_env=(
+    GIT_CONFIG_COUNT=2
+    GIT_CONFIG_KEY_0=credential.https://github.com.helper
+    GIT_CONFIG_VALUE_0=
+    GIT_CONFIG_KEY_1=credential.https://github.com.helper
+    "GIT_CONFIG_VALUE_1=!gh auth git-credential"
+  )
+  env "${git_auth_env[@]}" GH_TOKEN="$token" CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install \
     --locked \
     --force \
     --git https://github.com/ORESoftware/ores-stack.git \

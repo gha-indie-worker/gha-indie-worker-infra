@@ -48,7 +48,7 @@ The pinned `oresc` revision independently sanitizes child command environments. 
 
 All three repositories are private and cross-owner from `gha-indie-worker`. Configure `ORES_CLI_READ_TOKEN` as a fine-grained Codespaces secret with **read-only Contents access limited to exactly those three repositories**. The historical variable name is retained for compatibility even though its bootstrap scope now covers the three reviewed ORE tooling repositories. Configure `TUNNEL_TOKEN` separately for the pre-provisioned named Cloudflare tunnel.
 
-`ORES_CLI_READ_TOKEN` is a bootstrap/network credential only. `just codespace-edge-up` injects it as `GH_TOKEN` only around a required private clone/fetch or missing-tool bootstrap operation. It is not exported into the recipe shell and is not inherited by the long-running application controller, shared Rust edge, `oresc` supervisor, or `cloudflared` connector.
+`ORES_CLI_READ_TOKEN` is a bootstrap/network credential only. Private Git authentication is injected through command-scoped Git config for the bootstrap process; bootstrap does not mutate the user's global Git credential-helper configuration. `just codespace-edge-up` injects it as `GH_TOKEN` only around a required private clone/fetch or missing-tool bootstrap operation. It is not exported into the recipe shell and is not inherited by the long-running application controller, shared Rust edge, `oresc` supervisor, or `cloudflared` connector.
 
 The devcontainer also performs a read-only `gh repo view ORESoftware/codespaces-cluster` preflight so insufficient repository scope fails during rebuild rather than during first traffic activation.
 

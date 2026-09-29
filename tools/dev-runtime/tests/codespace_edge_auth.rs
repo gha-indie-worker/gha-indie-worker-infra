@@ -44,6 +44,20 @@ fn private_auth_is_scoped_to_network_bootstrap_only() {
 }
 
 #[test]
+fn bootstrap_git_auth_is_command_scoped() {
+    let bootstrap = read("scripts/dev/bootstrap");
+
+    assert!(!bootstrap.contains("gh auth setup-git"));
+    assert!(bootstrap.contains("GIT_CONFIG_COUNT=2"));
+    assert!(bootstrap.contains("GIT_CONFIG_KEY_0=credential.https://github.com.helper"));
+    assert!(bootstrap.contains("GIT_CONFIG_VALUE_0="));
+    assert!(bootstrap.contains("GIT_CONFIG_KEY_1=credential.https://github.com.helper"));
+    assert!(bootstrap.contains("GIT_CONFIG_VALUE_1=!gh auth git-credential"));
+    assert!(bootstrap.contains(r#"env "${git_auth_env[@]}" GH_TOKEN="$token""#));
+    assert!(!bootstrap.contains("git config --global"));
+}
+
+#[test]
 fn reviewed_tool_revisions_are_immutable_and_match_devcontainer() {
     let ores_cli = revision("config/ores-cli.rev");
     let ores_compose = revision("config/ores-compose.rev");
