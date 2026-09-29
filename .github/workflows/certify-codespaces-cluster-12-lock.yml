@@ -1,0 +1,103 @@
+name: certify codespaces-cluster #12 lock
+
+on:
+  push:
+    branches:
+      - ci/certify-codespaces-cluster-12-lock-20260929
+    paths:
+      - '.github/workflows/certify-codespaces-cluster-12-lock.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/certify-codespaces-cluster-12-lock.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: >-
+      (github.event_name == 'push' && github.ref_name == 'ci/certify-codespaces-cluster-12-lock-20260929') ||
+      github.head_ref == 'ci/certify-codespaces-cluster-12-lock-20260929'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CODESPACES_CLUSTER_SHA: 8fd2e2a2d30010510bcd94f1f34a1c8aa3ca7a4c
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact codespaces-cluster head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/codespaces-cluster
+          ref: ${{ env.CODESPACES_CLUSTER_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: codespaces-cluster
+          persist-credentials: false
+
+      - name: Assert exact source and missing lock
+        working-directory: codespaces-cluster
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$CODESPACES_CLUSTER_SHA"
+          git diff --check
+          test ! -e Cargo.lock
+          test "$(grep -F 'rust-version = "1.88"' Cargo.toml)" = 'rust-version = "1.88"'
+
+      - name: Install Rust 1.88.0
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.88.0 --profile minimal --component clippy,rustfmt
+          rustup default 1.88.0
+          rustc --version | grep -F 'rustc 1.88.0'
+          cargo --version
+
+      - name: Generate resolver-owned lockfile
+        working-directory: codespaces-cluster
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo generate-lockfile
+          test -s Cargo.lock
+          test "$(git status --short)" = '?? Cargo.lock'
+          sha256sum Cargo.lock
+
+      - name: Rustfmt check
+        working-directory: codespaces-cluster
+        run: cargo fmt --all --check
+
+      - name: Locked compile
+        working-directory: codespaces-cluster
+        run: cargo check --locked --all-targets
+
+      - name: Locked strict Clippy
+        working-directory: codespaces-cluster
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Locked tests
+        working-directory: codespaces-cluster
+        run: cargo test --locked --all-targets
+
+      - name: Bootstrap receipt regression
+        working-directory: codespaces-cluster
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/bootstrap-pinned-cargo-tool.sh
+          bash -n test/bootstrap-pinned-cargo-tool.sh
+          bash test/bootstrap-pinned-cargo-tool.sh
+
+      - name: Emit certified Cargo.lock
+        working-directory: codespaces-cluster
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git status --short)" = '?? Cargo.lock'
+          echo 'BEGIN_CARGO_LOCK_B64'
+          base64 -w 0 Cargo.lock
+          echo
+          echo 'END_CARGO_LOCK_B64'
+          sha256sum Cargo.lock
