@@ -3,7 +3,7 @@
 use std::{fs, path::PathBuf};
 
 const EXPECTED_ORES_CLI_REV: &str = "d37aa4c1a0b79a292a31e2f16db8622144b0831f";
-const CODESPACES_CLUSTER_REV: &str = "367a68adf04bf853ff2923c234808cdc538ee21a";
+const CODESPACES_CLUSTER_REV: &str = "fe61abec77af464dd31944f6bf1fdd6ddfd0a65c";
 const STALE_ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
 const STALE_ORES_COMPOSE_REV: &str = "c52d08c875e73892acb88897c3b4a8969ad37ff2";
 
@@ -32,15 +32,21 @@ fn revision(path: &str) -> String {
 #[test]
 fn private_auth_is_scoped_to_network_bootstrap_only() {
     let justfile = read("Justfile");
+    let origin_up = read("scripts/dev/codespace-origin-up");
 
-    assert!(justfile.contains("GH_TOKEN=\"$token\" gh repo clone ORESoftware/codespaces-cluster"));
-    assert!(justfile.contains("GH_TOKEN=\"$token\" git -C \"$root\" fetch --prune origin main"));
-    assert!(justfile.contains("GH_TOKEN=\"$token\" just codespace-edge-bootstrap"));
-    assert!(justfile.contains("require_private_read"));
+    assert!(justfile.contains("bash scripts/dev/codespace-origin-up"));
+    assert!(origin_up.contains("GH_TOKEN=\"$token\" gh repo clone ORESoftware/codespaces-cluster"));
+    assert!(origin_up.contains(r#"env "${git_auth_env[@]}" GH_TOKEN="$token""#));
+    assert!(origin_up.contains("git -C \"$cluster_root\" fetch --no-tags origin \"$revision\""));
+    assert!(origin_up.contains("GIT_CONFIG_VALUE_1=!gh auth git-credential"));
+    assert!(!origin_up.contains("gh auth setup-git"));
+    assert!(origin_up.contains("ORES_CLI_READ_TOKEN=\"$token\" just codespace-edge-bootstrap"));
+    assert!(origin_up.contains("require_private_read"));
+    assert!(origin_up.contains("gh auth token"));
 
-    assert!(!justfile.contains("export GH_TOKEN="));
-    assert!(!justfile.contains("GH_TOKEN=\"$token\" ORES_CODESPACES_CLUSTER_"));
-    assert!(!justfile.contains("GH_TOKEN=\"$token\" CODESPACES_CLUSTER_CONFIG="));
+    assert!(!origin_up.contains("export GH_TOKEN="));
+    assert!(!origin_up.contains("GH_TOKEN=\"$token\" ORES_CODESPACES_CLUSTER_"));
+    assert!(!origin_up.contains("GH_TOKEN=\"$token\" CODESPACES_CLUSTER_CONFIG="));
 }
 
 #[test]
@@ -118,10 +124,10 @@ fn shared_edge_revision_is_reviewed_and_immutable() {
     assert_eq!(revision.len(), 40);
     assert!(revision.bytes().all(|byte| byte.is_ascii_hexdigit()));
 
-    let justfile = read("Justfile");
-    assert!(justfile.contains("cat-file -e \"$rev^{commit}\""));
-    assert!(justfile.contains("checkout --detach -q \"$rev\""));
-    assert!(justfile.contains("rev-parse HEAD"));
+    let origin_up = read("scripts/dev/codespace-origin-up");
+    assert!(origin_up.contains("cat-file -e \"$revision^{commit}\""));
+    assert!(origin_up.contains("checkout --detach -q \"$revision\""));
+    assert!(origin_up.contains("rev-parse HEAD"));
 }
 
 #[test]
@@ -136,6 +142,7 @@ fn docs_describe_the_same_private_repo_boundary() {
         "ORESoftware/codespaces-cluster",
         "read-only Contents",
         CODESPACES_CLUSTER_REV,
+        "codespace-origin-up",
     ] {
         assert!(docs.contains(required), "docs missing {required:?}");
     }
