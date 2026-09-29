@@ -59,7 +59,7 @@ jobs:
           rustc --version | grep -F 'rustc 1.88.0'
           cargo --version
 
-      - name: Repair handler shadowing and warning
+      - name: Repair compile and Clippy defects
         working-directory: codespaces-cluster
         shell: bash
         run: |
@@ -67,8 +67,15 @@ jobs:
           sed -i 's/\.route("\/routes", get(routes))/\.route("\/routes", get(routes_handler))/' rust/edge.rs
           sed -i 's/^async fn routes(/async fn routes_handler(/' rust/edge.rs
           sed -i 's/^use axum::body::{Body, to_bytes};$/use axum::body::to_bytes;/' rust/service.rs
+          sed -i 's/trusted_header(&request.headers(),/trusted_header(request.headers(),/' rust/edge.rs
+          sed -i 's/trusted_attempt(&request.headers())/trusted_attempt(request.headers())/' rust/edge.rs
+          sed -i 's/trusted_proto(&request.headers())/trusted_proto(request.headers())/' rust/edge.rs
           grep -F '.route("/routes", get(routes_handler))' rust/edge.rs
           grep -F 'async fn routes_handler(' rust/edge.rs
+          grep -F 'trusted_header(request.headers(), "x-ores-edge-request-id")' rust/edge.rs
+          grep -F 'trusted_attempt(request.headers())' rust/edge.rs
+          grep -F 'trusted_header(request.headers(), "x-ores-edge-original-host")' rust/edge.rs
+          grep -F 'trusted_proto(request.headers())' rust/edge.rs
           grep -F 'use axum::body::to_bytes;' rust/service.rs
 
       - name: Materialize rustfmt repair and resolver-owned lockfile
