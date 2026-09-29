@@ -65,28 +65,30 @@ jobs:
           rustc --version | grep -F 'rustc 1.98.1'
           rustfmt --version
 
-      - name: Differential rustfmt gate
+      - name: Candidate adds no rustfmt debt
         working-directory: ores-compose
         shell: bash
         run: |
           set -Eeuo pipefail
-
-          # The source baseline has pre-existing rustfmt debt under its pinned
-          # Rust 1.98.1 toolchain. Prove this PR does not add to that debt.
-          rustfmt --edition 2021 --check src/local_up_process.rs
-
           cargo fmt --all
           git diff --name-only | LC_ALL=C sort > ../head-rustfmt-files.txt
-          ! grep -Fxq 'src/local_up_process.rs' ../head-rustfmt-files.txt
+          if grep -Fxq 'src/local_up_process.rs' ../head-rustfmt-files.txt; then
+            echo >&2 'security delta src/local_up_process.rs is not rustfmt-clean'
+            exit 1
+          fi
           git checkout -- .
           test -z "$(git status --short)"
 
+      - name: Baseline rustfmt debt parity
+        working-directory: ores-compose
+        shell: bash
+        run: |
+          set -Eeuo pipefail
           git checkout --detach "$ORES_COMPOSE_BASE"
           cargo fmt --all
           git diff --name-only | LC_ALL=C sort > ../base-rustfmt-files.txt
           git checkout -- .
           test -z "$(git status --short)"
-
           diff -u ../base-rustfmt-files.txt ../head-rustfmt-files.txt
           git checkout --detach "$ORES_COMPOSE_SHA"
           test "$(git rev-parse HEAD)" = "$ORES_COMPOSE_SHA"
