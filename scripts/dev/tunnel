@@ -89,6 +89,35 @@ max_restarts="$(read_uint_setting GHA_INDIE_WORKER_TUNNEL_MAX_RESTARTS 8 64)"
 stable_seconds="$(read_uint_setting GHA_INDIE_WORKER_TUNNEL_STABLE_SECONDS 60 86400)"
 backoff_cap_seconds="$(read_uint_setting GHA_INDIE_WORKER_TUNNEL_BACKOFF_CAP_SECONDS 30 300)"
 
+# Compute 2^retry without relying on a wide shell integer shift. The accepted
+# retry budget is intentionally larger than a signed machine-word shift width,
+# so repeated doubling saturates at the configured cap instead of wrapping.
+backoff_delay() {
+    local retry="$1"
+    local cap="$2"
+    local delay=1
+    local step=0
+
+    if (( cap == 0 )); then
+        printf '0\n'
+        return 0
+    fi
+
+    while (( step < retry && delay < cap )); do
+        if (( delay > cap / 2 )); then
+            delay="$cap"
+            break
+        fi
+        delay=$((delay * 2))
+        step=$((step + 1))
+    done
+
+    if (( delay > cap )); then
+        delay="$cap"
+    fi
+    printf '%s\n' "$delay"
+}
+
 file_mode() {
     local path="$1"
     local mode_value
@@ -276,10 +305,7 @@ while true; do
     fi
 
     restart_count=$((restart_count + 1))
-    delay=$((1 << restart_count))
-    if (( delay > backoff_cap_seconds )); then
-        delay="$backoff_cap_seconds"
-    fi
+    delay="$(backoff_delay "$restart_count" "$backoff_cap_seconds")"
 
     echo "tunnel process exited with status $status; retry $restart_count/$max_restarts in ${delay}s..." >&2
     sleep "$delay"
