@@ -81,19 +81,43 @@ jobs:
           cargo generate-lockfile
           sha256sum Cargo.lock | tee "${RUNNER_TEMP}/codespaces-cluster-12-cargo-lock.sha256"
           cp Cargo.lock "${RUNNER_TEMP}/codespaces-cluster-12-Cargo.lock"
-      - name: Rust format
+      - name: Capture rustfmt patch
+        id: rustfmt
+        continue-on-error: true
         working-directory: codespaces-cluster
-        run: cargo fmt --check
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --all
+          git diff -- . > "${RUNNER_TEMP}/codespaces-cluster-12-rustfmt.patch"
+          git checkout -- .
+          test ! -s "${RUNNER_TEMP}/codespaces-cluster-12-rustfmt.patch"
+      - name: Upload rustfmt patch
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: codespaces-cluster-12-rustfmt-${{ env.EXPECTED_SHA }}
+          path: ${{ runner.temp }}/codespaces-cluster-12-rustfmt.patch
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Locked Rust check
+        id: rust_check
+        continue-on-error: true
         working-directory: codespaces-cluster
         run: cargo check --locked --all-targets
       - name: Locked strict Clippy
+        id: clippy
+        continue-on-error: true
         working-directory: codespaces-cluster
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Locked Rust tests
+        id: rust_tests
+        continue-on-error: true
         working-directory: codespaces-cluster
         run: cargo test --locked --all-targets
       - name: Lifecycle locked-build contract
+        id: lifecycle_contract
+        continue-on-error: true
         working-directory: codespaces-cluster
         shell: bash
         run: |
@@ -114,6 +138,17 @@ jobs:
             ${{ runner.temp }}/codespaces-cluster-12-cargo-lock.sha256
           if-no-files-found: warn
           retention-days: 7
+      - name: Require semantic gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test '${{ steps.rust_check.outcome }}' = success
+          test '${{ steps.clippy.outcome }}' = success
+          test '${{ steps.rust_tests.outcome }}' = success
+          test '${{ steps.lifecycle_contract.outcome }}' = success
+      - name: Require formatting gate
+        shell: bash
+        run: test '${{ steps.rustfmt.outcome }}' = success
       - name: Restore candidate and assert source immutability
         if: always()
         working-directory: codespaces-cluster
