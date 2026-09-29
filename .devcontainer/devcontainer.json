@@ -11,11 +11,14 @@
     "ORES_CLI_READ_TOKEN": {
       "description": "Fine-grained GitHub token with read-only Contents access limited to private ORESoftware/ores-cli, ORESoftware/ores-compose, and ORESoftware/codespaces-cluster for Codespace bootstrap only."
     },
+    "ORES_STACK_READ_TOKEN": {
+      "description": "Read-only GitHub token for the private ores-stack/ores-stack-cli repository used by compose sync admission."
+    },
     "TUNNEL_TOKEN": {
       "description": "Cloudflare named-tunnel connector token consumed by oresc codespace edge up."
     }
   },
-  "postCreateCommand": "bash -euc 'test -n \"${ORES_CLI_READ_TOKEN:-}\" || { echo >&2 \"ORES_CLI_READ_TOKEN is required for private ORESoftware Codespace tooling\"; exit 78; }; GH_TOKEN=\"$ORES_CLI_READ_TOKEN\" gh auth setup-git >/dev/null; GH_TOKEN=\"$ORES_CLI_READ_TOKEN\" gh repo view ORESoftware/codespaces-cluster --json name >/dev/null; if ! command -v oresc >/dev/null 2>&1; then GH_TOKEN=\"$ORES_CLI_READ_TOKEN\" CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --locked --git https://github.com/ORESoftware/ores-cli.git --rev d37aa4c1a0b79a292a31e2f16db8622144b0831f --bin oresc; fi; if ! command -v ores-compose >/dev/null 2>&1; then GH_TOKEN=\"$ORES_CLI_READ_TOKEN\" CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --locked --git https://github.com/ORESoftware/ores-compose.git --rev a9758b8a48c2a264c4bff38f1dc166cba0e9caa1 --bin ores-compose; fi; cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate; just codespace-edge-check'",
+  "postCreateCommand": "bash -euc 'test -n \"${ORES_CLI_READ_TOKEN:-}\" || { echo >&2 \"ORES_CLI_READ_TOKEN is required for private ORESoftware Codespace tooling\"; exit 78; }; test -n \"${ORES_STACK_READ_TOKEN:-}\" || { echo >&2 \"ORES_STACK_READ_TOKEN is required for private ores-stack tooling\"; exit 78; }; GH_TOKEN=\"$ORES_CLI_READ_TOKEN\" gh auth setup-git >/dev/null; GH_TOKEN=\"$ORES_CLI_READ_TOKEN\" gh repo view ORESoftware/codespaces-cluster --json name >/dev/null; if ! command -v oresc >/dev/null 2>&1; then GH_TOKEN=\"$ORES_CLI_READ_TOKEN\" CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --locked --git https://github.com/ORESoftware/ores-cli.git --rev d37aa4c1a0b79a292a31e2f16db8622144b0831f --bin oresc; fi; if ! command -v ores-compose >/dev/null 2>&1; then GH_TOKEN=\"$ORES_CLI_READ_TOKEN\" CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --locked --git https://github.com/ORESoftware/ores-compose.git --rev a9758b8a48c2a264c4bff38f1dc166cba0e9caa1 --bin ores-compose; fi; if ! command -v ores-stack >/dev/null 2>&1; then GH_TOKEN=\"$ORES_STACK_READ_TOKEN\" gh auth setup-git >/dev/null; GH_TOKEN=\"$ORES_STACK_READ_TOKEN\" CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --locked --git https://github.com/ores-stack/ores-stack-cli.git --rev 7fe5d0b4016c3448a1f65b1f50c8284bb843fcf6 --bin ores-stack; fi; cargo run --locked --manifest-path tools/dev-runtime/Cargo.toml -- validate; just codespace-edge-check'",
   "portsAttributes": {
     "8080": {
       "label": "Cloudflare Tunnel loopback origin",
