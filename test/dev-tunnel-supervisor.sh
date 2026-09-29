@@ -125,6 +125,14 @@ exit "${FAKE_ORESC_STATUS:-2}"
 EOF
     chmod +x "$bin/oresc"
 
+    cat > "$bin/sleep" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
+exit 0
+EOF
+    chmod +x "$bin/sleep"
+
     set +e
     env \
         HOME="$home" \
@@ -164,6 +172,20 @@ run_case bounded-restarts \
     GHA_INDIE_WORKER_TUNNEL_BACKOFF_CAP_SECONDS=0
 [[ "$CASE_STATUS" == "42" ]] || fail "restart exhaustion must preserve connector exit status"
 assert_count 3 ' tunnel laptop ' "$CASE_LOG"
+
+# The maximum accepted restart budget exceeds a signed machine-word shift
+# width. Prove delay calculation saturates at the cap rather than wrapping back
+# to a small delay at high retry counts. sleep is faked above, so this stays fast.
+run_case saturating-backoff \
+    FAKE_TUNNEL_STATUS=42 \
+    GHA_INDIE_WORKER_TUNNEL_MAX_RESTARTS=64 \
+    GHA_INDIE_WORKER_TUNNEL_STABLE_SECONDS=999 \
+    GHA_INDIE_WORKER_TUNNEL_BACKOFF_CAP_SECONDS=3
+[[ "$CASE_STATUS" == "42" ]] || fail "maximum restart budget must preserve connector exit status"
+assert_count 65 ' tunnel laptop ' "$CASE_LOG"
+assert_count 1 'sleep 2' "$CASE_LOG"
+assert_count 63 'sleep 3' "$CASE_LOG"
+assert_count 0 'sleep 1' "$CASE_LOG"
 
 run_case admission-drift \
     FAKE_TUNNEL_STATUS=42 \
