@@ -92,16 +92,24 @@ if [[ "$joined" == *" ingress validate "* ]]; then
 fi
 if [[ "$joined" == *" ingress rule "* ]]; then
     url="${!#}"
-    if [[ "$url" == "https://local.indiebuild.dev/" ]]; then
-        printf 'Matched rule #1\nhostname: local.indiebuild.dev\n'
-        if [[ "${FAKE_BAD_ROUTE:-0}" == "1" ]]; then
-            printf 'service: http://127.0.0.1:9999\n'
-        else
-            printf 'service: http://127.0.0.1:8080\n'
-        fi
-        exit 0
+    case "$url" in
+        https://local.indiebuild.dev/)
+            host='local.indiebuild.dev'
+            ;;
+        https://codespace.indiebuild.dev/)
+            host='codespace.indiebuild.dev'
+            ;;
+        *)
+            printf 'Matched rule #2\nservice: http_status:404\n'
+            exit 0
+            ;;
+    esac
+    printf 'Matched rule #1\nhostname: %s\n' "$host"
+    if [[ "${FAKE_BAD_ROUTE:-0}" == "1" ]]; then
+        printf 'service: http://127.0.0.1:9999\n'
+    else
+        printf 'service: http://127.0.0.1:8080\n'
     fi
-    printf 'Matched rule #2\nservice: http_status:404\n'
     exit 0
 fi
 
@@ -112,7 +120,7 @@ EOF
     cat > "$bin/oresc" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'oresc %s\n' "$*" >> "$FAKE_CALL_LOG"
+printf 'oresc FLAGS2ENV_CONFIG=%s %s\n' "${FLAGS2ENV_CONFIG:-}" "$*" >> "$FAKE_CALL_LOG"
 exit "${FAKE_ORESC_STATUS:-2}"
 EOF
     chmod +x "$bin/oresc"
@@ -195,5 +203,41 @@ env \
 status="$?"
 set -e
 [[ "$status" == "66" ]] || fail "symlink config must fail with 66"
+
+# Manual Codespace mode must never let Cargo-installed oresc fall back to this
+# repository's unrelated .cli-flags.toml. It fails before admission until the
+# exact package-owned contract has been materialized by shared bootstrap.
+run_case codespace-contract-fixture
+sed -i.bak 's/local\.indiebuild\.dev/codespace.indiebuild.dev/g' "$CASE_CONFIG"
+rm -f "$CASE_CONFIG.bak"
+set +e
+env \
+    HOME="$CASE_ROOT/home" \
+    PATH="$CASE_ROOT/bin:/usr/bin:/bin" \
+    FAKE_CALL_LOG="$CASE_LOG" \
+    FAKE_STATE_DIR="$CASE_ROOT/state" \
+    "$tunnel_script" codespace "$CASE_CONFIG"
+status="$?"
+set -e
+[[ "$status" == "66" ]] || fail "manual Codespace mode must require the pinned oresc contract"
+assert_count 0 'oresc FLAGS2ENV_CONFIG=' "$CASE_LOG"
+
+contract_dir="$CASE_ROOT/home/.cache/ores/tool-pins/codespaces-cluster"
+contract="$contract_dir/oresc.contract"
+mkdir -p "$contract_dir"
+printf '[command]\nname = "oresc-test"\n' > "$contract"
+set +e
+env \
+    HOME="$CASE_ROOT/home" \
+    PATH="$CASE_ROOT/bin:/usr/bin:/bin" \
+    FAKE_CALL_LOG="$CASE_LOG" \
+    FAKE_STATE_DIR="$CASE_ROOT/state" \
+    "$tunnel_script" codespace "$CASE_CONFIG"
+status="$?"
+set -e
+[[ "$status" == "0" ]] || fail "manual Codespace mode should run once the pinned oresc contract exists"
+grep -Fq "oresc FLAGS2ENV_CONFIG=$contract --no-json codespace edge status" "$CASE_LOG" \
+    || fail "manual Codespace oresc invocation did not inherit the pinned flag contract"
+assert_count 1 ' tunnel codespace ' "$CASE_LOG"
 
 echo 'dev tunnel supervisor regression suite passed'
