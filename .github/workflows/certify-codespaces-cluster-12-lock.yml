@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 30
     env:
       CODESPACES_CLUSTER_SHA: 8fd2e2a2d30010510bcd94f1f34a1c8aa3ca7a4c
+      CODESPACES_CLUSTER_BRANCH: fix/pinned-bootstrap-receipts-20260928
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -45,6 +46,9 @@ jobs:
           git diff --check
           test ! -e Cargo.lock
           test "$(grep -F 'rust-version = "1.88"' Cargo.toml)" = 'rust-version = "1.88"'
+          grep -F '.route("/routes", get(routes))' rust/edge.rs
+          grep -F 'async fn routes(' rust/edge.rs
+          grep -F 'use axum::body::{Body, to_bytes};' rust/service.rs
 
       - name: Install Rust 1.88.0
         shell: bash
@@ -54,6 +58,18 @@ jobs:
           rustup default 1.88.0
           rustc --version | grep -F 'rustc 1.88.0'
           cargo --version
+
+      - name: Repair handler shadowing and warning
+        working-directory: codespaces-cluster
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sed -i 's/\.route("\/routes", get(routes))/\.route("\/routes", get(routes_handler))/' rust/edge.rs
+          sed -i 's/^async fn routes(/async fn routes_handler(/' rust/edge.rs
+          sed -i 's/^use axum::body::{Body, to_bytes};$/use axum::body::to_bytes;/' rust/service.rs
+          grep -F '.route("/routes", get(routes_handler))' rust/edge.rs
+          grep -F 'async fn routes_handler(' rust/edge.rs
+          grep -F 'use axum::body::to_bytes;' rust/service.rs
 
       - name: Materialize rustfmt repair and resolver-owned lockfile
         working-directory: codespaces-cluster
@@ -95,16 +111,28 @@ jobs:
           bash -n test/bootstrap-pinned-cargo-tool.sh
           bash test/bootstrap-pinned-cargo-tool.sh
 
-      - name: Emit certified repair bytes
+      - name: Commit certified repair locally
         working-directory: codespaces-cluster
         shell: bash
         run: |
           set -Eeuo pipefail
-          for path in rust/ctl.rs rust/edge.rs rust/service.rs Cargo.lock; do
-            marker="$(printf '%s' "$path" | tr '/.' '__')"
-            echo "BEGIN_${marker}_B64"
-            base64 -w 0 "$path"
-            echo
-            echo "END_${marker}_B64"
-            sha256sum "$path"
-          done
+          git add Cargo.lock rust/ctl.rs rust/edge.rs rust/service.rs
+          git diff --cached --check
+          git config user.name 'ORESoftware'
+          git config user.email 'alex@oresoftware.com'
+          git commit -m 'fix: certify locked Rust edge build'
+          echo "CERTIFIED_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Fast-forward source branch with certified repair
+        working-directory: codespaces-cluster
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD^)" = "$CODESPACES_CLUSTER_SHA"
+          gh auth setup-git
+          git fetch --no-tags origin "$CODESPACES_CLUSTER_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$CODESPACES_CLUSTER_SHA"
+          git push origin "HEAD:refs/heads/$CODESPACES_CLUSTER_BRANCH"
+          echo "certified source commit: $CERTIFIED_COMMIT"
