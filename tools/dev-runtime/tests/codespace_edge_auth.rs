@@ -128,6 +128,16 @@ fn shared_edge_revision_is_reviewed_and_immutable() {
     assert!(origin_up.contains("cat-file -e \"$revision^{commit}\""));
     assert!(origin_up.contains("checkout --detach -q \"$revision\""));
     assert!(origin_up.contains("rev-parse HEAD"));
+
+    // The original recovery generated an ignored cache-local Cargo.lock before
+    // the shared repo tracked its own lockfile. The materializer must handle
+    // that one migration without deleting tracked data or discarding differing
+    // legacy bytes.
+    assert!(origin_up.contains("cat-file -e \"$revision:Cargo.lock\""));
+    assert!(origin_up.contains("ls-files --error-unmatch -- Cargo.lock"));
+    assert!(origin_up.contains("cmp -s \"$legacy_lock\" \"$target_lock\""));
+    assert!(origin_up.contains(".legacy-Cargo.lock."));
+    assert!(origin_up.contains("preserved differing legacy cache-local Cargo.lock"));
 }
 
 #[test]
