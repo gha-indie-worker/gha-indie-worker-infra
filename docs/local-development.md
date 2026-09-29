@@ -37,12 +37,12 @@ The edge's own `/healthz`, `/readyz`, and `/routes` endpoints remain control-pla
 A fresh/rebuilt devcontainer provisions the reviewed private tools needed by this lifecycle:
 
 - `ORESoftware/ores-cli@d37aa4c1a0b79a292a31e2f16db8622144b0831f`, with the reviewed revision recorded in `config/ores-cli.rev`;
-- `ORESoftware/ores-compose@c52d08c875e73892acb88897c3b4a8969ad37ff2`, with the reviewed revision recorded in `config/ores-compose.rev`;
+- `ORESoftware/ores-compose@24e20be12dd1e75d6d062008deff8bef33c97185`, with the reviewed revision recorded in `config/ores-compose.rev`;
 - the shared `ORESoftware/codespaces-cluster` source is materialized later at exact commit `367a68adf04bf853ff2923c234808cdc538ee21a`, recorded in `config/codespaces-cluster.rev`.
 
 The three `config/*.rev` files are review authorities for private bootstrap/runtime tooling. They must contain exactly one full 40-hex commit SHA. The Rust dev-runtime validator, contract tests, devcontainer install commands, and Codespace edge workflow cross-check those values so a pin cannot move in only one surface.
 
-The pinned `ores-compose` revision is the merged lifecycle hardening that preserves exact source materialization while adding pre-network runtime/replica admission, checkout-path lifetime locking, dependency-safe reverse shutdown waves, and partial-start cleanup. A pin advance must point at a reviewed immutable commit and retain those invariants.
+The pinned `ores-compose` revision is the merged lifecycle hardening that preserves exact source materialization while adding pre-network runtime/replica admission, checkout-path lifetime locking, dependency-safe reverse shutdown waves, partial-start cleanup, shared trusted-path normalization, and non-destructive dirty managed-cache recovery. A pin advance must point at a reviewed immutable commit and retain those invariants.
 
 The pinned `oresc` revision independently sanitizes child command environments. Before its `cloudflared --version` preflight, detached supervisor, and connector spawn, it removes `ORES_CLI_READ_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, `TUNNEL_TOKEN`, and `CF_TUNNEL_TOKEN`, then restores only canonical `TUNNEL_TOKEN` and the per-run ownership marker at the child boundaries that require them. The pinned shared cluster revision applies the same control-plane/tunnel-secret removal before both the `ores-compose --help` preflight and long-running `ores-compose up`, so bootstrap and tunnel credentials do not flow into the application process tree. That shared revision now owns its fallback `oresc` and `ores-compose` pins through reviewed `config/ores-cli.rev` / `config/ores-compose.rev` authorities instead of hard-coded shell literals, and its GitHub Actions dependencies remain immutable commit SHAs.
 
