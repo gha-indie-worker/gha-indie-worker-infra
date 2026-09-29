@@ -61,9 +61,45 @@ jobs:
           rustup default 1.98.1
           rustc --version | grep -F 'rustc 1.98.1'
 
-      - name: Rustfmt
+      - name: Capture exact rustfmt delta
+        id: rustfmt
         working-directory: ores-compose
-        run: cargo fmt --all --check
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if cargo fmt --all --check; then
+            echo 'clean=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          cargo fmt --all
+          git diff --binary > ../ores-compose-340-rustfmt.patch
+          git diff --name-only > ../ores-compose-340-rustfmt-files.txt
+          test -s ../ores-compose-340-rustfmt.patch
+          test -s ../ores-compose-340-rustfmt-files.txt
+          cat ../ores-compose-340-rustfmt-files.txt
+          sha256sum ../ores-compose-340-rustfmt.patch
+          git checkout -- .
+          test -z "$(git status --short)"
+          echo 'clean=false' >> "$GITHUB_OUTPUT"
+
+      - name: Upload exact rustfmt delta
+        if: steps.rustfmt.outputs.clean == 'false'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ores-compose-340-rustfmt-delta
+          path: |
+            ores-compose-340-rustfmt.patch
+            ores-compose-340-rustfmt-files.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Require formatter-clean source
+        if: steps.rustfmt.outputs.clean != 'true'
+        shell: bash
+        run: |
+          echo >&2 'exact ores-compose #340 source is not rustfmt-clean; see rustfmt delta artifact'
+          exit 1
 
       - name: Locked all-target compile
         working-directory: ores-compose
