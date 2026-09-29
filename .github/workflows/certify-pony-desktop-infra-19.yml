@@ -1,0 +1,106 @@
+name: certify Pony desktop infra #19
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-pony-desktop-infra-19.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-pony-desktop-infra-19-20260928'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PONY_SHA: 8d66b9a624a695f0605618bc6af6684f9d859c54
+      COMMON_SHA: 20ec084cc550c824c009d5413de84ab519081bd7
+    steps:
+      - name: Check out carrier exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out exact Pony desktop-infra candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: pony-expres/poex-desktop-infra
+          ref: ${{ env.PONY_SHA }}
+          path: pony-desktop-infra
+          persist-credentials: false
+
+      - name: Assert exact Pony candidate
+        working-directory: pony-desktop-infra
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$PONY_SHA"
+          test -z "$(git status --porcelain)"
+
+      - name: Require common desktop source credential
+        env:
+          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
+        run: test -n "$ORE_SOURCE_PAT"
+
+      - name: Check out exact common desktop authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ORESoftware/ores-common-desktop-infra
+          ref: ${{ env.COMMON_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: common-desktop
+          persist-credentials: false
+
+      - name: Assert exact common authority
+        working-directory: common-desktop
+        run: test "$(git rev-parse HEAD)" = "$COMMON_SHA"
+
+      - name: Configure private Cargo Git reads
+        working-directory: common-desktop
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+
+      - name: Install pinned Rust
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.82.0 --profile minimal
+          rustup default 1.82.0
+          rustc --version | grep -F 'rustc 1.82.0'
+
+      - name: Run shared Rust appliance conformance against exact Pony head
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo run --locked \
+            --manifest-path common-desktop/Cargo.toml \
+            -p ores-common-desktop-conformance \
+            --bin validate_appliance_contract \
+            -- "$GITHUB_WORKSPACE/pony-desktop-infra"
+
+      - name: Prove locked daemon source pin carries Cargo.lock
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          daemon_sha="$(awk '/^[[:space:]]*commit:/ { print $2; exit }' pony-desktop-infra/.ores-compose.yaml)"
+          test "$daemon_sha" = '2b57519c2ff6782b3d0999d3ab0695e49d3c5453'
+          test "$(grep -c -- '--locked' pony-desktop-infra/.ores-compose.yaml)" -ge 1
+          test -n "$(git ls-remote https://github.com/pony-expres/poex-desktop-daemon.git "$daemon_sha")"
+          curl --fail --silent --show-error \
+            "https://raw.githubusercontent.com/pony-expres/poex-desktop-daemon/$daemon_sha/Cargo.lock" \
+            | grep -F 'version = 4'
+
+      - name: Assert checked-out candidates remained immutable
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C pony-desktop-infra rev-parse HEAD)" = "$PONY_SHA"
+          test "$(git -C common-desktop rev-parse HEAD)" = "$COMMON_SHA"
+          test -z "$(git -C pony-desktop-infra status --porcelain)"
+          git -C common-desktop clean -fd -- target
+          test -z "$(git -C common-desktop status --porcelain)"
