@@ -1,0 +1,97 @@
+name: certify codespaces-cluster #12 lock
+
+on:
+  push:
+    branches:
+      - ci/certify-codespaces-cluster-12-lock-20260929
+    paths:
+      - '.github/workflows/certify-codespaces-cluster-12-lock.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/certify-codespaces-cluster-12-lock.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: >-
+      (github.event_name == 'push' && github.ref_name == 'ci/certify-codespaces-cluster-12-lock-20260929') ||
+      github.head_ref == 'ci/certify-codespaces-cluster-12-lock-20260929'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CODESPACES_CLUSTER_SHA: c5d02793b273624134e14629c380de080ab2ed5a
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact certified codespaces-cluster head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/codespaces-cluster
+          ref: ${{ env.CODESPACES_CLUSTER_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: codespaces-cluster
+          persist-credentials: false
+
+      - name: Assert exact promoted source
+        working-directory: codespaces-cluster
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$CODESPACES_CLUSTER_SHA"
+          git diff --check
+          test -s Cargo.lock
+          test "$(grep -F 'rust-version = "1.88"' Cargo.toml)" = 'rust-version = "1.88"'
+          grep -F '.route("/routes", get(routes_handler))' rust/edge.rs
+          grep -F 'async fn routes_handler(' rust/edge.rs
+          grep -F 'trusted_header(request.headers(), "x-ores-edge-request-id")' rust/edge.rs
+          grep -F 'trusted_attempt(request.headers())' rust/edge.rs
+          grep -F 'trusted_header(request.headers(), "x-ores-edge-original-host")' rust/edge.rs
+          grep -F 'trusted_proto(request.headers())' rust/edge.rs
+          grep -F 'use axum::body::to_bytes;' rust/service.rs
+          sha256sum Cargo.lock | grep -F '0ad81e9ea18189c0bd105f77d9e3c856a666502be3692b254629e60692642a7a'
+
+      - name: Install Rust 1.88.0
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.88.0 --profile minimal --component clippy,rustfmt
+          rustup default 1.88.0
+          rustc --version | grep -F 'rustc 1.88.0'
+          cargo --version
+
+      - name: Rustfmt
+        working-directory: codespaces-cluster
+        run: cargo fmt --all --check
+
+      - name: Locked compile
+        working-directory: codespaces-cluster
+        run: cargo check --locked --all-targets
+
+      - name: Locked strict Clippy
+        working-directory: codespaces-cluster
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Locked tests
+        working-directory: codespaces-cluster
+        run: cargo test --locked --all-targets
+
+      - name: Bootstrap receipt regression
+        working-directory: codespaces-cluster
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/bootstrap-pinned-cargo-tool.sh
+          bash -n test/bootstrap-pinned-cargo-tool.sh
+          bash test/bootstrap-pinned-cargo-tool.sh
+
+      - name: Verify source immutability
+        working-directory: codespaces-cluster
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$CODESPACES_CLUSTER_SHA"
+          test -z "$(git status --short)"
