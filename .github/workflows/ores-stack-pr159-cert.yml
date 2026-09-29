@@ -1,0 +1,54 @@
+name: ores-stack PR159 certification
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ores-stack-pr159-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout certification repo
+        uses: actions/checkout@v4
+      - name: Checkout private ores-stack PR branch
+        uses: actions/checkout@v4
+        with:
+          repository: ORESoftware/ores-stack
+          ref: feat/scaffold-create-cross-check-20260921
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: ores-stack
+          fetch-depth: 1
+      - name: Verify exact source head
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C ores-stack rev-parse HEAD)" = "5a82f626723775d9c1f43cf34b772569f875e9cc"
+      - name: Install Rust 1.88.0
+        run: |
+          rustup toolchain install 1.88.0 --profile minimal --component rustfmt
+          rustup default 1.88.0
+      - name: Scaffold CLI tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd ores-stack
+          cargo +1.88.0 test -p ores-stack-cli scaffold_cli::tests
+          cargo +1.88.0 test -p ores-stack-cli --test scaffold_cli_safety
+      - name: CLI crate check
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd ores-stack
+          cargo +1.88.0 check -p ores-stack-cli --all-targets
+      - name: CLI standardization gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd ores-stack
+          bash scripts/check-cli-standardization.sh
