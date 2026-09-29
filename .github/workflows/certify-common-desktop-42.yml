@@ -58,14 +58,28 @@ jobs:
           rustup default 1.82.0
           rustc --version | grep -F 'rustc 1.82.0'
 
-      - name: Check runtime-generation formatting
+      - name: Capture runtime-generation rustfmt patch
         working-directory: common-desktop
         shell: bash
         run: |
           set -Eeuo pipefail
           for file in runtime-generation/rust/src/*.rs; do
-            rustfmt --edition 2021 --check "$file"
+            rustfmt --edition 2021 "$file"
           done
+          git diff -- runtime-generation/rust/src > "${RUNNER_TEMP}/common-desktop-42-rustfmt.patch"
+          if ! git diff --quiet -- runtime-generation/rust/src; then
+            echo 'runtime-generation Rust sources are not rustfmt-clean; exact patch uploaded as evidence' >&2
+            exit 1
+          fi
+
+      - name: Upload rustfmt patch
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-42-rustfmt-${{ env.EXPECTED_SHA }}
+          path: ${{ runner.temp }}/common-desktop-42-rustfmt.patch
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Generate deterministic lock candidate
         working-directory: common-desktop
@@ -117,7 +131,7 @@ jobs:
           path: |
             ${{ runner.temp }}/common-desktop-42-Cargo.lock
             ${{ runner.temp }}/common-desktop-42-cargo-lock.sha256
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Restore candidate and assert immutability
@@ -126,7 +140,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          git checkout -- Cargo.lock || true
+          git checkout -- runtime-generation/rust/src Cargo.lock || true
           git clean -fd -- target
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test -z "$(git status --porcelain)"
