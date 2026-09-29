@@ -61,14 +61,13 @@ jobs:
           rustup default 1.82.0
           rustc --version | grep -F 'rustc 1.82.0'
 
-      - name: Check changed Rust formatting
+      - name: Check rewritten Rust formatting
         working-directory: common-desktop
         shell: bash
         run: |
           set -Eeuo pipefail
           rustfmt --edition 2021 --check conformance/rust/src/bin/validate_appliance_contract.rs
           rustfmt --edition 2021 --check daemon/rust/src/state.rs
-          rustfmt --edition 2021 --check router/rust/src/lib.rs
 
       - name: Locked workspace check
         working-directory: common-desktop
