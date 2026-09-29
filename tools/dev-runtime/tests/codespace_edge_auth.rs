@@ -3,7 +3,7 @@
 use std::{fs, path::PathBuf};
 
 const EXPECTED_ORES_CLI_REV: &str = "d37aa4c1a0b79a292a31e2f16db8622144b0831f";
-const CODESPACES_CLUSTER_REV: &str = "fe61abec77af464dd31944f6bf1fdd6ddfd0a65c";
+const CODESPACES_CLUSTER_REV: &str = "8fd2e2a2d30010510bcd94f1f34a1c8aa3ca7a4c";
 const STALE_ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
 const STALE_ORES_COMPOSE_REV: &str = "c52d08c875e73892acb88897c3b4a8969ad37ff2";
 
