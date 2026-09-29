@@ -40,6 +40,22 @@ if [[ -z "$cloudflared_command" ]]; then
     exit 127
 fi
 
+# Cargo installs the oresc executable but not its package-owned flags2env
+# contract. The reviewed codespaces-cluster bootstrap materializes that exact
+# contract outside the managed checkout. Manual Codespace tunnel mode invokes
+# `oresc status` from both the Rust doctor and this wrapper, so bind the same
+# immutable package contract before either invocation. Never fall back to the
+# caller repository's unrelated `.cli-flags.toml`.
+if [[ "$mode" == "codespace" ]]; then
+    receipt_dir="${ORES_TOOL_PIN_RECEIPT_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/ores/tool-pins/codespaces-cluster}"
+    oresc_contract="$receipt_dir/oresc.contract"
+    if [[ -L "$oresc_contract" || ! -s "$oresc_contract" ]]; then
+        echo "pinned oresc flag contract is unavailable; run 'just codespace-origin-up' first: $oresc_contract" >&2
+        exit 66
+    fi
+    export FLAGS2ENV_CONFIG="$oresc_contract"
+fi
+
 if [[ -L "$config_input" || ! -f "$config_input" ]]; then
     echo "cloudflared config must be an existing non-symlink regular file" >&2
     exit 66
