@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
+      ORES_COMPOSE_BASE: 783972f097324c47ccc4a77c376e8a006198dc07
       ORES_COMPOSE_SHA: e7b77e086984912ebf8e8ddecd46919973cacda6
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -34,15 +35,17 @@ jobs:
           ref: ${{ env.ORES_COMPOSE_SHA }}
           token: ${{ secrets.ORE_SOURCE_PAT }}
           path: ores-compose
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Assert exact source
+      - name: Assert exact source and one-file review surface
         working-directory: ores-compose
         shell: bash
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$ORES_COMPOSE_SHA"
-          git diff --check
+          test "$(git diff --name-only "$ORES_COMPOSE_BASE..$ORES_COMPOSE_SHA")" = 'src/local_up_process.rs'
+          git diff --check "$ORES_COMPOSE_BASE..$ORES_COMPOSE_SHA"
           grep -F 'TRUSTED_ISOLATION_POLICY_ROOT' src/local_up_process.rs
           grep -F -- '--config-sha256' src/local_up_process.rs
           grep -F 'channel = "1.98.1"' rust-toolchain.toml
@@ -60,46 +63,34 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal --component clippy,rustfmt
           rustup default 1.98.1
           rustc --version | grep -F 'rustc 1.98.1'
+          rustfmt --version
 
-      - name: Capture exact rustfmt delta
-        id: rustfmt
+      - name: Differential rustfmt gate
         working-directory: ores-compose
         shell: bash
         run: |
           set -Eeuo pipefail
-          if cargo fmt --all --check; then
-            echo 'clean=true' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+
+          # The source baseline has pre-existing rustfmt debt under its pinned
+          # Rust 1.98.1 toolchain. Prove this PR does not add to that debt.
+          rustfmt --edition 2021 --check src/local_up_process.rs
 
           cargo fmt --all
-          git diff --binary > ../ores-compose-340-rustfmt.patch
-          git diff --name-only > ../ores-compose-340-rustfmt-files.txt
-          test -s ../ores-compose-340-rustfmt.patch
-          test -s ../ores-compose-340-rustfmt-files.txt
-          cat ../ores-compose-340-rustfmt-files.txt
-          sha256sum ../ores-compose-340-rustfmt.patch
+          git diff --name-only | LC_ALL=C sort > ../head-rustfmt-files.txt
+          ! grep -Fxq 'src/local_up_process.rs' ../head-rustfmt-files.txt
           git checkout -- .
           test -z "$(git status --short)"
-          echo 'clean=false' >> "$GITHUB_OUTPUT"
 
-      - name: Upload exact rustfmt delta
-        if: steps.rustfmt.outputs.clean == 'false'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: ores-compose-340-rustfmt-delta
-          path: |
-            ores-compose-340-rustfmt.patch
-            ores-compose-340-rustfmt-files.txt
-          if-no-files-found: error
-          retention-days: 7
+          git checkout --detach "$ORES_COMPOSE_BASE"
+          cargo fmt --all
+          git diff --name-only | LC_ALL=C sort > ../base-rustfmt-files.txt
+          git checkout -- .
+          test -z "$(git status --short)"
 
-      - name: Require formatter-clean source
-        if: steps.rustfmt.outputs.clean != 'true'
-        shell: bash
-        run: |
-          echo >&2 'exact ores-compose #340 source is not rustfmt-clean; see rustfmt delta artifact'
-          exit 1
+          diff -u ../base-rustfmt-files.txt ../head-rustfmt-files.txt
+          git checkout --detach "$ORES_COMPOSE_SHA"
+          test "$(git rev-parse HEAD)" = "$ORES_COMPOSE_SHA"
+          test -z "$(git status --short)"
 
       - name: Locked all-target compile
         working-directory: ores-compose
