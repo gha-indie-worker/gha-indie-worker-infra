@@ -1,0 +1,139 @@
+name: certify isolation handoff #340/#39
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-isolation-handoff-340-39.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    if: github.head_ref == 'ci/certify-isolation-handoff-340-39-20260929'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXPECTED_SHA: e7b77e086984912ebf8e8ddecd46919973cacda6
+      EXPECTED_BASE_SHA: 783972f097324c47ccc4a77c376e8a006198dc07
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Checkout exact ores-compose candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-compose
+          ref: ${{ env.EXPECTED_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: ores-compose
+          persist-credentials: false
+          fetch-depth: 16
+      - name: Assert exact one-file security surface
+        working-directory: ores-compose
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
+          git diff --check "$EXPECTED_BASE_SHA"..HEAD
+          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)" = 'src/local_up_process.rs'
+          grep -Fq 'const TRUSTED_ISOLATION_POLICY_ROOT: &str = "/tmp";' src/local_up_process.rs
+          grep -Fq '.arg("--config-sha256")' src/local_up_process.rs
+      - name: Configure private Cargo Git reads
+        working-directory: ores-compose
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt,clippy
+          rustup default 1.98.1
+          rustc --version | grep -F 'rustc 1.98.1'
+      - name: Locked compose verification
+        working-directory: ores-compose
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --all -- --check
+          cargo check --locked --all-targets --all-features
+          cargo test --locked --all-targets --all-features --no-fail-fast
+          cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Assert immutable source
+        if: always()
+        working-directory: ores-compose
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git clean -fd -- target
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
+
+  consumer:
+    if: github.head_ref == 'ci/certify-isolation-handoff-340-39-20260929'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXPECTED_SHA: 8cc242d78d1371ba6c6a2c19a770a6be2dece7d9
+      EXPECTED_BASE_SHA: b05a3eb319272939f433b21abf79f91c852b81b9
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Checkout exact ores-proc-isolation candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-proc-isolation-cli
+          ref: ${{ env.EXPECTED_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: proc-isolation
+          persist-credentials: false
+          fetch-depth: 16
+      - name: Assert exact consumer-test surface
+        working-directory: proc-isolation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
+          git diff --check "$EXPECTED_BASE_SHA"..HEAD
+          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)" = 'tests/compose_policy_digest_handoff.rs'
+          grep -Fq '.arg("--target-env-stdin")' tests/compose_policy_digest_handoff.rs
+          grep -Fq '.arg("--config-sha256")' tests/compose_policy_digest_handoff.rs
+          grep -Fq 'policy SHA-256 does not match the expected handoff digest' tests/compose_policy_digest_handoff.rs
+      - name: Configure private Cargo Git reads
+        working-directory: proc-isolation
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+      - name: Install MSRV Rust
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.88.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.88.0
+          rustc --version | grep -F 'rustc 1.88.0'
+      - name: Locked consumer verification
+        working-directory: proc-isolation
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --all -- --check
+          cargo check --locked --all-targets
+          cargo test --locked --all-targets --no-fail-fast
+          cargo clippy --locked --all-targets -- -D warnings
+      - name: Assert immutable source
+        if: always()
+        working-directory: proc-isolation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git clean -fd -- target
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
