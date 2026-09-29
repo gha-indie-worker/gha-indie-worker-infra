@@ -29,7 +29,7 @@ if [[ ! -x "$reviewed_ores_stack" || "$stamped_rev" != "$ores_stack_rev" ]]; the
   GH_TOKEN="$token" CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install \
     --locked \
     --force \
-    --git https://github.com/ores-stack/ores-stack-cli.git \
+    --git https://github.com/ORESoftware/ores-stack.git \
     --rev "$ores_stack_rev" \
     --bin ores-stack
 
