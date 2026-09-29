@@ -39,10 +39,13 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
           git diff --check "$EXPECTED_BASE_SHA"..HEAD
-          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | wc -l | tr -d ' ')" -eq 3
-          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx deploy/baremetal/nixos/bmscl-lifecycle-agent.nix
-          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx deploy/baremetal/process-lifecycle.md
-          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx scripts/check-lifecycle-agent-contract.mjs
+          mapfile -t changed < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)
+          printf 'changed: %s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 4
+          printf '%s\n' "${changed[@]}" | grep -Fx deploy/baremetal/README.md
+          printf '%s\n' "${changed[@]}" | grep -Fx deploy/baremetal/nixos/bmscl-lifecycle-agent.nix
+          printf '%s\n' "${changed[@]}" | grep -Fx deploy/baremetal/process-lifecycle.md
+          printf '%s\n' "${changed[@]}" | grep -Fx scripts/check-lifecycle-agent-contract.mjs
 
       - name: Install Nix parser from Ubuntu
         shell: bash
