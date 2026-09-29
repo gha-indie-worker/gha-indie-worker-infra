@@ -68,8 +68,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$(grep -Fxc '        let mut value = generation(1, \"main\");' router/rust/src/lib.rs)" -eq 1
+          test "$(grep -Fxc '        let mut value = generation(1, "main");' router/rust/src/lib.rs)" -eq 1
           sed -i 's/        let mut value = generation(1, "main");/        let value = generation(1, "main");/' router/rust/src/lib.rs
+          test "$(grep -Fxc '        let value = generation(1, "main");' router/rust/src/lib.rs)" -eq 1
           cargo generate-lockfile
           sha256sum Cargo.lock | tee "${RUNNER_TEMP}/common-desktop-cargo-lock.sha256"
           sha256sum router/rust/src/lib.rs | tee "${RUNNER_TEMP}/common-desktop-router-lib.sha256"
