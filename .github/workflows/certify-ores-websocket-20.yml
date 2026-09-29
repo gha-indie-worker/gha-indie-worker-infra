@@ -53,9 +53,30 @@ jobs:
           rustup default 1.88.0
           rustc --version | grep -F 'rustc 1.88.0'
 
-      - name: Rustfmt
+      - name: Capture exact rustfmt output
         working-directory: ores-websocket
-        run: cargo fmt --all -- --check
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --all
+          git diff -- src/admission.rs src/rpc_session.rs src/axum_support.rs > "${RUNNER_TEMP}/ores-websocket-20-rustfmt.patch"
+          if ! git diff --quiet -- src/admission.rs src/rpc_session.rs src/axum_support.rs; then
+            echo 'ores-websocket #20 is not rustfmt-clean; exact patch and formatted files are uploaded' >&2
+            exit 1
+          fi
+
+      - name: Upload rustfmt evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ores-websocket-20-rustfmt-${{ env.EXPECTED_SHA }}
+          path: |
+            ${{ runner.temp }}/ores-websocket-20-rustfmt.patch
+            ores-websocket/src/admission.rs
+            ores-websocket/src/rpc_session.rs
+            ores-websocket/src/axum_support.rs
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Strict Clippy all features
         working-directory: ores-websocket
@@ -68,4 +89,7 @@ jobs:
       - name: Assert source checkout stayed immutable
         if: always()
         working-directory: ores-websocket
-        run: test -z "$(git status --porcelain)"
+        shell: bash
+        run: |
+          git checkout -- src/admission.rs src/rpc_session.rs src/axum_support.rs || true
+          test -z "$(git status --porcelain)"
