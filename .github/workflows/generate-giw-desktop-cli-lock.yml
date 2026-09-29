@@ -1,0 +1,71 @@
+name: certify GIW desktop CLI self-update lock
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/generate-giw-desktop-cli-lock.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/generate-giw-desktop-cli-lock-20260928'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE_SHA: 394ba89d639f9137501df8e922c82b539c4b4eb6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact GIW CLI candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: gha-indie-worker/giw-desktop-cli
+          ref: ${{ env.SOURCE_SHA }}
+          path: giw-cli
+          persist-credentials: false
+
+      - name: Verify candidate
+        working-directory: giw-cli
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git diff --check HEAD^..HEAD
+
+      - name: Install Rust 1.90
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.90.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.90.0
+          rustc --version | grep -F 'rustc 1.90.0'
+
+      - name: Generate deterministic lockfile
+        working-directory: giw-cli
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo generate-lockfile
+          cargo metadata --locked --format-version 1 >/dev/null
+          sha256sum Cargo.lock
+
+      - name: Prove candidate with generated lockfile
+        working-directory: giw-cli
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --all -- --check
+          cargo clippy --locked --all-targets --all-features -- -D warnings
+          cargo test --locked --all-targets --all-features
+
+      - name: Upload deterministic lockfile
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: giw-desktop-cli-Cargo.lock
+          path: giw-cli/Cargo.lock
+          if-no-files-found: error
+          retention-days: 7
