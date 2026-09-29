@@ -46,8 +46,15 @@ if ! git -C "$cluster_root" cat-file -e "$revision^{commit}" 2>/dev/null; then
     echo >&2 "error: gh is required to authenticate the pinned private fetch"
     exit 127
   }
-  GH_TOKEN="$token" gh auth setup-git >/dev/null
-  GH_TOKEN="$token" git -C "$cluster_root" fetch --no-tags origin "$revision"
+  git_auth_env=(
+    GIT_CONFIG_COUNT=2
+    GIT_CONFIG_KEY_0=credential.https://github.com.helper
+    GIT_CONFIG_VALUE_0=
+    GIT_CONFIG_KEY_1=credential.https://github.com.helper
+    "GIT_CONFIG_VALUE_1=!gh auth git-credential"
+  )
+  env "${git_auth_env[@]}" GH_TOKEN="$token" \
+    git -C "$cluster_root" fetch --no-tags origin "$revision"
 fi
 
 git -C "$cluster_root" cat-file -e "$revision^{commit}"
