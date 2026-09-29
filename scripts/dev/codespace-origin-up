@@ -42,6 +42,11 @@ fi
 
 if ! git -C "$cluster_root" cat-file -e "$revision^{commit}" 2>/dev/null; then
   require_private_read
+  command -v gh >/dev/null 2>&1 || {
+    echo >&2 "error: gh is required to authenticate the pinned private fetch"
+    exit 127
+  }
+  GH_TOKEN="$token" gh auth setup-git >/dev/null
   GH_TOKEN="$token" git -C "$cluster_root" fetch --no-tags origin "$revision"
 fi
 
@@ -62,17 +67,28 @@ fi
 )
 
 app_up=false
-cleanup_app() {
+edge_attempted=false
+cleanup_started_layers() {
+  set +e
+
+  if [[ "$edge_attempted" == true ]]; then
+    (
+      cd "$cluster_root"
+      CODESPACES_CLUSTER_CONFIG="$repo_root/config/codespaces-cluster.toml" \
+        just local-cluster-down
+    )
+  fi
+
   if [[ "$app_up" == true ]]; then
     cd "$repo_root"
     ORES_CODESPACES_CLUSTER_MANIFEST=.ores-compose.yaml \
     ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app \
     ORES_CODESPACES_CLUSTER_READY_PORT=18091 \
     ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app \
-      "$cluster_root/target/debug/codespaces-cluster-ctl" down || true
+      "$cluster_root/target/debug/codespaces-cluster-ctl" down
   fi
 }
-trap cleanup_app ERR
+trap cleanup_started_layers ERR
 
 cd "$repo_root"
 ORES_CODESPACES_CLUSTER_MANIFEST=.ores-compose.yaml \
@@ -82,17 +98,18 @@ ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app \
   "$cluster_root/target/debug/codespaces-cluster-ctl" up
 app_up=true
 
+edge_attempted=true
 (
   cd "$cluster_root"
   CODESPACES_CLUSTER_CONFIG="$repo_root/config/codespaces-cluster.toml" \
     just local-cluster-up
 )
 
-trap - ERR
-
 curl --fail --silent --show-error --max-time 2 http://127.0.0.1:18090/readyz >/dev/null
 curl --fail --silent --show-error --max-time 2 http://127.0.0.1:18091/readyz >/dev/null
 curl --fail --silent --show-error --max-time 2 http://127.0.0.1:8080/readyz >/dev/null
 curl --fail --silent --show-error --max-time 2 http://127.0.0.1:8080/api/readyz >/dev/null
+
+trap - ERR
 
 echo "gha-indie-worker application and shared Rust edge are ready on 127.0.0.1:8080"
