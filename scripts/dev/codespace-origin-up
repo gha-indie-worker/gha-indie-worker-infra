@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cluster_root="${ORES_CODESPACE_CLUSTER_DIR:-${HOME:?HOME is required}/.cache/ores/codespaces-cluster}"
+revision="$(tr -d '[:space:]' < "$repo_root/config/codespaces-cluster.rev")"
+token="${ORES_CLI_READ_TOKEN:-}"
+
+if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
+  echo >&2 "error: invalid config/codespaces-cluster.rev"
+  exit 2
+fi
+
+if [[ -z "$token" ]] && command -v gh >/dev/null 2>&1; then
+  token="$(gh auth token 2>/dev/null || true)"
+fi
+
+require_private_read() {
+  if [[ -z "$token" ]]; then
+    echo >&2 "error: private ORESoftware bootstrap access is required"
+    echo >&2 "fix: run 'gh auth login' or set ORES_CLI_READ_TOKEN"
+    exit 78
+  fi
+}
+
+mkdir -p "$(dirname "$cluster_root")"
+
+if [[ ! -d "$cluster_root/.git" ]]; then
+  command -v gh >/dev/null 2>&1 || {
+    echo >&2 "error: gh is required to clone ORESoftware/codespaces-cluster"
+    exit 127
+  }
+  require_private_read
+  GH_TOKEN="$token" gh repo clone ORESoftware/codespaces-cluster "$cluster_root"
+fi
+
+if [[ -n "$(git -C "$cluster_root" status --porcelain=v1 --untracked-files=all)" ]]; then
+  echo >&2 "error: managed codespaces-cluster checkout is dirty: $cluster_root"
+  echo >&2 "fix: preserve or remove those cache-local changes before retrying"
+  exit 73
+fi
+
+if ! git -C "$cluster_root" cat-file -e "$revision^{commit}" 2>/dev/null; then
+  require_private_read
+  GH_TOKEN="$token" git -C "$cluster_root" fetch --no-tags origin "$revision"
+fi
+
+git -C "$cluster_root" cat-file -e "$revision^{commit}"
+git -C "$cluster_root" checkout --detach -q "$revision"
+
+actual_revision="$(git -C "$cluster_root" rev-parse HEAD)"
+if [[ "$actual_revision" != "$revision" ]]; then
+  echo >&2 "error: codespaces-cluster checkout does not match reviewed revision"
+  echo >&2 "expected: $revision"
+  echo >&2 "actual:   $actual_revision"
+  exit 74
+fi
+
+(
+  cd "$cluster_root"
+  ORES_CLI_READ_TOKEN="$token" just codespace-edge-bootstrap
+)
+
+app_up=false
+cleanup_app() {
+  if [[ "$app_up" == true ]]; then
+    cd "$repo_root"
+    ORES_CODESPACES_CLUSTER_MANIFEST=.ores-compose.yaml \
+    ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app \
+    ORES_CODESPACES_CLUSTER_READY_PORT=18091 \
+    ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app \
+      "$cluster_root/target/debug/codespaces-cluster-ctl" down || true
+  fi
+}
+trap cleanup_app ERR
+
+cd "$repo_root"
+ORES_CODESPACES_CLUSTER_MANIFEST=.ores-compose.yaml \
+ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app \
+ORES_CODESPACES_CLUSTER_READY_PORT=18091 \
+ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app \
+  "$cluster_root/target/debug/codespaces-cluster-ctl" up
+app_up=true
+
+(
+  cd "$cluster_root"
+  CODESPACES_CLUSTER_CONFIG="$repo_root/config/codespaces-cluster.toml" \
+    just local-cluster-up
+)
+
+trap - ERR
+
+curl --fail --silent --show-error --max-time 2 http://127.0.0.1:18090/readyz >/dev/null
+curl --fail --silent --show-error --max-time 2 http://127.0.0.1:18091/readyz >/dev/null
+curl --fail --silent --show-error --max-time 2 http://127.0.0.1:8080/readyz >/dev/null
+curl --fail --silent --show-error --max-time 2 http://127.0.0.1:8080/api/readyz >/dev/null
+
+echo "gha-indie-worker application and shared Rust edge are ready on 127.0.0.1:8080"
