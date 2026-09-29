@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+set -u -o pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+cluster_root="${ORES_CODESPACE_CLUSTER_DIR:-${HOME:?HOME is required}/.cache/ores/codespaces-cluster}"
+cache_home="${XDG_CACHE_HOME:-${HOME:?HOME is required}/.cache}"
+receipt_dir="${ORES_TOOL_PIN_RECEIPT_DIR:-$cache_home/ores/tool-pins/codespaces-cluster}"
+cargo_home="${CARGO_HOME:-${HOME:?HOME is required}/.cargo}"
+flags="$receipt_dir/oresc.contract"
+controller="$cluster_root/target/debug/codespaces-cluster-ctl"
+expected_cluster_rev="$(tr -d '[:space:]' < "$repo_root/config/codespaces-cluster.rev" 2>/dev/null || true)"
+expected_ores_cli_rev="$(tr -d '[:space:]' < "$repo_root/config/ores-cli.rev" 2>/dev/null || true)"
+
+export PATH="$cargo_home/bin:$PATH"
+
+failures=0
+
+say() {
+    printf '%s=%s\n' "$1" "$2"
+}
+
+fail() {
+    say "$1" "$2"
+    failures=$((failures + 1))
+}
+
+hash_file() {
+    local path="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$path" | awk '{print $1}'
+        return
+    fi
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$path" | awk '{print $1}'
+        return
+    fi
+    return 69
+}
+
+read_one_line() {
+    local path="$1"
+    [[ -f "$path" && ! -L "$path" ]] || return 1
+    tr -d '\r\n' < "$path"
+}
+
+verify_receipt() {
+    local binary="$1"
+    local expected_rev="$2"
+    local expected_repository="$3"
+    local expected_package="$4"
+    local installed="$cargo_home/bin/$binary"
+    local rev_file="$receipt_dir/$binary.rev"
+    local hash_file_path="$receipt_dir/$binary.sha256"
+    local repository_file="$receipt_dir/$binary.repository"
+    local package_file="$receipt_dir/$binary.package"
+
+    if [[ ! -x "$installed" || ! -f "$installed" || -L "$installed" ]]; then
+        fail "receipt_${binary}" "missing-installed-binary"
+        return
+    fi
+
+    local recorded_rev recorded_hash recorded_repository recorded_package actual_hash
+    recorded_rev="$(read_one_line "$rev_file" 2>/dev/null || true)"
+    recorded_hash="$(read_one_line "$hash_file_path" 2>/dev/null || true)"
+    recorded_repository="$(read_one_line "$repository_file" 2>/dev/null || true)"
+    recorded_package="$(read_one_line "$package_file" 2>/dev/null || true)"
+    actual_hash="$(hash_file "$installed" 2>/dev/null || true)"
+
+    if [[ -z "$actual_hash" \
+      || "$recorded_rev" != "$expected_rev" \
+      || "$recorded_hash" != "$actual_hash" \
+      || "$recorded_repository" != "$expected_repository" \
+      || "$recorded_package" != "$expected_package" ]]; then
+        fail "receipt_${binary}" "mismatch"
+        return
+    fi
+
+    say "receipt_${binary}" "ok"
+}
+
+verify_oresc_contract() {
+    local contract_hash_file="$receipt_dir/oresc.contract.sha256"
+    local contract_rev_file="$receipt_dir/oresc.contract.rev"
+    local contract_path_file="$receipt_dir/oresc.contract.path"
+
+    if [[ ! -s "$flags" || -L "$flags" ]]; then
+        fail "receipt_oresc_contract" "missing"
+        return
+    fi
+
+    local recorded_hash recorded_rev recorded_path actual_hash
+    recorded_hash="$(read_one_line "$contract_hash_file" 2>/dev/null || true)"
+    recorded_rev="$(read_one_line "$contract_rev_file" 2>/dev/null || true)"
+    recorded_path="$(read_one_line "$contract_path_file" 2>/dev/null || true)"
+    actual_hash="$(hash_file "$flags" 2>/dev/null || true)"
+
+    if [[ -z "$actual_hash" \
+      || "$recorded_hash" != "$actual_hash" \
+      || "$recorded_rev" != "$expected_ores_cli_rev" \
+      || "$recorded_path" != ".cli-flags.toml" ]]; then
+        fail "receipt_oresc_contract" "mismatch"
+        return
+    fi
+
+    say "receipt_oresc_contract" "ok"
+}
+
+probe_http_200() {
+    local name="$1"
+    local url="$2"
+    local code
+    code="$(curl --silent --show-error --output /dev/null \
+        --connect-timeout 2 --max-time 4 \
+        --write-out '%{http_code}' "$url" 2>/dev/null || true)"
+    if [[ "$code" == "200" ]]; then
+        say "$name" "200"
+    else
+        fail "$name" "${code:-000}"
+    fi
+}
+
+say "repo_head" "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unavailable)"
+say "shared_edge_expected" "$expected_cluster_rev"
+
+if [[ -d "$cluster_root/.git" ]]; then
+    actual_cluster_rev="$(git -C "$cluster_root" rev-parse HEAD 2>/dev/null || true)"
+    if [[ "$actual_cluster_rev" == "$expected_cluster_rev" ]]; then
+        say "shared_edge_checkout" "ok"
+    else
+        fail "shared_edge_checkout" "${actual_cluster_rev:-unavailable}"
+    fi
+
+    dirty="$(git -C "$cluster_root" status --porcelain=v1 --untracked-files=all 2>/dev/null || true)"
+    if [[ -z "$dirty" ]]; then
+        say "shared_edge_clean" "yes"
+    else
+        fail "shared_edge_clean" "no"
+    fi
+else
+    fail "shared_edge_checkout" "missing"
+    fail "shared_edge_clean" "unknown"
+fi
+
+if [[ -x "$controller" && -f "$controller" && ! -L "$controller" ]]; then
+    say "controller" "present"
+else
+    fail "controller" "missing"
+fi
+
+verify_receipt \
+    oresc \
+    "$expected_ores_cli_rev" \
+    "https://github.com/ORESoftware/ores-cli" \
+    "ores-cli"
+verify_oresc_contract
+
+if [[ -n "${TUNNEL_TOKEN:-}" ]]; then
+    say "tunnel_token" "present:TUNNEL_TOKEN"
+elif [[ -n "${CF_TUNNEL_TOKEN:-}" ]]; then
+    say "tunnel_token" "present:CF_TUNNEL_TOKEN-compat"
+else
+    fail "tunnel_token" "missing"
+fi
+
+if command -v cloudflared >/dev/null 2>&1; then
+    cloudflared_version="$(cloudflared --version 2>/dev/null | head -n 1 || true)"
+    say "cloudflared" "${cloudflared_version:-present}"
+else
+    fail "cloudflared" "missing"
+fi
+
+probe_http_200 "api_ready" "http://127.0.0.1:18090/readyz"
+probe_http_200 "web_ready" "http://127.0.0.1:18091/readyz"
+probe_http_200 "edge_ready" "http://127.0.0.1:8080/readyz"
+probe_http_200 "edge_api_ready" "http://127.0.0.1:8080/api/readyz"
+
+if [[ -s "$flags" && -x "$cargo_home/bin/oresc" ]]; then
+    set +e
+    FLAGS2ENV_CONFIG="$flags" "$cargo_home/bin/oresc" --no-json codespace edge status >/dev/null 2>&1
+    oresc_status="$?"
+    set -e
+    if (( oresc_status == 0 )); then
+        say "connector_status" "running"
+    else
+        fail "connector_status" "exit-$oresc_status"
+    fi
+else
+    fail "connector_status" "unavailable"
+fi
+
+public_code="$(curl --silent --show-error --output /dev/null \
+    --connect-timeout 4 --max-time 8 \
+    --write-out '%{http_code}' https://local.indiebuild.dev/ 2>/dev/null || true)"
+say "public_http_status" "${public_code:-000}"
+if [[ -z "$public_code" || "$public_code" == "000" || "$public_code" == "502" ]]; then
+    failures=$((failures + 1))
+fi
+
+say "diagnostic_failures" "$failures"
+if (( failures != 0 )); then
+    exit 1
+fi
