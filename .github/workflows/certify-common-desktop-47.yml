@@ -1,0 +1,88 @@
+name: certify common desktop #47
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-common-desktop-47.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-common-desktop-47-20260929'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXPECTED_SHA: 006acf29d3143f45471614372f2fbb02d763b1a0
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact distribution hardening candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-common-desktop-infra
+          ref: ${{ env.EXPECTED_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: common-desktop
+          persist-credentials: false
+          fetch-depth: 8
+
+      - name: Assert exact source and one-file review surface
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          base="$(git rev-parse HEAD^)"
+          test "$(git diff --name-only "$base"..HEAD | wc -l | tr -d ' ')" -eq 1
+          test "$(git diff --name-only "$base"..HEAD)" = 'conformance/rust/src/bin/validate_rust_distribution.rs'
+          git diff --check "$base"..HEAD
+
+      - name: Configure private Cargo Git reads
+        working-directory: common-desktop
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+
+      - name: Install pinned Rust
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.82.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.82.0
+          rustc --version | grep -F 'rustc 1.82.0'
+
+      - name: Rustfmt exact changed file
+        working-directory: common-desktop
+        run: rustfmt --edition 2021 --check conformance/rust/src/bin/validate_rust_distribution.rs
+
+      - name: Strict validator Clippy
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo clippy --locked --manifest-path conformance/rust/Cargo.toml --bin validate_rust_distribution -- -D warnings -A clippy::needless-return
+
+      - name: Validator unit tests
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo test --locked --manifest-path conformance/rust/Cargo.toml --bin validate_rust_distribution
+
+      - name: Validate real distribution manifest
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo run --locked --manifest-path conformance/rust/Cargo.toml --bin validate_rust_distribution -- distribution/rust-packages.json
+
+      - name: Assert source checkout stayed immutable
+        if: always()
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git clean -fd -- target
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
