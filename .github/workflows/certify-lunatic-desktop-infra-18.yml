@@ -1,0 +1,110 @@
+name: certify Lunatic desktop infra #18
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-lunatic-desktop-infra-18.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-lunatic-desktop-infra-18-20260928'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      LUNATIC_SHA: cb15a8bfb60ee88751f5ad5997229180beed0534
+      COMMON_SHA: 20ec084cc550c824c009d5413de84ab519081bd7
+      DAEMON_SHA: df380a882a457706fcf2fe1dffc0e2e532aa5fad
+      DAEMON_TESTED_HEAD: 4369c7556c07fb0580f4b001b06b34369c538289
+    steps:
+      - name: Check out carrier exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out exact Lunatic desktop-infra candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: lunatic-lorry/ll-desktop-infra
+          ref: ${{ env.LUNATIC_SHA }}
+          path: lunatic-desktop-infra
+          persist-credentials: false
+
+      - name: Assert exact Lunatic candidate
+        working-directory: lunatic-desktop-infra
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$LUNATIC_SHA"
+          test -z "$(git status --porcelain)"
+
+      - name: Require common desktop source credential
+        env:
+          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
+        run: test -n "$ORE_SOURCE_PAT"
+
+      - name: Check out exact common desktop authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ORESoftware/ores-common-desktop-infra
+          ref: ${{ env.COMMON_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: common-desktop
+          persist-credentials: false
+
+      - name: Assert exact common authority
+        working-directory: common-desktop
+        run: test "$(git rev-parse HEAD)" = "$COMMON_SHA"
+
+      - name: Configure private Cargo Git reads
+        working-directory: common-desktop
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+
+      - name: Install pinned Rust
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.82.0 --profile minimal
+          rustup default 1.82.0
+          rustc --version | grep -F 'rustc 1.82.0'
+
+      - name: Run shared Rust appliance conformance against exact Lunatic head
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo run --locked \
+            --manifest-path common-desktop/Cargo.toml \
+            -p ores-common-desktop-conformance \
+            --bin validate_appliance_contract \
+            -- "$GITHUB_WORKSPACE/lunatic-desktop-infra"
+
+      - name: Prove locked daemon pin and tested-tree identity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pinned="$(awk '/^[[:space:]]*commit:/ { print $2; exit }' lunatic-desktop-infra/.ores-compose.yaml)"
+          test "$pinned" = "$DAEMON_SHA"
+          test "$(grep -c -- '--locked' lunatic-desktop-infra/.ores-compose.yaml)" -ge 1
+          curl --fail --silent --show-error \
+            "https://raw.githubusercontent.com/lunatic-lorry/ll-desktop-daemon/$DAEMON_SHA/Cargo.lock" \
+            | grep -F 'version = 4'
+          merged_tree="$(curl --fail --silent --show-error https://api.github.com/repos/lunatic-lorry/ll-desktop-daemon/commits/$DAEMON_SHA | jq -r '.commit.tree.sha')"
+          tested_tree="$(curl --fail --silent --show-error https://api.github.com/repos/lunatic-lorry/ll-desktop-daemon/commits/$DAEMON_TESTED_HEAD | jq -r '.commit.tree.sha')"
+          test "$merged_tree" = "$tested_tree"
+
+      - name: Assert checked-out candidates remained immutable
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C lunatic-desktop-infra rev-parse HEAD)" = "$LUNATIC_SHA"
+          test "$(git -C common-desktop rev-parse HEAD)" = "$COMMON_SHA"
+          test -z "$(git -C lunatic-desktop-infra status --porcelain)"
+          git -C common-desktop clean -fd -- target
+          test -z "$(git -C common-desktop status --porcelain)"
