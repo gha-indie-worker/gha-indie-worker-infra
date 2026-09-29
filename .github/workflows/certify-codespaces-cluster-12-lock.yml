@@ -55,17 +55,22 @@ jobs:
           rustc --version | grep -F 'rustc 1.88.0'
           cargo --version
 
-      - name: Generate resolver-owned lockfile
+      - name: Materialize rustfmt repair and resolver-owned lockfile
         working-directory: codespaces-cluster
         shell: bash
         run: |
           set -Eeuo pipefail
+          cargo fmt --all
           cargo generate-lockfile
           test -s Cargo.lock
-          test "$(git status --short)" = '?? Cargo.lock'
+          git diff --check
+          changed="$(git diff --name-only | LC_ALL=C sort)"
+          expected="$(printf '%s\n' rust/ctl.rs rust/edge.rs rust/service.rs | LC_ALL=C sort)"
+          test "$changed" = "$expected"
+          test "$(git status --short | grep -Fc '?? Cargo.lock')" -eq 1
           sha256sum Cargo.lock
 
-      - name: Rustfmt check
+      - name: Rustfmt check after deterministic repair
         working-directory: codespaces-cluster
         run: cargo fmt --all --check
 
@@ -90,14 +95,16 @@ jobs:
           bash -n test/bootstrap-pinned-cargo-tool.sh
           bash test/bootstrap-pinned-cargo-tool.sh
 
-      - name: Emit certified Cargo.lock
+      - name: Emit certified repair bytes
         working-directory: codespaces-cluster
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$(git status --short)" = '?? Cargo.lock'
-          echo 'BEGIN_CARGO_LOCK_B64'
-          base64 -w 0 Cargo.lock
-          echo
-          echo 'END_CARGO_LOCK_B64'
-          sha256sum Cargo.lock
+          for path in rust/ctl.rs rust/edge.rs rust/service.rs Cargo.lock; do
+            marker="$(printf '%s' "$path" | tr '/.' '__')"
+            echo "BEGIN_${marker}_B64"
+            base64 -w 0 "$path"
+            echo
+            echo "END_${marker}_B64"
+            sha256sum "$path"
+          done
