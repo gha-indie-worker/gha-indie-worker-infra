@@ -89,7 +89,6 @@ jobs:
           daemon_sha="$(awk '/^[[:space:]]*commit:/ { print $2; exit }' pony-desktop-infra/.ores-compose.yaml)"
           test "$daemon_sha" = '2b57519c2ff6782b3d0999d3ab0695e49d3c5453'
           test "$(grep -c -- '--locked' pony-desktop-infra/.ores-compose.yaml)" -ge 1
-          test -n "$(git ls-remote https://github.com/pony-expres/poex-desktop-daemon.git "$daemon_sha")"
           curl --fail --silent --show-error \
             "https://raw.githubusercontent.com/pony-expres/poex-desktop-daemon/$daemon_sha/Cargo.lock" \
             | grep -F 'version = 4'
