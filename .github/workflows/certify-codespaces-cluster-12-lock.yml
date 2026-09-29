@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      CODESPACES_CLUSTER_SHA: 5008fa76c31809db5e3b89e9c46c0a983d672b62
+      CODESPACES_CLUSTER_SHA: 9a9a774d95e8ad8f4d29394caf301d205507c1c3
       CODESPACES_CLUSTER_BRANCH: fix/pinned-bootstrap-receipts-20260928
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
