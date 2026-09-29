@@ -138,16 +138,20 @@ jobs:
             ${{ runner.temp }}/codespaces-cluster-12-cargo-lock.sha256
           if-no-files-found: warn
           retention-days: 7
-      - name: Require semantic gates
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          test '${{ steps.rust_check.outcome }}' = success
-          test '${{ steps.clippy.outcome }}' = success
-          test '${{ steps.rust_tests.outcome }}' = success
-          test '${{ steps.lifecycle_contract.outcome }}' = success
-      - name: Require formatting gate
-        shell: bash
+      - name: Require Rust check
+        if: always()
+        run: test '${{ steps.rust_check.outcome }}' = success
+      - name: Require strict Clippy
+        if: always()
+        run: test '${{ steps.clippy.outcome }}' = success
+      - name: Require Rust tests
+        if: always()
+        run: test '${{ steps.rust_tests.outcome }}' = success
+      - name: Require lifecycle contract
+        if: always()
+        run: test '${{ steps.lifecycle_contract.outcome }}' = success
+      - name: Require formatting
+        if: always()
         run: test '${{ steps.rustfmt.outcome }}' = success
       - name: Restore candidate and assert source immutability
         if: always()
