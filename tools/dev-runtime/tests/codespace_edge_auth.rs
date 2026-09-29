@@ -3,7 +3,7 @@
 use std::{fs, path::PathBuf};
 
 const EXPECTED_ORES_CLI_REV: &str = "d37aa4c1a0b79a292a31e2f16db8622144b0831f";
-const CODESPACES_CLUSTER_REV: &str = "8fd2e2a2d30010510bcd94f1f34a1c8aa3ca7a4c";
+const CODESPACES_CLUSTER_REV: &str = "9a9a774d95e8ad8f4d29394caf301d205507c1c3";
 const STALE_ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
 const STALE_ORES_COMPOSE_REV: &str = "c52d08c875e73892acb88897c3b4a8969ad37ff2";
 
@@ -128,6 +128,36 @@ fn shared_edge_revision_is_reviewed_and_immutable() {
     assert!(origin_up.contains("cat-file -e \"$revision^{commit}\""));
     assert!(origin_up.contains("checkout --detach -q \"$revision\""));
     assert!(origin_up.contains("rev-parse HEAD"));
+}
+
+#[test]
+fn managed_public_edge_has_one_tunnel_authority() {
+    let justfile = read("Justfile");
+    let docs = read("docs/local-development.md");
+    let laptop_docs = read("cloudflare/laptop-ingress/README.md");
+    let tunnel_config = read("modules/cloudflare/platform/laptop-ingress.tf");
+
+    let token_guard = justfile
+        .find("TUNNEL_TOKEN (preferred) or CF_TUNNEL_TOKEN is required")
+        .expect("managed edge must fail early without a tunnel token");
+    let origin_start = justfile
+        .find("bash scripts/dev/codespace-origin-up")
+        .expect("managed edge must invoke origin lifecycle");
+    assert!(
+        token_guard < origin_start,
+        "tunnel-token admission must happen before any local origin startup"
+    );
+
+    assert!(justfile.contains("FLAGS2ENV_CONFIG=\"$flags\" oresc --no-json codespace edge up"));
+    assert!(docs.contains("remotely managed Cloudflare connector"));
+    assert!(docs.contains("laptop_manage_dedicated_tunnel_config = true"));
+    assert!(laptop_docs.contains("remotely managed Cloudflare Tunnel"));
+    assert!(laptop_docs.contains("does not read it"));
+
+    assert!(tunnel_config.contains("cloudflare_zero_trust_tunnel_cloudflared_config"));
+    assert!(tunnel_config.contains("laptop_manage_dedicated_tunnel_config"));
+    assert!(tunnel_config.contains("http://127.0.0.1:8080"));
+    assert!(tunnel_config.contains("http_status:404"));
 }
 
 #[test]
