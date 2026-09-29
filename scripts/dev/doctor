@@ -3,6 +3,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cargo_home="${CARGO_HOME:-${HOME:?HOME is required}/.cargo}"
+
 reviewed_ores_compose="$cargo_home/bin/ores-compose"
 active_ores_compose="$(command -v ores-compose || true)"
 
@@ -11,6 +12,24 @@ if [[ -x "$reviewed_ores_compose" && "$active_ores_compose" != "$reviewed_ores_c
     "${active_ores_compose:-<missing>}" "$reviewed_ores_compose"
   printf >&2 'fix: export PATH="%s/bin:$PATH" (or invoke %s directly) before running local GIW commands\n' \
     "$cargo_home" "$reviewed_ores_compose"
+  exit 78
+fi
+
+ores_stack_rev="$(tr -d '[:space:]' < "$root/config/ores-stack.rev")"
+reviewed_ores_stack="$cargo_home/bin/ores-stack"
+active_ores_stack="$(command -v ores-stack || true)"
+stamped_ores_stack_rev="$(cat "$cargo_home/.ores-reviewed/ores-stack.rev" 2>/dev/null || true)"
+
+if [[ ! -x "$reviewed_ores_stack" || "$stamped_ores_stack_rev" != "$ores_stack_rev" ]]; then
+  printf >&2 'error: reviewed ores-stack %s is not installed at %s\n' "$ores_stack_rev" "$reviewed_ores_stack"
+  printf >&2 'fix: run ./scripts/dev/bootstrap\n'
+  exit 78
+fi
+
+if [[ "$active_ores_stack" != "$reviewed_ores_stack" ]]; then
+  printf >&2 'error: PATH resolves ores-stack to %s but bootstrap installed the reviewed binary at %s\n' \
+    "${active_ores_stack:-<missing>}" "$reviewed_ores_stack"
+  printf >&2 'fix: export PATH="%s/bin:$PATH" before running local GIW commands\n' "$cargo_home"
   exit 78
 fi
 

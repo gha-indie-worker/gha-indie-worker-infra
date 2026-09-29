@@ -1,4 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cargo_home="${CARGO_HOME:-${HOME:?HOME is required}/.cargo}"
+ores_stack_rev="$(tr -d '[:space:]' < "$root/config/ores-stack.rev")"
+
+if [[ ! "$ores_stack_rev" =~ ^[0-9a-f]{40}$ ]]; then
+  printf >&2 'error: config/ores-stack.rev must contain one lowercase 40-hex commit SHA\n'
+  exit 78
+fi
+
+reviewed_ores_stack="$cargo_home/bin/ores-stack"
+stamp_dir="$cargo_home/.ores-reviewed"
+stamp_file="$stamp_dir/ores-stack.rev"
+stamped_rev="$(cat "$stamp_file" 2>/dev/null || true)"
+
+if [[ ! -x "$reviewed_ores_stack" || "$stamped_rev" != "$ores_stack_rev" ]]; then
+  token="${ORES_STACK_READ_TOKEN:-}"
+  if [[ -z "$token" ]] && command -v gh >/dev/null 2>&1; then
+    token="$(gh auth token 2>/dev/null || true)"
+  fi
+  if [[ -z "$token" ]]; then
+    printf >&2 'error: ores-stack bootstrap needs GitHub read access; set ORES_STACK_READ_TOKEN or authenticate gh\n'
+    exit 78
+  fi
+
+  GH_TOKEN="$token" gh auth setup-git >/dev/null
+  GH_TOKEN="$token" CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install \
+    --locked \
+    --force \
+    --git https://github.com/ores-stack/ores-stack-cli.git \
+    --rev "$ores_stack_rev" \
+    --bin ores-stack
+
+  mkdir -p "$stamp_dir"
+  printf '%s\n' "$ores_stack_rev" > "$stamp_file"
+fi
+
 exec cargo run --locked --manifest-path "$root/tools/dev-runtime/Cargo.toml" -- bootstrap
