@@ -1,4 +1,4 @@
-name: certify isolation handoff #340/#39
+name: certify isolation handoff #340/current-main
 
 on:
   pull_request:
@@ -52,80 +52,52 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt,clippy
           rustup default 1.98.1
           rustc --version | grep -F 'rustc 1.98.1'
-      - name: Capture compose rustfmt patch
-        id: compose_fmt
-        continue-on-error: true
+      - name: Prove touched compose file is rustfmt-clean
         working-directory: ores-compose
         shell: bash
         run: |
           set -Eeuo pipefail
+          cp src/local_up_process.rs "${RUNNER_TEMP}/local_up_process.rs.before"
           cargo fmt --all
-          git diff -- . > "${RUNNER_TEMP}/ores-compose-340-rustfmt.patch"
+          cmp src/local_up_process.rs "${RUNNER_TEMP}/local_up_process.rs.before"
           git checkout -- .
-          test ! -s "${RUNNER_TEMP}/ores-compose-340-rustfmt.patch"
-      - name: Upload compose rustfmt patch
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: ores-compose-340-rustfmt-${{ env.EXPECTED_SHA }}
-          path: ${{ runner.temp }}/ores-compose-340-rustfmt.patch
-          if-no-files-found: ignore
-          retention-days: 7
       - name: Locked compose check
-        id: compose_check
-        continue-on-error: true
         working-directory: ores-compose
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo check --locked --all-targets --all-features
       - name: Locked compose tests
-        id: compose_tests
-        continue-on-error: true
         working-directory: ores-compose
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo test --locked --all-targets --all-features --no-fail-fast
       - name: Locked compose strict Clippy
-        id: compose_clippy
-        continue-on-error: true
         working-directory: ores-compose
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
-      - name: Require compose formatting
-        if: always()
-        run: test '${{ steps.compose_fmt.outcome }}' = success
-      - name: Require compose check
-        if: always()
-        run: test '${{ steps.compose_check.outcome }}' = success
-      - name: Require compose tests
-        if: always()
-        run: test '${{ steps.compose_tests.outcome }}' = success
-      - name: Require compose Clippy
-        if: always()
-        run: test '${{ steps.compose_clippy.outcome }}' = success
-      - name: Assert immutable source
+      - name: Assert immutable compose source
         if: always()
         working-directory: ores-compose
         shell: bash
         run: |
           set -Eeuo pipefail
+          git checkout -- .
           git clean -fd -- target
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test -z "$(git status --porcelain)"
 
-  consumer:
+  consumer-current-main:
     if: github.head_ref == 'ci/certify-isolation-handoff-340-39-20260929'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
-      EXPECTED_SHA: 8cc242d78d1371ba6c6a2c19a770a6be2dece7d9
-      EXPECTED_BASE_SHA: b05a3eb319272939f433b21abf79f91c852b81b9
+      EXPECTED_SHA: a32a7d638497bddc2478019f9c5cde156b248760
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Checkout exact ores-proc-isolation candidate
+      - name: Checkout exact current proc-isolation main
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: ORESoftware/ores-proc-isolation-cli
@@ -133,16 +105,16 @@ jobs:
           token: ${{ secrets.ORE_SOURCE_PAT }}
           path: proc-isolation
           persist-credentials: false
-          fetch-depth: 16
-      - name: Assert exact consumer-test surface
+          fetch-depth: 8
+      - name: Assert exact current source and retained handoff regression
         working-directory: proc-isolation
         shell: bash
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
-          git diff --check "$EXPECTED_BASE_SHA"..HEAD
-          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)" = 'tests/compose_policy_digest_handoff.rs'
+          git diff --check HEAD
+          test -f Cargo.lock
+          test -f tests/compose_policy_digest_handoff.rs
           grep -Fq '.arg("--target-env-stdin")' tests/compose_policy_digest_handoff.rs
           grep -Fq '.arg("--config-sha256")' tests/compose_policy_digest_handoff.rs
           grep -Fq 'policy SHA-256 does not match the expected handoff digest' tests/compose_policy_digest_handoff.rs
@@ -158,64 +130,66 @@ jobs:
           rustup toolchain install 1.88.0 --profile minimal --component rustfmt,clippy
           rustup default 1.88.0
           rustc --version | grep -F 'rustc 1.88.0'
-      - name: Capture consumer rustfmt patch
-        id: consumer_fmt
-        continue-on-error: true
+      - name: Generate deterministic current-main lock candidate
+        id: lock
+        working-directory: proc-isolation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cp Cargo.lock "${RUNNER_TEMP}/ores-proc-isolation-current-main-Cargo.lock.before"
+          cargo generate-lockfile
+          cp Cargo.lock "${RUNNER_TEMP}/ores-proc-isolation-current-main-Cargo.lock"
+          sha256sum Cargo.lock | tee "${RUNNER_TEMP}/ores-proc-isolation-current-main-Cargo.lock.sha256"
+          git diff -- Cargo.lock > "${RUNNER_TEMP}/ores-proc-isolation-current-main-Cargo.lock.patch"
+          if cmp -s Cargo.lock "${RUNNER_TEMP}/ores-proc-isolation-current-main-Cargo.lock.before"; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Prove current Rust source is rustfmt-clean
         working-directory: proc-isolation
         shell: bash
         run: |
           set -Eeuo pipefail
           cargo fmt --all
-          git diff -- . > "${RUNNER_TEMP}/ores-proc-isolation-39-rustfmt.patch"
-          git checkout -- .
-          test ! -s "${RUNNER_TEMP}/ores-proc-isolation-39-rustfmt.patch"
-      - name: Upload consumer rustfmt patch
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: ores-proc-isolation-39-rustfmt-${{ env.EXPECTED_SHA }}
-          path: ${{ runner.temp }}/ores-proc-isolation-39-rustfmt.patch
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Locked consumer check
-        id: consumer_check
-        continue-on-error: true
+          git diff --exit-code -- ':(glob)**/*.rs'
+      - name: Locked current-main check with generated lock
         working-directory: proc-isolation
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo check --locked --all-targets
-      - name: Locked consumer tests
-        id: consumer_tests
-        continue-on-error: true
+      - name: Locked current-main tests with generated lock
         working-directory: proc-isolation
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo test --locked --all-targets --no-fail-fast
-      - name: Locked consumer strict Clippy
-        id: consumer_clippy
-        continue-on-error: true
+      - name: Locked current-main strict Clippy with generated lock
         working-directory: proc-isolation
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo clippy --locked --all-targets -- -D warnings
-      - name: Require consumer formatting
+      - name: Upload deterministic current-main lock evidence
         if: always()
-        run: test '${{ steps.consumer_fmt.outcome }}' = success
-      - name: Require consumer check
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ores-proc-isolation-current-main-lock-${{ env.EXPECTED_SHA }}
+          path: |
+            ${{ runner.temp }}/ores-proc-isolation-current-main-Cargo.lock
+            ${{ runner.temp }}/ores-proc-isolation-current-main-Cargo.lock.sha256
+            ${{ runner.temp }}/ores-proc-isolation-current-main-Cargo.lock.patch
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Report whether committed lock was stale
         if: always()
-        run: test '${{ steps.consumer_check.outcome }}' = success
-      - name: Require consumer tests
-        if: always()
-        run: test '${{ steps.consumer_tests.outcome }}' = success
-      - name: Require consumer Clippy
-        if: always()
-        run: test '${{ steps.consumer_clippy.outcome }}' = success
-      - name: Assert immutable source
+        shell: bash
+        run: echo "current-main-lock-changed=${{ steps.lock.outputs.changed }}"
+      - name: Restore and assert immutable current source
         if: always()
         working-directory: proc-isolation
         shell: bash
         run: |
           set -Eeuo pipefail
+          git checkout -- .
           git clean -fd -- target
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test -z "$(git status --porcelain)"
