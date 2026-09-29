@@ -36,7 +36,10 @@ fn private_auth_is_scoped_to_network_bootstrap_only() {
 
     assert!(justfile.contains("bash scripts/dev/codespace-origin-up"));
     assert!(origin_up.contains("GH_TOKEN=\"$token\" gh repo clone ORESoftware/codespaces-cluster"));
-    assert!(origin_up.contains("GH_TOKEN=\"$token\" git -C \"$cluster_root\" fetch --no-tags origin \"$revision\""));
+    assert!(origin_up.contains(r#"env "${git_auth_env[@]}" GH_TOKEN="$token""#));
+    assert!(origin_up.contains("git -C \"$cluster_root\" fetch --no-tags origin \"$revision\""));
+    assert!(origin_up.contains("GIT_CONFIG_VALUE_1=!gh auth git-credential"));
+    assert!(!origin_up.contains("gh auth setup-git"));
     assert!(origin_up.contains("ORES_CLI_READ_TOKEN=\"$token\" just codespace-edge-bootstrap"));
     assert!(origin_up.contains("require_private_read"));
     assert!(origin_up.contains("gh auth token"));
