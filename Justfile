@@ -7,9 +7,11 @@ codespace-origin-up:
     bash scripts/dev/codespace-origin-up
 
 # Full GHA Codespace lifecycle: application backends first, shared Rust edge
-# second, Cloudflare connector last.
+# second, Cloudflare connector last. Cargo installs only executable bytes, so
+# bind oresc to the exact package-owned flags contract materialized by the
+# reviewed codespaces-cluster bootstrap.
 codespace-edge-up:
-    repo="$PWD"; bash scripts/dev/codespace-origin-up; root="${ORES_CODESPACE_CLUSTER_DIR:-$HOME/.cache/ores/codespaces-cluster}"; export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"; if ! oresc --no-json codespace edge up; then set +e; (cd "$root" && CODESPACES_CLUSTER_CONFIG="$repo/config/codespaces-cluster.toml" just local-cluster-down); ORES_CODESPACES_CLUSTER_MANIFEST=.ores-compose.yaml ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app ORES_CODESPACES_CLUSTER_READY_PORT=18091 ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app "$root/target/debug/codespaces-cluster-ctl" down; exit 1; fi
+    repo="$PWD"; bash scripts/dev/codespace-origin-up; root="${ORES_CODESPACE_CLUSTER_DIR:-$HOME/.cache/ores/codespaces-cluster}"; flags="${ORES_TOOL_PIN_RECEIPT_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/ores/tool-pins/codespaces-cluster}/oresc.contract"; test -s "$flags" || { echo >&2 "missing pinned oresc flag contract: $flags"; exit 66; }; export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"; if ! FLAGS2ENV_CONFIG="$flags" oresc --no-json codespace edge up; then set +e; (cd "$root" && CODESPACES_CLUSTER_CONFIG="$repo/config/codespaces-cluster.toml" just local-cluster-down); ORES_CODESPACES_CLUSTER_MANIFEST=.ores-compose.yaml ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app ORES_CODESPACES_CLUSTER_READY_PORT=18091 ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app "$root/target/debug/codespaces-cluster-ctl" down; exit 1; fi
 
 # Status/down deliberately do not fetch. They inspect or stop the exact shared
 # checkout/controller binary that owns the running supervisors.
@@ -18,10 +20,10 @@ codespace-origin-status:
 
 codespace-edge-status:
     just codespace-origin-status
-    export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"; oresc --no-json codespace edge status
+    flags="${ORES_TOOL_PIN_RECEIPT_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/ores/tool-pins/codespaces-cluster}/oresc.contract"; test -s "$flags" || { echo >&2 "missing pinned oresc flag contract: $flags"; exit 66; }; export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"; FLAGS2ENV_CONFIG="$flags" oresc --no-json codespace edge status
 
 codespace-edge-down:
-    repo="$PWD"; root="${ORES_CODESPACE_CLUSTER_DIR:-$HOME/.cache/ores/codespaces-cluster}"; test -x "$root/target/debug/codespaces-cluster-ctl" || { echo >&2 "codespaces-cluster controller is missing; cannot prove ownership of a running app supervisor"; exit 2; }; export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"; set +e; oresc --no-json codespace edge down; connector_rc=$?; (cd "$root" && CODESPACES_CLUSTER_CONFIG="$repo/config/codespaces-cluster.toml" just local-cluster-down); edge_rc=$?; ORES_CODESPACES_CLUSTER_MANIFEST=.ores-compose.yaml ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app ORES_CODESPACES_CLUSTER_READY_PORT=18091 ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app "$root/target/debug/codespaces-cluster-ctl" down; app_rc=$?; set -e; if (( connector_rc != 0 || edge_rc != 0 || app_rc != 0 )); then exit 1; fi
+    repo="$PWD"; root="${ORES_CODESPACE_CLUSTER_DIR:-$HOME/.cache/ores/codespaces-cluster}"; controller="$root/target/debug/codespaces-cluster-ctl"; test -x "$controller" || { echo >&2 "codespaces-cluster controller is missing; cannot prove ownership of a running app supervisor"; exit 2; }; flags="${ORES_TOOL_PIN_RECEIPT_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/ores/tool-pins/codespaces-cluster}/oresc.contract"; export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"; set +e; if [[ -s "$flags" ]]; then FLAGS2ENV_CONFIG="$flags" oresc --no-json codespace edge down; connector_rc=$?; else echo >&2 "missing pinned oresc flag contract: $flags"; connector_rc=66; fi; (cd "$root" && CODESPACES_CLUSTER_CONFIG="$repo/config/codespaces-cluster.toml" just local-cluster-down); edge_rc=$?; ORES_CODESPACES_CLUSTER_MANIFEST=.ores-compose.yaml ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app ORES_CODESPACES_CLUSTER_READY_PORT=18091 ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app "$controller" down; app_rc=$?; set -e; if (( connector_rc != 0 || edge_rc != 0 || app_rc != 0 )); then exit 1; fi
 
 codespace-edge-check:
     command -v just >/dev/null
