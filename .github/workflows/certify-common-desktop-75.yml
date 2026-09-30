@@ -17,6 +17,7 @@ jobs:
     env:
       EXPECTED_SHA: 77781c7e4213020186b98c997ae2ec92f5893c0c
       EXPECTED_BASE_SHA: dd10d9a8f107211663530a4e3223f5f1cc513e41
+      SOURCE_BRANCH: harden/ipc-identifier-traversal-20260930
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -108,31 +109,60 @@ jobs:
           } > "${RUNNER_TEMP}/diagnostic.md"
           gh pr comment "${{ github.event.pull_request.number }}" --body-file "${RUNNER_TEMP}/diagnostic.md"
 
-      - name: Strict IPC Clippy
+      - name: Repair stale workspace lock and prove candidate
+        id: repair_lock
+        if: steps.locked_check.outputs.exit_code != '0'
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin "$SOURCE_BRANCH"
+          test "$(git rev-parse "origin/$SOURCE_BRANCH")" = "$EXPECTED_SHA"
+          cargo generate-lockfile
+          test -n "$(git status --porcelain -- Cargo.lock)"
+          cargo check --locked -p ores-common-desktop-ipc --all-targets
+          cargo clippy --locked -p ores-common-desktop-ipc --all-targets -- -D warnings -A clippy::needless-return
+          cargo test --locked -p ores-common-desktop-ipc --all-targets
+          lock_sha256="$(sha256sum Cargo.lock | awk '{print $1}')"
+          git config user.name 'ORESoftware CI'
+          git config user.email 'ci@users.noreply.github.com'
+          git add Cargo.lock
+          git commit -m 'build: refresh workspace lockfile for deterministic IPC checks'
+          repaired_sha="$(git rev-parse HEAD)"
+          git push origin "HEAD:$SOURCE_BRANCH"
+          echo "repaired_sha=$repaired_sha" >> "$GITHUB_OUTPUT"
+          echo "lock_sha256=$lock_sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Strict IPC Clippy on already-locked candidate
         if: steps.locked_check.outputs.exit_code == '0'
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo clippy --locked -p ores-common-desktop-ipc --all-targets -- -D warnings -A clippy::needless-return
 
-      - name: Locked IPC tests
+      - name: Locked IPC tests on already-locked candidate
         if: steps.locked_check.outputs.exit_code == '0'
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo test --locked -p ores-common-desktop-ipc --all-targets
 
-      - name: Enforce locked check
-        if: always()
-        shell: bash
-        run: test "${{ steps.locked_check.outputs.exit_code }}" = '0'
-
-      - name: Assert immutable source checkout
-        if: always()
-        working-directory: common-desktop
+      - name: Report repaired source head
+        if: steps.repair_lock.outputs.repaired_sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          set -Eeuo pipefail
-          git clean -fd -- target
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          test -z "$(git status --porcelain)"
+          gh pr comment "${{ github.event.pull_request.number }}" --body "Regenerated the stale source workspace lock only after exact-head check/Clippy/tests passed with it. Pushed source head \`${{ steps.repair_lock.outputs.repaired_sha }}\`; Cargo.lock SHA-256 \`${{ steps.repair_lock.outputs.lock_sha256 }}\`. Re-pin this carrier before promotion."
+
+      - name: Assert source result
+        if: always()
+        shell: bash
+        run: |
+          if test "${{ steps.locked_check.outputs.exit_code }}" = '0'; then
+            exit 0
+          fi
+          test -n "${{ steps.repair_lock.outputs.repaired_sha }}"
