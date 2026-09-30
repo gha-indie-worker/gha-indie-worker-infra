@@ -73,19 +73,45 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Locked workspace check after formatter-only repair
+      - name: Generate deterministic lock candidate
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cp Cargo.lock "${RUNNER_TEMP}/common-desktop-main-Cargo.lock.before"
+          cargo generate-lockfile
+          cp Cargo.lock "${RUNNER_TEMP}/common-desktop-main-Cargo.lock"
+          sha256sum Cargo.lock | tee "${RUNNER_TEMP}/common-desktop-main-Cargo.lock.sha256"
+          if cmp -s Cargo.lock "${RUNNER_TEMP}/common-desktop-main-Cargo.lock.before"; then
+            echo 'Cargo.lock unexpectedly did not require repair' >&2
+            exit 1
+          fi
+
+      - name: Upload exact lock repair
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-main-lock-${{ env.EXPECTED_SHA }}
+          path: |
+            ${{ runner.temp }}/common-desktop-main-Cargo.lock
+            ${{ runner.temp }}/common-desktop-main-Cargo.lock.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Locked workspace check after mechanical repairs
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo check --locked --workspace --all-targets
 
-      - name: Strict Clippy after formatter-only repair
+      - name: Strict Clippy after mechanical repairs
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo clippy --locked --workspace --all-targets -- -D warnings -A clippy::needless-return
 
-      - name: Locked workspace tests after formatter-only repair
+      - name: Locked workspace tests after mechanical repairs
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
