@@ -1,0 +1,92 @@
+name: certify common desktop #53 IPC
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-common-desktop-53.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-common-desktop-53-20260930'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      EXPECTED_SHA: 475089706d9111fd37e87a07f50978041197ce5d
+      EXPECTED_BASE_SHA: 1913481fe18cdc37635252970e052178d8187ff1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact common-desktop IPC candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-common-desktop-infra
+          ref: ${{ env.EXPECTED_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: common-desktop
+          persist-credentials: false
+          fetch-depth: 64
+
+      - name: Assert exact source and 13-file IPC scope
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
+          git diff --check "$EXPECTED_BASE_SHA"..HEAD
+          mapfile -t files < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)
+          test "${#files[@]}" -eq 13
+          for path in \
+            .zpkg.toml \
+            Cargo.lock \
+            Cargo.toml \
+            auth/rust/src/lib.rs \
+            auth/rust/src/local_control.rs \
+            client/rust/Cargo.toml \
+            client/rust/src/lib.rs \
+            conformance/rust/Cargo.toml \
+            conformance/rust/src/bin/validate_local_control_plane.rs \
+            docs/local-control-plane.md \
+            fleet/products.json \
+            ipc/rust/Cargo.toml \
+            ipc/rust/src/lib.rs; do
+            printf '%s\n' "${files[@]}" | grep -Fx "$path"
+          done
+
+      - name: Install declared Rust boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.82.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.82.0
+          rustc --version | grep -F 'rustc 1.82.0'
+
+      - name: Rustfmt
+        working-directory: common-desktop
+        run: cargo fmt --all -- --check
+
+      - name: Locked workspace check
+        working-directory: common-desktop
+        run: cargo check --locked --workspace --all-targets
+
+      - name: Strict Clippy
+        working-directory: common-desktop
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings -A clippy::needless-return
+
+      - name: Locked workspace tests
+        working-directory: common-desktop
+        run: cargo test --locked --workspace --all-targets
+
+      - name: Execute local-control conformance
+        working-directory: common-desktop
+        run: cargo run --locked -p ores-common-desktop-conformance --bin validate_local_control_plane
+
+      - name: Assert source checkout stayed immutable
+        if: always()
+        working-directory: common-desktop
+        run: test -z "$(git status --porcelain)"
