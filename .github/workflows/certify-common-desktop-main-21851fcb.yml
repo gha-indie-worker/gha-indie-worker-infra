@@ -1,0 +1,223 @@
+name: certify common desktop current main
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-common-desktop-main-21851fcb.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-common-desktop-main-21851fcb-20260930'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXPECTED_SHA: 21851fcb6ca59fe4cfe887d882dac78d90548ce4
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact common-desktop main
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-common-desktop-infra
+          ref: ${{ env.EXPECTED_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: common-desktop
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Assert exact source
+        working-directory: common-desktop
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Configure private Cargo Git reads
+        working-directory: common-desktop
+        env:
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        run: gh auth setup-git
+
+      - name: Install Rust 1.82
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.82.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.82.0
+          rustc --version | grep -F 'rustc 1.82.0'
+
+      - name: Apply rustfmt ephemerally and capture exact repair
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --all
+          git diff -- '*.rs' > "${RUNNER_TEMP}/common-desktop-main-rustfmt.patch"
+          test -s "${RUNNER_TEMP}/common-desktop-main-rustfmt.patch"
+          mkdir -p "${RUNNER_TEMP}/rustfmt-files"
+          while IFS= read -r file; do
+            test -n "$file" || continue
+            mkdir -p "${RUNNER_TEMP}/rustfmt-files/$(dirname "$file")"
+            cp "$file" "${RUNNER_TEMP}/rustfmt-files/$file"
+          done < <(git diff --name-only -- '*.rs')
+
+      - name: Upload exact rustfmt repair
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-main-rustfmt-${{ env.EXPECTED_SHA }}
+          path: |
+            ${{ runner.temp }}/common-desktop-main-rustfmt.patch
+            ${{ runner.temp }}/rustfmt-files
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Generate deterministic lock candidate
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cp Cargo.lock "${RUNNER_TEMP}/common-desktop-main-Cargo.lock.before"
+          cargo generate-lockfile
+          cp Cargo.lock "${RUNNER_TEMP}/common-desktop-main-Cargo.lock"
+          sha256sum Cargo.lock | tee "${RUNNER_TEMP}/common-desktop-main-Cargo.lock.sha256"
+          if cmp -s Cargo.lock "${RUNNER_TEMP}/common-desktop-main-Cargo.lock.before"; then
+            echo 'Cargo.lock unexpectedly did not require repair' >&2
+            exit 1
+          fi
+
+      - name: Upload exact lock repair
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-main-lock-${{ env.EXPECTED_SHA }}
+          path: |
+            ${{ runner.temp }}/common-desktop-main-Cargo.lock
+            ${{ runner.temp }}/common-desktop-main-Cargo.lock.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Apply known no-op Clippy cleanup ephemerally
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sed -i '245,247c\            self.remove(&head)\
+                .expect("adaptive queue head must remain present until removal");' cli/rust/src/backpressure.rs
+          git diff --check
+          git diff -- cli/rust/src/backpressure.rs > "${RUNNER_TEMP}/common-desktop-main-clippy.patch"
+          grep -F 'self.remove(&head)' cli/rust/src/backpressure.rs >/dev/null
+          test -s "${RUNNER_TEMP}/common-desktop-main-clippy.patch"
+
+      - name: Upload exact Clippy cleanup
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-main-clippy-${{ env.EXPECTED_SHA }}
+          path: ${{ runner.temp }}/common-desktop-main-clippy.patch
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove stale duplicate Takoda runtime contract ephemerally
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(jq '[.contracts[] | select(.product_id == "takoda")] | length' fleet/runtime-contracts.json)" -eq 2
+          test "$(jq '[.contracts[] | select(has("daemon_port"))] | length' fleet/runtime-contracts.json)" -eq 1
+          jq 'del(.contracts[] | select(has("daemon_port")))' fleet/runtime-contracts.json > "${RUNNER_TEMP}/runtime-contracts.json"
+          mv "${RUNNER_TEMP}/runtime-contracts.json" fleet/runtime-contracts.json
+          test "$(jq '[.contracts[] | select(.product_id == "takoda")] | length' fleet/runtime-contracts.json)" -eq 1
+          test "$(jq '[.contracts[] | select(has("daemon_port"))] | length' fleet/runtime-contracts.json)" -eq 0
+          jq -e '.contracts[] | select(.product_id == "takoda") | .control.transport == "dynamic_loopback_tcp" and .control.bind == "127.0.0.1:0" and .control.legacy_port == 18087' fleet/runtime-contracts.json >/dev/null
+          git diff --check
+          git diff -- fleet/runtime-contracts.json > "${RUNNER_TEMP}/common-desktop-main-takoda.patch"
+          test -s "${RUNNER_TEMP}/common-desktop-main-takoda.patch"
+
+      - name: Upload Takoda contract repair
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-main-takoda-${{ env.EXPECTED_SHA }}
+          path: ${{ runner.temp }}/common-desktop-main-takoda.patch
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Harden reuse-key negative control structurally
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat > "${RUNNER_TEMP}/reuse-key-test.patch" <<'PATCH'
+          diff --git a/conformance/rust/src/bin/validate_runtime_contracts.rs b/conformance/rust/src/bin/validate_runtime_contracts.rs
+          --- a/conformance/rust/src/bin/validate_runtime_contracts.rs
+          +++ b/conformance/rust/src/bin/validate_runtime_contracts.rs
+          @@ -461,11 +461,17 @@ mod tests {
+               #[test]
+               fn tenant_generation_reuse_cannot_drop_generation_identity() {
+          -        let mutated = CONTRACTS.replacen(
+          -            "[\"tenant_id\", \"deployment_generation\"]",
+          -            "[\"tenant_id\"]",
+          -            1,
+          -        );
+          +        let mut contracts: Value = serde_json::from_str(CONTRACTS).expect("canonical contracts");
+          +        let contract = contracts["contracts"]
+          +            .as_array_mut()
+          +            .expect("contracts array")
+          +            .iter_mut()
+          +            .find(|entry| entry.get("product_id").and_then(Value::as_str) == Some("iso-lattes"))
+          +            .expect("iso-lattes contract");
+          +        contract["execution"]["reuse_key"] = serde_json::json!(["tenant_id"]);
+          +        let mutated = serde_json::to_string(&contracts).expect("serialize contracts");
+                   let error = validate_runtime_contracts_json(&mutated, PRODUCTS)
+                       .expect_err("reuse-key drift must fail");
+                   assert!(error.contains("tenant_id + deployment_generation"));
+          PATCH
+          git apply "${RUNNER_TEMP}/reuse-key-test.patch"
+          rustfmt --edition 2021 conformance/rust/src/bin/validate_runtime_contracts.rs
+          git diff --check
+          git diff -- conformance/rust/src/bin/validate_runtime_contracts.rs > "${RUNNER_TEMP}/common-desktop-main-runtime-test.patch"
+          test -s "${RUNNER_TEMP}/common-desktop-main-runtime-test.patch"
+
+      - name: Upload runtime negative-control repair
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-main-runtime-test-${{ env.EXPECTED_SHA }}
+          path: ${{ runner.temp }}/common-desktop-main-runtime-test.patch
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Locked workspace check after repairs
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo check --locked --workspace --all-targets
+
+      - name: Strict Clippy after repairs
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings -A clippy::needless-return
+
+      - name: Locked workspace tests after repairs
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo test --locked --workspace --all-targets
+
+      - name: Execute local-control conformance
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo run --locked -p ores-common-desktop-conformance --bin validate_local_control_plane
+
+      - name: Restore exact source and assert immutability
+        if: always()
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git checkout -- .
+          git clean -fd -- target
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
