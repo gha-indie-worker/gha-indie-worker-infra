@@ -5,6 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cluster_root="${ORES_CODESPACE_CLUSTER_DIR:-${HOME:?HOME is required}/.cache/ores/codespaces-cluster}"
 revision="$(tr -d '[:space:]' < "$repo_root/config/codespaces-cluster.rev")"
 token="${ORES_CLI_READ_TOKEN:-}"
+controller="$cluster_root/target/debug/codespaces-cluster-ctl"
 
 if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
   echo >&2 "error: invalid config/codespaces-cluster.rev"
@@ -58,6 +59,43 @@ if ! git -C "$cluster_root" cat-file -e "$revision^{commit}" 2>/dev/null; then
 fi
 
 git -C "$cluster_root" cat-file -e "$revision^{commit}"
+
+# Older recovery instructions generated an ignored cache-local Cargo.lock before
+# codespaces-cluster began tracking its resolver-generated lockfile. That file is
+# invisible to `git status` because it may still be listed in .git/info/exclude,
+# yet it can interfere when detaching to a revision that now owns Cargo.lock.
+# Handle only this exact migration: never delete a tracked lock and never discard
+# differing legacy bytes. A differing copy is quarantined beside the managed
+# checkout so the reviewed checkout remains clean and the old evidence is kept.
+legacy_lock="$cluster_root/Cargo.lock"
+if git -C "$cluster_root" cat-file -e "$revision:Cargo.lock" 2>/dev/null \
+  && ! git -C "$cluster_root" ls-files --error-unmatch -- Cargo.lock >/dev/null 2>&1 \
+  && [[ -e "$legacy_lock" ]]; then
+  if [[ -L "$legacy_lock" || ! -f "$legacy_lock" ]]; then
+    echo >&2 "error: legacy cache-local Cargo.lock is not a regular file: $legacy_lock"
+    exit 73
+  fi
+
+  target_lock="$(mktemp "${TMPDIR:-/tmp}/codespaces-cluster.Cargo.lock.XXXXXX")"
+  cleanup_target_lock() {
+    rm -f "$target_lock"
+  }
+  trap cleanup_target_lock EXIT
+  git -C "$cluster_root" show "$revision:Cargo.lock" > "$target_lock"
+
+  if cmp -s "$legacy_lock" "$target_lock"; then
+    rm -f "$legacy_lock"
+    echo "removed legacy cache-local Cargo.lock; reviewed revision now owns the identical lockfile"
+  else
+    legacy_backup="${cluster_root}.legacy-Cargo.lock.$(date +%Y%m%d-%H%M%S)"
+    mv "$legacy_lock" "$legacy_backup"
+    echo "preserved differing legacy cache-local Cargo.lock at: $legacy_backup"
+  fi
+
+  rm -f "$target_lock"
+  trap - EXIT
+fi
+
 git -C "$cluster_root" checkout --detach -q "$revision"
 
 actual_revision="$(git -C "$cluster_root" rev-parse HEAD)"
@@ -73,9 +111,18 @@ fi
   ORES_CLI_READ_TOKEN="$token" just codespace-edge-bootstrap
 )
 
+if [[ ! -x "$controller" ]]; then
+  echo >&2 "error: codespaces-cluster bootstrap did not materialize controller at reviewed path"
+  echo >&2 "expected: $controller"
+  exit 70
+fi
+
 app_up=false
 edge_attempted=false
-cleanup_started_layers() {
+cleanup_started_layers() (
+  # Cleanup is intentionally isolated in a subshell. Never disable errexit in
+  # the parent ERR trap context, or a failed startup can fall through to the
+  # success receipt.
   set +e
 
   if [[ "$edge_attempted" == true ]]; then
@@ -92,9 +139,9 @@ cleanup_started_layers() {
     ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app \
     ORES_CODESPACES_CLUSTER_READY_PORT=18091 \
     ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app \
-      "$cluster_root/target/debug/codespaces-cluster-ctl" down
+      "$controller" down
   fi
-}
+)
 trap cleanup_started_layers ERR
 
 cd "$repo_root"
@@ -102,7 +149,7 @@ ORES_CODESPACES_CLUSTER_MANIFEST=.ores-compose.yaml \
 ORES_CODESPACES_CLUSTER_STATE_DIR=.ores/codespaces-cluster-app \
 ORES_CODESPACES_CLUSTER_READY_PORT=18091 \
 ORES_CODESPACES_CLUSTER_SERVICE=gha-indie-worker-app \
-  "$cluster_root/target/debug/codespaces-cluster-ctl" up
+  "$controller" up
 app_up=true
 
 edge_attempted=true

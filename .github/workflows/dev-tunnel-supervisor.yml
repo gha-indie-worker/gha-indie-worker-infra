@@ -1,0 +1,38 @@
+name: dev tunnel supervisor
+
+on:
+  push:
+    branches:
+      - fix/codespaces-bootstrap-receipts-20260929
+    paths:
+      - 'scripts/dev/tunnel'
+      - 'test/dev-tunnel-supervisor.sh'
+      - '.github/workflows/dev-tunnel-supervisor.yml'
+  pull_request:
+    paths:
+      - 'scripts/dev/tunnel'
+      - 'test/dev-tunnel-supervisor.sh'
+      - '.github/workflows/dev-tunnel-supervisor.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  supervisor-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Shell syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/dev/tunnel
+          bash -n test/dev-tunnel-supervisor.sh
+
+      - name: Supervisor regressions
+        shell: bash
+        run: bash test/dev-tunnel-supervisor.sh

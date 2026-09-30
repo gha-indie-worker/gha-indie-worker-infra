@@ -1,11 +1,20 @@
-# Copy outside the repository before use. Never commit the real credentials file
-# or tunnel token.
+# MANUAL / LEGACY LOCALLY-MANAGED TUNNEL EXAMPLE ONLY.
+#
+# `just codespace-edge-up` and `oresc codespace edge up` intentionally use a
+# remotely-managed Cloudflare Tunnel and DO NOT read this file. Their authority
+# is TUNNEL_TOKEN (or compatibility CF_TUNNEL_TOKEN), with hostname/origin and
+# Access policy stored remotely in Cloudflare/Terraform.
+#
+# Use this file only when deliberately operating cloudflared outside the managed
+# lifecycle. Copy it outside the repository before use. Never commit the real
+# credentials file or tunnel token.
 tunnel: REPLACE_WITH_TUNNEL_UUID
 credentials-file: /Users/REPLACE/.cloudflared/REPLACE_WITH_TUNNEL_UUID.json
 
-# Defense in depth: Cloudflare Access evaluates at the edge, and cloudflared
-# validates the Access JWT again before forwarding the request to the laptop.
-# Replace these values with the Terraform laptop_ingress output / Zero Trust team.
+# Defense in depth for the manual locally-managed mode: Cloudflare Access
+# evaluates at the edge, and cloudflared validates the Access JWT again before
+# forwarding the request to the laptop. Replace these values with the Terraform
+# laptop_ingress output / Zero Trust team.
 originRequest:
   connectTimeout: 5s
   access:

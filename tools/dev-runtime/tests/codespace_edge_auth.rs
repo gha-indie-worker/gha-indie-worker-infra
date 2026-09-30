@@ -3,7 +3,7 @@
 use std::{fs, path::PathBuf};
 
 const EXPECTED_ORES_CLI_REV: &str = "d37aa4c1a0b79a292a31e2f16db8622144b0831f";
-const CODESPACES_CLUSTER_REV: &str = "fe61abec77af464dd31944f6bf1fdd6ddfd0a65c";
+const CODESPACES_CLUSTER_REV: &str = "72149bd4889a62814ca630f2cbf4d05cf97a620e";
 const STALE_ORES_CLI_REV: &str = "c854130ee147e9793a3af8736e90241630a5c934";
 const STALE_ORES_COMPOSE_REV: &str = "c52d08c875e73892acb88897c3b4a8969ad37ff2";
 
@@ -19,14 +19,36 @@ fn read(path: &str) -> String {
     fs::read_to_string(repo_root().join(path)).expect("contract file must be readable")
 }
 
+fn parse_revision_authority(contents: &str) -> Option<&str> {
+    let value = contents.strip_suffix('\n').unwrap_or(contents);
+    if value.is_empty()
+        || value.contains('\n')
+        || value.contains('\r')
+        || value.len() != 40
+        || !value.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return None;
+    }
+
+    Some(value)
+}
+
 fn revision(path: &str) -> String {
-    let value = read(path).trim().to_string();
-    assert_eq!(value.len(), 40, "{path} must contain one full commit SHA");
-    assert!(
-        value.bytes().all(|byte| byte.is_ascii_hexdigit()),
-        "{path} must contain hex only"
+    let contents = read(path);
+    let value = parse_revision_authority(&contents)
+        .unwrap_or_else(|| panic!("{path} must contain exactly one full 40-hex commit SHA"));
+    value.to_string()
+}
+
+#[test]
+fn revision_authority_rejects_whitespace_normalized_multiline_sha() {
+    let revision = CODESPACES_CLUSTER_REV;
+    let split = format!("{}\n{}\n", &revision[..20], &revision[20..]);
+    assert_eq!(parse_revision_authority(&split), None);
+    assert_eq!(
+        parse_revision_authority(&format!("{revision}\n")),
+        Some(revision)
     );
-    value
 }
 
 #[test]
@@ -117,17 +139,63 @@ fn fresh_codespace_provisions_exact_private_toolchain() {
 
 #[test]
 fn shared_edge_revision_is_reviewed_and_immutable() {
-    let revision = read("config/codespaces-cluster.rev");
-    let revision = revision.trim();
+    let revision = revision("config/codespaces-cluster.rev");
 
     assert_eq!(revision, CODESPACES_CLUSTER_REV);
-    assert_eq!(revision.len(), 40);
-    assert!(revision.bytes().all(|byte| byte.is_ascii_hexdigit()));
 
     let origin_up = read("scripts/dev/codespace-origin-up");
     assert!(origin_up.contains("cat-file -e \"$revision^{commit}\""));
     assert!(origin_up.contains("checkout --detach -q \"$revision\""));
     assert!(origin_up.contains("rev-parse HEAD"));
+
+    // The original recovery generated an ignored cache-local Cargo.lock before
+    // the shared repo tracked its own lockfile. The materializer must handle
+    // that one migration without deleting tracked data or discarding differing
+    // legacy bytes.
+    assert!(origin_up.contains("cat-file -e \"$revision:Cargo.lock\""));
+    assert!(origin_up.contains("ls-files --error-unmatch -- Cargo.lock"));
+    assert!(origin_up.contains("cmp -s \"$legacy_lock\" \"$target_lock\""));
+    assert!(origin_up.contains(".legacy-Cargo.lock."));
+    assert!(origin_up.contains("preserved differing legacy cache-local Cargo.lock"));
+}
+
+#[test]
+fn managed_public_edge_has_one_tunnel_authority() {
+    let justfile = read("Justfile");
+    let docs = read("docs/local-development.md");
+    let laptop_docs = read("cloudflare/laptop-ingress/README.md");
+    let tunnel_config = read("modules/cloudflare/platform/laptop-ingress.tf");
+
+    let recipe_start = justfile
+        .find("codespace-edge-up:\n")
+        .expect("managed edge recipe must exist");
+    let after_recipe_start = &justfile[recipe_start..];
+    let recipe_end = after_recipe_start
+        .find("\n\n# Status/down")
+        .unwrap_or(after_recipe_start.len());
+    let managed_recipe = &after_recipe_start[..recipe_end];
+
+    let token_guard = managed_recipe
+        .find("TUNNEL_TOKEN (preferred) or CF_TUNNEL_TOKEN is required")
+        .expect("managed edge must fail early without a tunnel token");
+    let origin_start = managed_recipe
+        .find("bash scripts/dev/codespace-origin-up")
+        .expect("managed edge must invoke origin lifecycle");
+    assert!(
+        token_guard < origin_start,
+        "tunnel-token admission must happen before any local origin startup"
+    );
+
+    assert!(managed_recipe.contains("FLAGS2ENV_CONFIG=\"$flags\" oresc --no-json codespace edge up"));
+    assert!(docs.contains("remotely managed Cloudflare connector"));
+    assert!(docs.contains("laptop_manage_dedicated_tunnel_config = true"));
+    assert!(laptop_docs.contains("remotely managed Cloudflare Tunnel"));
+    assert!(laptop_docs.contains("does not read it"));
+
+    assert!(tunnel_config.contains("cloudflare_zero_trust_tunnel_cloudflared_config"));
+    assert!(tunnel_config.contains("laptop_manage_dedicated_tunnel_config"));
+    assert!(tunnel_config.contains("http://127.0.0.1:8080"));
+    assert!(tunnel_config.contains("http_status:404"));
 }
 
 #[test]

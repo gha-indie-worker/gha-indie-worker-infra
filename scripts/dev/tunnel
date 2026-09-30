@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 
 if [[ "$#" -ne 2 ]]; then
     echo "usage: $0 <laptop|codespace> <config-path>" >&2
@@ -9,7 +9,16 @@ if [[ "$#" -ne 2 ]]; then
 fi
 
 mode="$1"
-config="$2"
+config_input="$2"
+
+case "$mode" in
+    laptop|codespace)
+        ;;
+    *)
+        echo "tunnel mode must be laptop or codespace" >&2
+        exit 2
+        ;;
+esac
 
 # Cargo-installed developer tools commonly live here even when the caller's
 # shell PATH (or a macOS-launched process) does not include them. Prepend the
@@ -20,9 +29,236 @@ if [[ -d "$cargo_bin" ]]; then
     export PATH="$cargo_bin:$PATH"
 fi
 
+cargo_command="$(command -v cargo || true)"
+cloudflared_command="$(command -v cloudflared || true)"
+if [[ -z "$cargo_command" ]]; then
+    echo "required command is unavailable: cargo" >&2
+    exit 127
+fi
+if [[ -z "$cloudflared_command" ]]; then
+    echo "required command is unavailable: cloudflared" >&2
+    exit 127
+fi
+
+# Cargo installs the oresc executable but not its package-owned flags2env
+# contract. The reviewed codespaces-cluster bootstrap materializes that exact
+# contract outside the managed checkout. Manual Codespace tunnel mode invokes
+# `oresc status` from both the Rust doctor and this wrapper, so bind the same
+# immutable package contract before either invocation. Never fall back to the
+# caller repository's unrelated `.cli-flags.toml`.
+if [[ "$mode" == "codespace" ]]; then
+    receipt_dir="${ORES_TOOL_PIN_RECEIPT_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/ores/tool-pins/codespaces-cluster}"
+    oresc_contract="$receipt_dir/oresc.contract"
+    if [[ -L "$oresc_contract" || ! -s "$oresc_contract" ]]; then
+        echo "pinned oresc flag contract is unavailable; run 'just codespace-origin-up' first: $oresc_contract" >&2
+        exit 66
+    fi
+    export FLAGS2ENV_CONFIG="$oresc_contract"
+fi
+
+if [[ -L "$config_input" || ! -f "$config_input" ]]; then
+    echo "cloudflared config must be an existing non-symlink regular file" >&2
+    exit 66
+fi
+config_dir="$(cd "$(dirname "$config_input")" && pwd -P)"
+config="$config_dir/$(basename "$config_input")"
+if [[ "$config" == "$root" || "$config" == "$root/"* ]]; then
+    echo "real cloudflared config/credentials must live outside the repository" >&2
+    exit 66
+fi
+
+read_uint_setting() {
+    local name="$1"
+    local default="$2"
+    local maximum="$3"
+    local value="${!name:-$default}"
+
+    if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+        echo "$name must be an unsigned integer" >&2
+        return 64
+    fi
+    if (( value > maximum )); then
+        echo "$name must be <= $maximum" >&2
+        return 64
+    fi
+
+    printf '%s\n' "$value"
+}
+
+max_restarts="$(read_uint_setting GHA_INDIE_WORKER_TUNNEL_MAX_RESTARTS 8 64)"
+stable_seconds="$(read_uint_setting GHA_INDIE_WORKER_TUNNEL_STABLE_SECONDS 60 86400)"
+backoff_cap_seconds="$(read_uint_setting GHA_INDIE_WORKER_TUNNEL_BACKOFF_CAP_SECONDS 30 300)"
+
+# Compute 2^retry without relying on a wide shell integer shift. The accepted
+# retry budget is intentionally larger than a signed machine-word shift width,
+# so repeated doubling saturates at the configured cap instead of wrapping.
+backoff_delay() {
+    local retry="$1"
+    local cap="$2"
+    local delay=1
+    local step=0
+
+    if (( cap == 0 )); then
+        printf '0\n'
+        return 0
+    fi
+
+    while (( step < retry && delay < cap )); do
+        if (( delay > cap / 2 )); then
+            delay="$cap"
+            break
+        fi
+        delay=$((delay * 2))
+        step=$((step + 1))
+    done
+
+    if (( delay > cap )); then
+        delay="$cap"
+    fi
+    printf '%s\n' "$delay"
+}
+
+file_mode() {
+    local path="$1"
+    local mode_value
+
+    if mode_value="$(stat -f '%Lp' "$path" 2>/dev/null)"; then
+        printf '%s\n' "$mode_value"
+        return 0
+    fi
+    if mode_value="$(stat -c '%a' "$path" 2>/dev/null)"; then
+        printf '%s\n' "$mode_value"
+        return 0
+    fi
+
+    echo "could not inspect file permissions: $path" >&2
+    return 66
+}
+
+trim_yaml_scalar() {
+    local value="$1"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+
+    if [[ ${#value} -ge 2 && "$value" == \"*\" ]]; then
+        value="${value:1:${#value}-2}"
+    elif [[ ${#value} -ge 2 && "$value" == \'*\' ]]; then
+        value="${value:1:${#value}-2}"
+    fi
+
+    printf '%s\n' "$value"
+}
+
+credential_path_from_config() {
+    local line
+    local trimmed
+    local value
+    local found=""
+    local count=0
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        trimmed="${line#"${line%%[![:space:]]*}"}"
+        if [[ "$trimmed" == credentials-file:* ]]; then
+            value="$(trim_yaml_scalar "${trimmed#credentials-file:}")"
+            count=$((count + 1))
+            found="$value"
+        fi
+    done < "$config"
+
+    if (( count != 1 )) || [[ -z "$found" ]]; then
+        echo "cloudflared config must contain exactly one non-empty credentials-file" >&2
+        return 66
+    fi
+    if [[ "$found" != /* ]]; then
+        echo "cloudflared credentials-file must be an absolute path" >&2
+        return 66
+    fi
+    if [[ -L "$found" || ! -f "$found" ]]; then
+        echo "cloudflared credentials-file must be an existing non-symlink regular file" >&2
+        return 66
+    fi
+
+    local found_dir
+    found_dir="$(cd "$(dirname "$found")" && pwd -P)"
+    found="$found_dir/$(basename "$found")"
+    if [[ "$found" == "$root" || "$found" == "$root/"* ]]; then
+        echo "cloudflared credentials-file must live outside the repository" >&2
+        return 66
+    fi
+
+    local mode_value
+    mode_value="$(file_mode "$found")"
+    if (( (8#$mode_value & 077) != 0 )); then
+        echo "cloudflared credentials-file must not be group/world accessible: $found" >&2
+        return 66
+    fi
+
+    printf '%s\n' "$found"
+}
+
+admit_tunnel() {
+    "$cargo_command" run \
+        --locked \
+        --manifest-path "$root/tools/dev-runtime/Cargo.toml" \
+        -- doctor
+
+    local credentials
+    credentials="$(credential_path_from_config)"
+    test -n "$credentials"
+
+    "$cloudflared_command" tunnel \
+        --config "$config" \
+        ingress validate >/dev/null
+
+    local expected_host
+    case "$mode" in
+        laptop)
+            expected_host="local.indiebuild.dev"
+            ;;
+        codespace)
+            expected_host="codespace.indiebuild.dev"
+            ;;
+    esac
+
+    local expected_rule
+    expected_rule="$(
+        "$cloudflared_command" tunnel \
+            --config "$config" \
+            ingress rule "https://$expected_host/"
+    )"
+    grep -Fq "hostname: $expected_host" <<<"$expected_rule"
+    grep -Fq 'service: http://127.0.0.1:8080' <<<"$expected_rule"
+
+    local catch_all_rule
+    catch_all_rule="$(
+        "$cloudflared_command" tunnel \
+            --config "$config" \
+            ingress rule 'https://ores-unmatched.invalid/'
+    )"
+    grep -Fq 'service: http_status:404' <<<"$catch_all_rule"
+
+    if [[ "$mode" == "codespace" ]]; then
+        local oresc_command
+        oresc_command="$(command -v oresc || true)"
+        if [[ -z "$oresc_command" ]]; then
+            echo "required command is unavailable: oresc" >&2
+            return 127
+        fi
+
+        set +e
+        "$oresc_command" --no-json codespace edge status
+        local status="$?"
+        set -e
+        if (( status != 0 && status != 2 )); then
+            echo "oresc codespace edge status failed with exit code $status" >&2
+            return "$status"
+        fi
+    fi
+}
+
 # On macOS, keep a developer laptop awake while the tunnel supervisor is
-# attached. The Rust runtime remains authoritative for config validation and
-# cloudflared invocation; this wrapper only owns host sleep/restart behavior.
+# attached. The Rust runtime remains authoritative for its own admission and
+# cloudflared invocation; this wrapper owns host sleep and restart policy.
 if [[ "$mode" == "laptop" ]] \
     && [[ "$(uname -s)" == "Darwin" ]] \
     && command -v caffeinate >/dev/null 2>&1 \
@@ -35,15 +271,42 @@ fi
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+admit_tunnel
+
+restart_count=0
 while true; do
+    started_at="$(date +%s)"
+
     set +e
-    cargo run \
+    "$cargo_command" run \
         --locked \
         --manifest-path "$root/tools/dev-runtime/Cargo.toml" \
         -- tunnel "$mode" "$config"
     status="$?"
     set -e
 
-    echo "tunnel process exited with status $status; restarting in 2 seconds..." >&2
-    sleep 2
+    if (( status == 0 )); then
+        exit 0
+    fi
+
+    ended_at="$(date +%s)"
+    elapsed=$((ended_at - started_at))
+    if (( elapsed >= stable_seconds )); then
+        restart_count=0
+    fi
+
+    # Re-run deterministic admission before treating the connector failure as
+    # transient. Config/tooling drift stops here instead of becoming a loop.
+    admit_tunnel
+
+    if (( restart_count >= max_restarts )); then
+        echo "tunnel process exited with status $status; restart budget exhausted after $restart_count retries" >&2
+        exit "$status"
+    fi
+
+    restart_count=$((restart_count + 1))
+    delay="$(backoff_delay "$restart_count" "$backoff_cap_seconds")"
+
+    echo "tunnel process exited with status $status; retry $restart_count/$max_restarts in ${delay}s..." >&2
+    sleep "$delay"
 done

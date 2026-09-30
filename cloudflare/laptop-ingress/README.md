@@ -40,9 +40,22 @@ web.zed-pkg.pr-481.local.indiebuild.dev
 
 Do not publish those deeper names until the zone has Total TLS or a reviewed advanced/custom certificate that actually covers them.
 
-## Cloudflare Tunnel
+## Cloudflare Tunnel authority
 
-`config.example.yml` is intentionally safe-by-default:
+The managed lifecycle (`just codespace-edge-up` -> `oresc codespace edge up`) uses a **remotely managed Cloudflare Tunnel**. This is the one supported authority for automated laptop ingress:
+
+- `TUNNEL_TOKEN` is the canonical connector credential; `CF_TUNNEL_TOKEN` is compatibility input only;
+- the token is supplied through the process environment and is never placed on argv or committed to Git;
+- hostname/origin routing is configured remotely in Cloudflare/Terraform and must route `local.indiebuild.dev` to `http://127.0.0.1:8080`;
+- Cloudflare Access policy is managed remotely and must protect the browser/control-plane hostname;
+- `oresc` verifies a compatible `cloudflared`, starts only after the local origin is ready, strips bootstrap credentials from long-running children, and owns connector teardown through its recorded process identity;
+- `just codespace-edge-up` fails before starting any local layer if neither tunnel-token environment variable is present.
+
+Cloudflare recommends remotely managed tunnels for most deployments because configuration can be managed through the dashboard, API, or Terraform. Retrieve the connector token from the tunnel's **Add a replica** flow or the Cloudflare Tunnel token API, then inject it through the approved local secret mechanism. Treat the token as a secret: anyone holding it can run a connector for that tunnel.
+
+`config.example.yml` is retained only as a clearly marked **manual/legacy locally-managed alternative**. The managed `just`/`oresc` lifecycle does not read it. Do not assume copying that file to `~/.config/gha-indie-worker/cloudflared.yml` changes what `oresc` runs.
+
+For a deliberate manual locally-managed tunnel, the example remains fail-closed:
 
 - only `local.indiebuild.dev` reaches the laptop;
 - the local origin is `127.0.0.1:8080`, never `0.0.0.0`;
@@ -51,9 +64,27 @@ Do not publish those deeper names until the zone has Total TLS or a reviewed adv
 - Cloudflare Access is checked at the edge and again by `cloudflared` before origin forwarding;
 - the real tunnel credentials path/token is never stored in Git.
 
-Copy the example outside the repo and substitute the tunnel UUID, Access team name, and Access AUD. `terraform/cloudflare/laptop-ingress.tf` creates the proxied first-level DNS record and Access application when `laptop_tunnel_cname` is configured.
+## Terraform ownership
 
-The CNAME target (`<uuid>.cfargotunnel.com`) and Access AUD are identifiers rather than credentials. The tunnel credential JSON/token remains secret and local to the machine.
+`modules/cloudflare/platform/laptop-ingress.tf` owns the proxied first-level DNS record and Access application when `laptop_tunnel_cname` is configured. DNS is not the tunnel ingress configuration: a connector token plus `<uuid>.cfargotunnel.com` record still needs a remote hostname-to-service rule.
+
+For a tunnel dedicated exclusively to this laptop ingress, set:
+
+```hcl
+laptop_tunnel_cname                    = "<uuid>.cfargotunnel.com"
+laptop_manage_dedicated_tunnel_config = true
+```
+
+Terraform then owns the tunnel's **complete** remote ingress list:
+
+```text
+local.indiebuild.dev -> http://127.0.0.1:8080
+catch-all            -> http_status:404
+```
+
+Do not enable that flag for a shared tunnel: the Cloudflare tunnel-config resource owns the entire ingress list and would replace unrelated dashboard/API-managed routes. When the flag is false, the remote tunnel config is deliberately external state and must be verified separately.
+
+The CNAME target/tunnel UUID and Access AUD are identifiers rather than credentials. Connector tokens and locally-managed credential JSON remain secret and are not Terraform outputs.
 
 ## Laptop gateway requirements
 
@@ -70,11 +101,7 @@ The `gha-indie-worker` server must enforce all of these even if Cloudflare is by
 9. Wait for the per-session LB readiness endpoint before forwarding; select healthy replicas only.
 10. Preserve WebSocket/SSE/streaming semantics explicitly rather than forwarding arbitrary `Connection` headers.
 
-These invariants are implemented/tracked in:
-
-- `gha-indie-worker/gha-indie-worker-api-server.rs#21`
-- `ORESoftware/ores-compose#2` and its hardened session-core PR
-- `ORESoftware/ores-edge-router` for the shared Cloudflare Worker trust boundary
+The shared Rust edge still has explicit follow-up work for authenticated edge metadata and streaming/WebSocket support; those are tracked separately rather than hidden inside the tunnel-recovery patch.
 
 ## Webhooks are a separate surface
 
@@ -82,11 +109,4 @@ Do **not** weaken Access on `local.indiebuild.dev` just because GitHub or anothe
 
 ## Deployment inputs
 
-Terraform emits:
-
-- `laptop_ingress.hostname`
-- `laptop_ingress.access_aud`
-- `edge_router_access_verification.team_domain`
-- the per-host Access audiences used by the shared edge Worker
-
-The hardened edge Worker must receive the trusted team-domain and AUD mapping as deployment variables. Never select a JWKS URL or accepted audience from claims inside an unverified token.
+Terraform emits non-secret laptop ingress metadata including hostname, tunnel ID/target, loopback origin contract, whether tunnel configuration is Terraform-managed, and Access AUD. The hardened edge Worker must receive trusted team-domain/AUD mapping from deployment configuration; never select a JWKS URL or accepted audience from claims inside an unverified token.

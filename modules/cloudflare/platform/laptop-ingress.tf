@@ -11,7 +11,7 @@
 # is enabled first.
 
 variable "laptop_tunnel_cname" {
-  description = "Cloudflare Tunnel target (<uuid>.cfargotunnel.com) for the laptop gateway. Empty disables public laptop ingress. The tunnel UUID/target is not a secret; its credentials file/token is."
+  description = "Cloudflare Tunnel target (<uuid>.cfargotunnel.com) for the laptop gateway. Empty disables public laptop ingress. The tunnel UUID/target is not a secret; its connector token is."
   type        = string
   default     = ""
 
@@ -21,6 +21,17 @@ variable "laptop_tunnel_cname" {
       var.laptop_tunnel_cname
     ))
     error_message = "laptop_tunnel_cname must be empty or <uuid>.cfargotunnel.com."
+  }
+}
+
+variable "laptop_manage_dedicated_tunnel_config" {
+  description = "Manage the remote ingress configuration for laptop_tunnel_cname. Enable only when that tunnel is dedicated to local.<zone>; Terraform will own its complete ingress list (local hostname -> 127.0.0.1:8080, then 404)."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.laptop_manage_dedicated_tunnel_config || var.laptop_tunnel_cname != ""
+    error_message = "laptop_manage_dedicated_tunnel_config requires laptop_tunnel_cname."
   }
 }
 
@@ -58,6 +69,31 @@ variable "access_team_domain" {
 locals {
   laptop_ingress_enabled  = var.laptop_tunnel_cname != ""
   laptop_ingress_hostname = "${var.laptop_ingress_subdomain}.${var.zone_name}"
+  laptop_tunnel_id        = local.laptop_ingress_enabled ? trimsuffix(var.laptop_tunnel_cname, ".cfargotunnel.com") : null
+  laptop_origin_service   = "http://127.0.0.1:8080"
+}
+
+# A remotely managed connector token only identifies/authenticates the tunnel;
+# it does not by itself define which hostname reaches which local service.
+# When this is a dedicated laptop tunnel, Terraform can own that remote ingress
+# rule too, eliminating dashboard-only drift as a source of public 502s.
+resource "cloudflare_zero_trust_tunnel_cloudflared_config" "laptop_ingress" {
+  count = local.laptop_ingress_enabled && var.laptop_manage_dedicated_tunnel_config ? 1 : 0
+
+  account_id = var.cloudflare_account_id
+  tunnel_id  = local.laptop_tunnel_id
+
+  config = {
+    ingress = [
+      {
+        hostname = local.laptop_ingress_hostname
+        service  = local.laptop_origin_service
+      },
+      {
+        service = "http_status:404"
+      }
+    ]
+  }
 }
 
 resource "cloudflare_dns_record" "laptop_ingress" {
@@ -69,7 +105,7 @@ resource "cloudflare_dns_record" "laptop_ingress" {
   content = var.laptop_tunnel_cname
   proxied = true
   ttl     = 1
-  comment = "managed by terraform/cloudflare — protected laptop gha-indie-worker / ores-compose tunnel"
+  comment = "managed by Terraform — protected laptop gha-indie-worker / ores-compose tunnel"
 }
 
 resource "cloudflare_zero_trust_access_application" "laptop_ingress" {
@@ -94,11 +130,14 @@ resource "cloudflare_zero_trust_access_application" "laptop_ingress" {
 }
 
 output "laptop_ingress" {
-  description = "Public laptop ingress contract. The Access AUD is needed by cloudflared's optional second JWT check."
+  description = "Public laptop ingress contract. Connector credentials remain secret and are not Terraform outputs."
   value = {
-    enabled       = local.laptop_ingress_enabled
-    hostname      = local.laptop_ingress_hostname
-    tunnel_target = var.laptop_tunnel_cname != "" ? var.laptop_tunnel_cname : null
+    enabled               = local.laptop_ingress_enabled
+    hostname              = local.laptop_ingress_hostname
+    tunnel_id             = local.laptop_tunnel_id
+    tunnel_target         = var.laptop_tunnel_cname != "" ? var.laptop_tunnel_cname : null
+    origin_service        = local.laptop_origin_service
+    tunnel_config_managed = local.laptop_ingress_enabled && var.laptop_manage_dedicated_tunnel_config
     access_aud = (
       local.laptop_ingress_enabled && var.laptop_ingress_require_access
       ? cloudflare_zero_trust_access_application.laptop_ingress[0].aud
@@ -112,9 +151,9 @@ output "edge_router_access_verification" {
   value = {
     team_domain = var.access_team_domain
     audiences = {
-      admin       = cloudflare_zero_trust_access_application.admin["admin"].aud
-      admin-api   = cloudflare_zero_trust_access_application.admin["admin-api"].aud
-      __status    = cloudflare_zero_trust_access_application.router_status.aud
+      admin     = cloudflare_zero_trust_access_application.admin["admin"].aud
+      admin-api = cloudflare_zero_trust_access_application.admin["admin-api"].aud
+      __status  = cloudflare_zero_trust_access_application.router_status.aud
     }
   }
 }

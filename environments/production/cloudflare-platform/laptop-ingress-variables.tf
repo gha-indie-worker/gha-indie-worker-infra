@@ -9,6 +9,17 @@ variable "laptop_tunnel_cname" {
   }
 }
 
+variable "laptop_manage_dedicated_tunnel_config" {
+  description = "Let Terraform own the complete remote ingress list for the dedicated laptop tunnel. Enable only for a tunnel used exclusively by local.<zone>."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.laptop_manage_dedicated_tunnel_config || var.laptop_tunnel_cname != ""
+    error_message = "laptop_manage_dedicated_tunnel_config requires laptop_tunnel_cname."
+  }
+}
+
 variable "laptop_ingress_subdomain" {
   description = "First-level hostname used for protected laptop path routing."
   type        = string
