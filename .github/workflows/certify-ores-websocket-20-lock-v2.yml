@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      EXPECTED_SHA: faf29e616bb3cafc7f589012c178bec55740dd97
+      EXPECTED_SHA: 21e2695ebd11df6b427b63a4f14c03baa5772a8c
       EXPECTED_BASE_SHA: 3da5602b7c645a886eb23b2b33ab3f6e8296b0b3
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -29,7 +29,7 @@ jobs:
           path: ores-websocket
           persist-credentials: false
           fetch-depth: 16
-      - name: Assert exact three-file current-main surface
+      - name: Assert exact current-main hardening surface
         working-directory: ores-websocket
         shell: bash
         run: |
@@ -38,11 +38,13 @@ jobs:
           git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
           git diff --check "$EXPECTED_BASE_SHA"..HEAD
           mapfile -t files < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)
-          test "${#files[@]}" -eq 3
+          test "${#files[@]}" -eq 4
+          printf '%s\n' "${files[@]}" | grep -Fx 'Cargo.lock'
           printf '%s\n' "${files[@]}" | grep -Fx 'src/admission.rs'
           printf '%s\n' "${files[@]}" | grep -Fx 'src/rpc_session.rs'
           printf '%s\n' "${files[@]}" | grep -Fx 'src/axum_support.rs'
-          test ! -e Cargo.lock
+          test -s Cargo.lock
+          test "$(sha256sum Cargo.lock | awk '{print $1}')" = '8d77150f7e89b5249f504450a799dd9083c3886e45ae611d420f82dc147b3ed4'
       - name: Install declared Rust boundary
         shell: bash
         run: |
@@ -53,26 +55,6 @@ jobs:
       - name: Rustfmt
         working-directory: ores-websocket
         run: cargo fmt --all -- --check
-      - name: Generate missing lockfile candidate
-        working-directory: ores-websocket
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cargo generate-lockfile
-          cp Cargo.lock "${RUNNER_TEMP}/ores-websocket-20-Cargo.lock"
-          sha256sum Cargo.lock | tee "${RUNNER_TEMP}/ores-websocket-20-Cargo.lock.sha256"
-          echo 'Cargo.lock is missing from source; exact generated lockfile uploaded as evidence' >&2
-          exit 1
-      - name: Upload lockfile candidate
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: ores-websocket-20-lock-${{ env.EXPECTED_SHA }}
-          path: |
-            ${{ runner.temp }}/ores-websocket-20-Cargo.lock
-            ${{ runner.temp }}/ores-websocket-20-Cargo.lock.sha256
-          if-no-files-found: error
-          retention-days: 7
       - name: Strict Clippy all features
         working-directory: ores-websocket
         run: cargo clippy --locked --all-targets --all-features -- -D warnings -A clippy::needless-return
@@ -82,7 +64,4 @@ jobs:
       - name: Assert source checkout stayed immutable
         if: always()
         working-directory: ores-websocket
-        shell: bash
-        run: |
-          rm -f Cargo.lock
-          test -z "$(git status --porcelain)"
+        run: test -z "$(git status --porcelain)"
