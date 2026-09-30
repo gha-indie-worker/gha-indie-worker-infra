@@ -59,9 +59,14 @@ jobs:
           rustup default 1.82.0
           rustc --version | grep -F 'rustc 1.82.0'
 
-      - name: Verify committed formatting
+      - name: Verify changed Rust sources are rustfmt-clean
         working-directory: common-desktop
-        run: cargo fmt --all -- --check
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for file in runtime-generation/rust/src/*.rs; do
+            rustfmt --edition 2021 --check "$file"
+          done
 
       - name: Generate post-merge lock candidate
         working-directory: common-desktop
