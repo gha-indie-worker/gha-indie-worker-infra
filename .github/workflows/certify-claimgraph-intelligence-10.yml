@@ -53,17 +53,19 @@ jobs:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
         run: gh auth setup-git
 
-      - name: Install pinned Rust
+      - name: Install verification and lock-surgery toolchains
         shell: bash
         run: |
           set -Eeuo pipefail
           rustup toolchain install 1.82.0 --profile minimal --component rustfmt,clippy
+          rustup toolchain install 1.85.0 --profile minimal
           rustup default 1.82.0
           rustc --version | grep -F 'rustc 1.82.0'
+          cargo +1.85.0 --version | grep -F 'cargo 1.85.0'
 
       - name: Verify changed source is rustfmt-clean
         working-directory: claimgraph-intelligence
-        run: rustfmt --edition 2021 --check src/regression.rs
+        run: rustfmt +1.82.0 --edition 2021 --check src/regression.rs
 
       - name: Locked check with diagnostic capture
         id: locked_check
@@ -72,7 +74,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          cargo check --locked --all-targets >"${RUNNER_TEMP}/locked-check.log" 2>&1
+          cargo +1.82.0 check --locked --all-targets >"${RUNNER_TEMP}/locked-check.log" 2>&1
           code=$?
           cat "${RUNNER_TEMP}/locked-check.log"
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
@@ -85,7 +87,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo 'Exact-head `cargo check --locked --all-targets` diagnostic:'
+            echo 'Exact-head Rust 1.82 `cargo check --locked --all-targets` diagnostic:'
             echo
             echo '```text'
             tail -n 120 "${RUNNER_TEMP}/locked-check.log"
@@ -96,19 +98,28 @@ jobs:
       - name: Repair Rust 1.82 lock compatibility and prove candidate
         id: repair_lock
         if: steps.locked_check.outputs.exit_code != '0'
+        continue-on-error: true
         working-directory: claimgraph-intelligence
         env:
           GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
         shell: bash
         run: |
-          set -Eeuo pipefail
-          git fetch origin "$SOURCE_BRANCH"
-          test "$(git rev-parse "origin/$SOURCE_BRANCH")" = "$EXPECTED_SHA"
-          cargo update -p base64ct --precise 1.7.3
-          test -n "$(git status --porcelain -- Cargo.lock)"
-          cargo check --locked --all-targets
-          cargo clippy --locked --all-targets -- -D warnings
-          cargo test --locked --all-targets
+          set +e
+          {
+            git fetch origin "$SOURCE_BRANCH" &&
+            test "$(git rev-parse "origin/$SOURCE_BRANCH")" = "$EXPECTED_SHA" &&
+            cargo +1.85.0 update -p base64ct --precise 1.7.3 &&
+            test -n "$(git status --porcelain -- Cargo.lock)" &&
+            cargo +1.82.0 check --locked --all-targets &&
+            cargo +1.82.0 clippy --locked --all-targets -- -D warnings &&
+            cargo +1.82.0 test --locked --all-targets
+          } >"${RUNNER_TEMP}/repair.log" 2>&1
+          code=$?
+          cat "${RUNNER_TEMP}/repair.log"
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          if test "$code" -ne 0; then
+            exit "$code"
+          fi
           lock_sha256="$(sha256sum Cargo.lock | awk '{print $1}')"
           git config user.name 'ORESoftware CI'
           git config user.email 'ci@users.noreply.github.com'
@@ -119,15 +130,30 @@ jobs:
           echo "repaired_sha=$repaired_sha" >> "$GITHUB_OUTPUT"
           echo "lock_sha256=$lock_sha256" >> "$GITHUB_OUTPUT"
 
+      - name: Publish repair diagnostic
+        if: steps.repair_lock.outputs.exit_code != '' && steps.repair_lock.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          {
+            echo 'Rust 1.82 lock compatibility repair diagnostic:'
+            echo
+            echo '```text'
+            tail -n 160 "${RUNNER_TEMP}/repair.log"
+            echo '```'
+          } > "${RUNNER_TEMP}/repair-diagnostic.md"
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file "${RUNNER_TEMP}/repair-diagnostic.md"
+
       - name: Strict Clippy on already-compatible lock
         if: steps.locked_check.outputs.exit_code == '0'
         working-directory: claimgraph-intelligence
-        run: cargo clippy --locked --all-targets -- -D warnings
+        run: cargo +1.82.0 clippy --locked --all-targets -- -D warnings
 
       - name: Locked tests on already-compatible lock
         if: steps.locked_check.outputs.exit_code == '0'
         working-directory: claimgraph-intelligence
-        run: cargo test --locked --all-targets
+        run: cargo +1.82.0 test --locked --all-targets
 
       - name: Report repaired source head
         if: steps.repair_lock.outputs.repaired_sha != ''
@@ -144,4 +170,5 @@ jobs:
           if test "${{ steps.locked_check.outputs.exit_code }}" = '0'; then
             exit 0
           fi
+          test "${{ steps.repair_lock.outputs.exit_code }}" = '0'
           test -n "${{ steps.repair_lock.outputs.repaired_sha }}"
