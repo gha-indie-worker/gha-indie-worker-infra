@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   certify:
@@ -15,15 +14,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      EXPECTED_SHA: 77781c7e4213020186b98c997ae2ec92f5893c0c
+      EXPECTED_SHA: 634d77271870ee4cb3ceb9680c33b01bdd67fbf8
       EXPECTED_BASE_SHA: dd10d9a8f107211663530a4e3223f5f1cc513e41
-      SOURCE_BRANCH: harden/ipc-identifier-traversal-20260930
+      EXPECTED_LOCK_SHA256: 10aa1591f7069d2c985bfffa176b12e1731f49b3a31322a6d2071a8d3d6aa0b4
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
 
-      - name: Checkout exact IPC hardening candidate
+      - name: Checkout exact repaired IPC hardening candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: ORESoftware/ores-common-desktop-infra
@@ -33,7 +32,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 32
 
-      - name: Assert exact focused review surface
+      - name: Assert exact review surface and deterministic lock
         working-directory: common-desktop
         shell: bash
         run: |
@@ -42,8 +41,10 @@ jobs:
           git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
           git diff --check "$EXPECTED_BASE_SHA"..HEAD
           mapfile -t files < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)
-          test "${#files[@]}" -eq 1
-          test "${files[0]}" = 'ipc/rust/src/lib.rs'
+          test "${#files[@]}" -eq 2
+          printf '%s\n' "${files[@]}" | grep -Fx 'Cargo.lock'
+          printf '%s\n' "${files[@]}" | grep -Fx 'ipc/rust/src/lib.rs'
+          test "$(sha256sum Cargo.lock | awk '{print $1}')" = "$EXPECTED_LOCK_SHA256"
 
       - name: Configure private Cargo Git reads
         working-directory: common-desktop
@@ -59,7 +60,7 @@ jobs:
           rustup default 1.82.0
           rustc --version | grep -F 'rustc 1.82.0'
 
-      - name: Classify inherited rustfmt drift
+      - name: Classify inherited rustfmt drift without hiding new drift
         working-directory: common-desktop
         shell: bash
         run: |
@@ -70,99 +71,50 @@ jobs:
           head_clean=1
           rustfmt --edition 2021 --check "${RUNNER_TEMP}/base.rs" || base_clean=0
           rustfmt --edition 2021 --check "${RUNNER_TEMP}/head.rs" || head_clean=0
-          printf 'base_rustfmt_clean=%s\nhead_rustfmt_clean=%s\n' "$base_clean" "$head_clean"
           if test "$base_clean" -eq 1; then
             test "$head_clean" -eq 1
           fi
-          rustfmt --edition 2021 "${RUNNER_TEMP}/base.rs"
           rustfmt --edition 2021 "${RUNNER_TEMP}/head.rs"
           grep -F 'value == "." || value == ".."' "${RUNNER_TEMP}/head.rs"
           grep -F 'fn rejects_dot_path_components_as_identifiers()' "${RUNNER_TEMP}/head.rs"
 
-      - name: Locked IPC check with diagnostic capture
-        id: locked_check
-        continue-on-error: true
+      - name: Verify lock is already deterministic
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-        shell: bash
-        run: |
-          set +e
-          cargo check --locked -p ores-common-desktop-ipc --all-targets >"${RUNNER_TEMP}/locked-check.log" 2>&1
-          code=$?
-          cat "${RUNNER_TEMP}/locked-check.log"
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          exit "$code"
-
-      - name: Publish locked-check diagnostic
-        if: steps.locked_check.outputs.exit_code != '0'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          {
-            echo 'Exact-head `cargo check --locked -p ores-common-desktop-ipc --all-targets` diagnostic:'
-            echo
-            echo '```text'
-            tail -n 120 "${RUNNER_TEMP}/locked-check.log"
-            echo '```'
-          } > "${RUNNER_TEMP}/diagnostic.md"
-          gh pr comment "${{ github.event.pull_request.number }}" --body-file "${RUNNER_TEMP}/diagnostic.md"
-
-      - name: Repair stale workspace lock and prove candidate
-        id: repair_lock
-        if: steps.locked_check.outputs.exit_code != '0'
-        working-directory: common-desktop
-        env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
         shell: bash
         run: |
           set -Eeuo pipefail
-          git fetch origin "$SOURCE_BRANCH"
-          test "$(git rev-parse "origin/$SOURCE_BRANCH")" = "$EXPECTED_SHA"
+          cp Cargo.lock "${RUNNER_TEMP}/Cargo.lock.before"
           cargo generate-lockfile
-          test -n "$(git status --porcelain -- Cargo.lock)"
-          cargo check --locked -p ores-common-desktop-ipc --all-targets
-          cargo clippy --locked -p ores-common-desktop-ipc --all-targets -- -D warnings -A clippy::needless-return
-          cargo test --locked -p ores-common-desktop-ipc --all-targets
-          lock_sha256="$(sha256sum Cargo.lock | awk '{print $1}')"
-          git config user.name 'ORESoftware CI'
-          git config user.email 'ci@users.noreply.github.com'
-          git add Cargo.lock
-          git commit -m 'build: refresh workspace lockfile for deterministic IPC checks'
-          repaired_sha="$(git rev-parse HEAD)"
-          git push origin "HEAD:$SOURCE_BRANCH"
-          echo "repaired_sha=$repaired_sha" >> "$GITHUB_OUTPUT"
-          echo "lock_sha256=$lock_sha256" >> "$GITHUB_OUTPUT"
+          cmp -s Cargo.lock "${RUNNER_TEMP}/Cargo.lock.before"
+          test "$(sha256sum Cargo.lock | awk '{print $1}')" = "$EXPECTED_LOCK_SHA256"
 
-      - name: Strict IPC Clippy on already-locked candidate
-        if: steps.locked_check.outputs.exit_code == '0'
+      - name: Locked IPC check
+        working-directory: common-desktop
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: cargo check --locked -p ores-common-desktop-ipc --all-targets
+
+      - name: Strict IPC Clippy
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo clippy --locked -p ores-common-desktop-ipc --all-targets -- -D warnings -A clippy::needless-return
 
-      - name: Locked IPC tests on already-locked candidate
-        if: steps.locked_check.outputs.exit_code == '0'
+      - name: Locked IPC tests
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo test --locked -p ores-common-desktop-ipc --all-targets
 
-      - name: Report repaired source head
-        if: steps.repair_lock.outputs.repaired_sha != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          gh pr comment "${{ github.event.pull_request.number }}" --body "Regenerated the stale source workspace lock only after exact-head check/Clippy/tests passed with it. Pushed source head \`${{ steps.repair_lock.outputs.repaired_sha }}\`; Cargo.lock SHA-256 \`${{ steps.repair_lock.outputs.lock_sha256 }}\`. Re-pin this carrier before promotion."
-
-      - name: Assert source result
+      - name: Restore and assert immutable source checkout
         if: always()
+        working-directory: common-desktop
         shell: bash
         run: |
-          if test "${{ steps.locked_check.outputs.exit_code }}" = '0'; then
-            exit 0
-          fi
-          test -n "${{ steps.repair_lock.outputs.repaired_sha }}"
+          set -Eeuo pipefail
+          git checkout -- Cargo.lock || true
+          git clean -fd -- target
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
