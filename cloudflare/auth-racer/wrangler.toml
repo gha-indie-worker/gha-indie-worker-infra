@@ -1,0 +1,14 @@
+name = "gha-indie-worker-auth-racer"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+workers_dev = false
+
+routes = [
+  { pattern = "auth.indiebuild.dev/*", zone_name = "indiebuild.dev" }
+]
+
+[vars]
+AUTH_RACE_TIMEOUT_MS = "1800"
+# Public origins only. Secrets/keys are injected with `wrangler secret put`.
+SUPABASE_URL = "https://qelemqszswrasjtgwfag.supabase.co"
+NEON_AUTH_ORIGIN = "https://api.indiebuild.dev"
