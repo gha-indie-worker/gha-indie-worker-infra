@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      GIW_SHA: b7274b3564cdf05d42b7ef92c3f02087ac6128f5
+      GIW_SHA: 2c3ed4dae06cb5a39420ae3b90dda5cf4be4721b
       LIBS_SHA: c8bdc06d74746acc6439f9527ebd02697fdf028b
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
