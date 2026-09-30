@@ -42,6 +42,7 @@ jobs:
           printf '%s\n' "${files[@]}" | grep -Fx 'src/admission.rs'
           printf '%s\n' "${files[@]}" | grep -Fx 'src/rpc_session.rs'
           printf '%s\n' "${files[@]}" | grep -Fx 'src/axum_support.rs'
+          test ! -e Cargo.lock
       - name: Install declared Rust boundary
         shell: bash
         run: |
@@ -52,19 +53,16 @@ jobs:
       - name: Rustfmt
         working-directory: ores-websocket
         run: cargo fmt --all -- --check
-      - name: Generate exact lockfile candidate
+      - name: Generate missing lockfile candidate
         working-directory: ores-websocket
         shell: bash
         run: |
           set -Eeuo pipefail
-          cp Cargo.lock "${RUNNER_TEMP}/ores-websocket-20-Cargo.lock.before"
           cargo generate-lockfile
           cp Cargo.lock "${RUNNER_TEMP}/ores-websocket-20-Cargo.lock"
           sha256sum Cargo.lock | tee "${RUNNER_TEMP}/ores-websocket-20-Cargo.lock.sha256"
-          if ! cmp -s Cargo.lock "${RUNNER_TEMP}/ores-websocket-20-Cargo.lock.before"; then
-            echo 'Cargo.lock is stale; exact generated lockfile uploaded as evidence' >&2
-            exit 1
-          fi
+          echo 'Cargo.lock is missing from source; exact generated lockfile uploaded as evidence' >&2
+          exit 1
       - name: Upload lockfile candidate
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -73,7 +71,7 @@ jobs:
           path: |
             ${{ runner.temp }}/ores-websocket-20-Cargo.lock
             ${{ runner.temp }}/ores-websocket-20-Cargo.lock.sha256
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
       - name: Strict Clippy all features
         working-directory: ores-websocket
@@ -86,5 +84,5 @@ jobs:
         working-directory: ores-websocket
         shell: bash
         run: |
-          git checkout -- Cargo.lock || true
+          rm -f Cargo.lock
           test -z "$(git status --porcelain)"
