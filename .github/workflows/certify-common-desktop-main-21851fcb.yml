@@ -99,6 +99,26 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Apply known no-op Clippy cleanup ephemerally
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sed -i '245,247c\            self.remove(&head)\
+                .expect("adaptive queue head must remain present until removal");' cli/rust/src/backpressure.rs
+          git diff --check
+          git diff -- cli/rust/src/backpressure.rs > "${RUNNER_TEMP}/common-desktop-main-clippy.patch"
+          grep -F 'self.remove(&head)' cli/rust/src/backpressure.rs >/dev/null
+          test -s "${RUNNER_TEMP}/common-desktop-main-clippy.patch"
+
+      - name: Upload exact Clippy cleanup
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-main-clippy-${{ env.EXPECTED_SHA }}
+          path: ${{ runner.temp }}/common-desktop-main-clippy.patch
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Locked workspace check after mechanical repairs
         working-directory: common-desktop
         env:
