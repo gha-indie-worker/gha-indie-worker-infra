@@ -119,19 +119,43 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Locked workspace check after mechanical repairs
+      - name: Remove stale duplicate Takoda runtime contract ephemerally
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(jq '[.contracts[] | select(.product_id == "takoda")] | length' fleet/runtime-contracts.json)" -eq 2
+          test "$(jq '[.contracts[] | select(has("daemon_port"))] | length' fleet/runtime-contracts.json)" -eq 1
+          jq 'del(.contracts[] | select(has("daemon_port")))' fleet/runtime-contracts.json > "${RUNNER_TEMP}/runtime-contracts.json"
+          mv "${RUNNER_TEMP}/runtime-contracts.json" fleet/runtime-contracts.json
+          test "$(jq '[.contracts[] | select(.product_id == "takoda")] | length' fleet/runtime-contracts.json)" -eq 1
+          test "$(jq '[.contracts[] | select(has("daemon_port"))] | length' fleet/runtime-contracts.json)" -eq 0
+          jq -e '.contracts[] | select(.product_id == "takoda") | .control.transport == "dynamic_loopback_tcp" and .control.bind == "127.0.0.1:0" and .control.legacy_port == 18087' fleet/runtime-contracts.json >/dev/null
+          git diff --check
+          git diff -- fleet/runtime-contracts.json > "${RUNNER_TEMP}/common-desktop-main-takoda.patch"
+          test -s "${RUNNER_TEMP}/common-desktop-main-takoda.patch"
+
+      - name: Upload Takoda contract repair
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-main-takoda-${{ env.EXPECTED_SHA }}
+          path: ${{ runner.temp }}/common-desktop-main-takoda.patch
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Locked workspace check after repairs
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo check --locked --workspace --all-targets
 
-      - name: Strict Clippy after mechanical repairs
+      - name: Strict Clippy after repairs
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo clippy --locked --workspace --all-targets -- -D warnings -A clippy::needless-return
 
-      - name: Locked workspace tests after mechanical repairs
+      - name: Locked workspace tests after repairs
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
