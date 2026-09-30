@@ -82,10 +82,9 @@ jobs:
       - name: Execute exact-head contract and Rust gates
         working-directory: source
         env:
-          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
           GIT_CONFIG_COUNT: '1'
-          GIT_CONFIG_KEY_0: 'url.https://x-access-token:${ORE_SOURCE_PAT}@github.com/.insteadOf'
+          GIT_CONFIG_KEY_0: 'url.https://x-access-token:${{ secrets.ORE_SOURCE_PAT }}@github.com/.insteadOf'
           GIT_CONFIG_VALUE_0: 'https://github.com/'
         shell: bash
         run: |
@@ -101,10 +100,9 @@ jobs:
       - name: Verify live PostgreSQL driver parity and owner isolation
         working-directory: source
         env:
-          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
           GIT_CONFIG_COUNT: '1'
-          GIT_CONFIG_KEY_0: 'url.https://x-access-token:${ORE_SOURCE_PAT}@github.com/.insteadOf'
+          GIT_CONFIG_KEY_0: 'url.https://x-access-token:${{ secrets.ORE_SOURCE_PAT }}@github.com/.insteadOf'
           GIT_CONFIG_VALUE_0: 'https://github.com/'
           PGHOST: 127.0.0.1
           PGDATABASE: canonical_test
@@ -126,10 +124,9 @@ jobs:
       - name: Clippy and immutable-source proof
         working-directory: source
         env:
-          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
           GIT_CONFIG_COUNT: '1'
-          GIT_CONFIG_KEY_0: 'url.https://x-access-token:${ORE_SOURCE_PAT}@github.com/.insteadOf'
+          GIT_CONFIG_KEY_0: 'url.https://x-access-token:${{ secrets.ORE_SOURCE_PAT }}@github.com/.insteadOf'
           GIT_CONFIG_VALUE_0: 'https://github.com/'
         shell: bash
         run: |
