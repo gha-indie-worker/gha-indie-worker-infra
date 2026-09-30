@@ -27,6 +27,7 @@ jobs:
         with:
           repository: ores-forms/ores-forms-interfaces
           ref: b53f76d74b15484a5b8b7f72f5575b7fc414657e
+          token: ${{ secrets.ORE_SOURCE_PAT }}
           path: source
           persist-credentials: false
           show-progress: false
@@ -99,6 +100,7 @@ jobs:
         with:
           repository: ores-forms/ores-forms-interfaces
           ref: b53f76d74b15484a5b8b7f72f5575b7fc414657e
+          token: ${{ secrets.ORE_SOURCE_PAT }}
           path: source
           persist-credentials: false
           show-progress: false
