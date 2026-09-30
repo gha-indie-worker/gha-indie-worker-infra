@@ -1,0 +1,80 @@
+name: certify ClaimGraph intelligence #10
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-claimgraph-intelligence-10.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-claimgraph-intelligence-10-20260930'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXPECTED_SHA: 4c17645be6f4e3db9e5a550ab54b293152a16a71
+      EXPECTED_BASE_SHA: 22032cae30386f073d07c9b0166be583550ee72d
+      EXPECTED_BLOB_SHA: fb8b5fdb6602725768364ef268fd7153bf033fec
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact ClaimGraph candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ClaimGraph/claimgraph-intelligence.rs
+          ref: ${{ env.EXPECTED_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: claimgraph-intelligence
+          persist-credentials: false
+          fetch-depth: 32
+
+      - name: Assert exact focused review surface and blob
+        working-directory: claimgraph-intelligence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
+          git diff --check "$EXPECTED_BASE_SHA"..HEAD
+          mapfile -t files < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)
+          test "${#files[@]}" -eq 1
+          test "${files[0]}" = 'src/regression.rs'
+          test "$(git hash-object src/regression.rs)" = "$EXPECTED_BLOB_SHA"
+
+      - name: Install pinned Rust
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.82.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.82.0
+          rustc --version | grep -F 'rustc 1.82.0'
+
+      - name: Verify changed source is rustfmt-clean
+        working-directory: claimgraph-intelligence
+        run: rustfmt --edition 2021 --check src/regression.rs
+
+      - name: Locked check
+        working-directory: claimgraph-intelligence
+        run: cargo check --locked --all-targets
+
+      - name: Strict Clippy
+        working-directory: claimgraph-intelligence
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Locked tests
+        working-directory: claimgraph-intelligence
+        run: cargo test --locked --all-targets
+
+      - name: Assert immutable source checkout
+        if: always()
+        working-directory: claimgraph-intelligence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git clean -fd -- target
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
