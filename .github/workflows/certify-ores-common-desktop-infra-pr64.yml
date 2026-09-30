@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ORESoftware/ores-common-desktop-infra
-          ref: 432c768c5141055aba6b23fdc8a799319d854b68
+          ref: 0ccaf83d32fb5bf901dce9b056f660028667d9af
           token: ${{ secrets.ORE_SOURCE_PAT }}
           path: source
           persist-credentials: false
@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C source rev-parse HEAD)" = "432c768c5141055aba6b23fdc8a799319d854b68"
+          test "$(git -C source rev-parse HEAD)" = "0ccaf83d32fb5bf901dce9b056f660028667d9af"
           git -C source diff --check
           test -f source/daemon/rust/src/hot_reload_policy.rs
       - name: Install declared Rust toolchain
@@ -63,4 +63,4 @@ jobs:
           set -euo pipefail
           cargo +1.82.0 clippy --locked -p ores-common-desktop-daemon --all-targets -- -D warnings -A clippy::needless-return
           git diff --exit-code
-          test "$(git rev-parse HEAD)" = "432c768c5141055aba6b23fdc8a799319d854b68"
+          test "$(git rev-parse HEAD)" = "0ccaf83d32fb5bf901dce9b056f660028667d9af"
