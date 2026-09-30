@@ -14,8 +14,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      EXPECTED_SHA: 7d62c6f57e96f2a45befe67a66a156e6d35cd4e1
+      EXPECTED_SHA: 06c39f4a1f44b9c4aedd668b853aca55d98c6ea0
       EXPECTED_BASE_SHA: e317a089248e81f161e9b4472bf838f7221e48a2
+      EXPECTED_LOCK_SHA256: 6b8bd3751c49ce03d9b6d656d81c9b08f28ec0458bfda87725a4df7f56f31134
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -40,10 +41,12 @@ jobs:
           git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
           git diff --check "$EXPECTED_BASE_SHA"..HEAD
           mapfile -t files < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)
-          test "${#files[@]}" -eq 20
+          test "${#files[@]}" -eq 21
+          printf '%s\n' "${files[@]}" | grep -Fx 'Cargo.lock'
           printf '%s\n' "${files[@]}" | grep -Fx 'Cargo.toml'
           test "$(printf '%s\n' "${files[@]}" | grep -Ec '^(runtime-generation/|runtime/contracts/|runtime/conformance/|docs/runtime-(generation|activation)-contract\.md$)')" -eq 19
           ! printf '%s\n' "${files[@]}" | grep -Eq '^(daemon/|desktop-app/|flutter/|ingress/|packaging/|router/)'
+          test "$(sha256sum Cargo.lock | awk '{print $1}')" = "$EXPECTED_LOCK_SHA256"
 
       - name: Configure private Cargo Git reads
         working-directory: common-desktop
@@ -68,7 +71,7 @@ jobs:
             rustfmt --edition 2021 --check "$file"
           done
 
-      - name: Generate post-merge lock candidate
+      - name: Verify deterministic committed lock
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
@@ -77,23 +80,8 @@ jobs:
           set -Eeuo pipefail
           cp Cargo.lock "${RUNNER_TEMP}/common-desktop-42-Cargo.lock.before"
           cargo generate-lockfile
-          cp Cargo.lock "${RUNNER_TEMP}/common-desktop-42-Cargo.lock"
-          sha256sum Cargo.lock | tee "${RUNNER_TEMP}/common-desktop-42-cargo-lock.sha256"
-          if ! cmp -s Cargo.lock "${RUNNER_TEMP}/common-desktop-42-Cargo.lock.before"; then
-            echo 'reconciled workspace Cargo.lock is stale; exact generated lockfile uploaded as evidence' >&2
-            exit 1
-          fi
-
-      - name: Upload lock candidate
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: common-desktop-42-lock-${{ env.EXPECTED_SHA }}
-          path: |
-            ${{ runner.temp }}/common-desktop-42-Cargo.lock
-            ${{ runner.temp }}/common-desktop-42-cargo-lock.sha256
-          if-no-files-found: warn
-          retention-days: 7
+          cmp -s Cargo.lock "${RUNNER_TEMP}/common-desktop-42-Cargo.lock.before"
+          test "$(sha256sum Cargo.lock | awk '{print $1}')" = "$EXPECTED_LOCK_SHA256"
 
       - name: Locked workspace check
         working-directory: common-desktop
