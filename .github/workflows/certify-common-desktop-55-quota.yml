@@ -60,14 +60,27 @@ jobs:
           rustup default 1.82.0
           rustc --version | grep -F 'rustc 1.82.0'
 
-      - name: Rustfmt changed Rust authorities
+      - name: Apply changed-authority rustfmt ephemerally
         working-directory: common-desktop
         shell: bash
         run: |
           set -Eeuo pipefail
-          rustfmt --edition 2021 --check quota/rust/src/lib.rs
-          rustfmt --edition 2021 --check admission/rust/src/lib.rs
-          rustfmt --edition 2021 --check conformance/rust/src/bin/validate_appliance_contract.rs
+          rustfmt --edition 2021 quota/rust/src/lib.rs
+          rustfmt --edition 2021 admission/rust/src/lib.rs
+          rustfmt --edition 2021 conformance/rust/src/bin/validate_appliance_contract.rs
+          git diff -- quota/rust/src/lib.rs admission/rust/src/lib.rs conformance/rust/src/bin/validate_appliance_contract.rs > "${RUNNER_TEMP}/quota-rustfmt.patch"
+          test -s "${RUNNER_TEMP}/quota-rustfmt.patch"
+          cp quota/rust/src/lib.rs "${RUNNER_TEMP}/quota-lib.rs"
+
+      - name: Upload exact quota rustfmt repair
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-55-rustfmt-${{ env.EXPECTED_SHA }}
+          path: |
+            ${{ runner.temp }}/quota-rustfmt.patch
+            ${{ runner.temp }}/quota-lib.rs
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Locked quota and admission checks
         working-directory: common-desktop
@@ -115,10 +128,14 @@ jobs:
           grep -F 'ARGV[' quota/redis/admit.lua >/dev/null
           grep -F 'redis.call' quota/redis/admit.lua >/dev/null
 
-      - name: Assert source checkout stayed immutable
+      - name: Restore exact source and assert immutability
         if: always()
         working-directory: common-desktop
         shell: bash
         run: |
+          set -Eeuo pipefail
           rm -rf .typespec-json-schema-validator
+          git checkout -- quota/rust/src/lib.rs admission/rust/src/lib.rs conformance/rust/src/bin/validate_appliance_contract.rs
+          git clean -fd -- target
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test -z "$(git status --porcelain)"
