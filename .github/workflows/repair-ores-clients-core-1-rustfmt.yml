@@ -1,0 +1,70 @@
+name: repair ores-clients-core 1 rustfmt
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/repair-ores-clients-core-1-rustfmt.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    if: github.head_ref == 'ci/certify-ore-exact-heads-20260922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_SHA: 64d653c2550f9ac3b7fd93e3bb1ad7a9e9834681
+      SOURCE_BRANCH: feat/contracts-conformance-tooling
+    steps:
+      - name: Checkout exact source head with scoped token
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-clients-core
+          ref: ${{ env.EXPECTED_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: subject
+          persist-credentials: true
+          fetch-depth: 1
+      - name: Assert exact source identity
+        working-directory: subject
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
+      - name: Install source CI Rust toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          components: rustfmt
+      - name: Apply rustfmt
+        working-directory: subject
+        run: cargo fmt --all
+      - name: Constrain formatter delta to PR-owned Rust files
+        working-directory: subject
+        run: |
+          set -Eeuo pipefail
+          allowed='^(src/(import|lib|main|model|render|strict)\.rs|tests/basic\.rs)$'
+          changed="$(git diff --name-only)"
+          test -n "$changed" || { echo 'rustfmt produced no delta'; exit 0; }
+          while IFS= read -r path; do
+            printf '%s\n' "$path" | grep -Eq "$allowed" || {
+              echo "refusing unrelated rustfmt change: $path" >&2
+              exit 1
+            }
+          done <<< "$changed"
+          git diff --check
+      - name: Commit formatting repair
+        working-directory: subject
+        run: |
+          set -Eeuo pipefail
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'ORESoftware'
+          git config user.email 'alex@oresoftware.com'
+          git add src/import.rs src/lib.rs src/main.rs src/model.rs src/render.rs src/strict.rs tests/basic.rs
+          git commit -m 'style: apply rustfmt to client tooling'
+      - name: Push fast-forward-only to source PR branch
+        working-directory: subject
+        run: |
+          set -Eeuo pipefail
+          if test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"; then exit 0; fi
+          git push origin "HEAD:refs/heads/$SOURCE_BRANCH"

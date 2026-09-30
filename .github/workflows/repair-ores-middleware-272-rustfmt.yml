@@ -1,0 +1,72 @@
+name: repair ores-middleware 272 rustfmt
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/repair-ores-middleware-272-rustfmt.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    if: github.head_ref == 'ci/certify-ore-exact-heads-20260922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_SHA: ad716ce2ca6dd5382a2eb065d1d0e28eb5b7f9c7
+      SOURCE_BRANCH: fix/edge-minimal-terminal-report-current-main-20260922
+    steps:
+      - name: Checkout exact source head with scoped token
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-middleware
+          ref: ${{ env.EXPECTED_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: subject
+          persist-credentials: true
+          fetch-depth: 1
+      - name: Assert exact source identity
+        working-directory: subject
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
+      - name: Install Rust 1.88
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.88.0 --profile minimal --component rustfmt
+          rustup default 1.88.0
+          rustc --version | grep -F 'rustc 1.88.0'
+      - name: Apply rustfmt
+        working-directory: subject/src/rust
+        run: cargo fmt --all
+      - name: Constrain formatter delta to PR-owned Rust files
+        working-directory: subject
+        run: |
+          set -Eeuo pipefail
+          allowed='^src/rust/src/(lib\.rs|hosts/(edge_minimal_lifecycle|mod)\.rs)$'
+          changed="$(git diff --name-only)"
+          test -n "$changed" || { echo 'rustfmt produced no delta'; exit 0; }
+          while IFS= read -r path; do
+            printf '%s\n' "$path" | grep -Eq "$allowed" || {
+              echo "refusing unrelated rustfmt change: $path" >&2
+              exit 1
+            }
+          done <<< "$changed"
+          git diff --check
+      - name: Commit formatting repair
+        working-directory: subject
+        run: |
+          set -Eeuo pipefail
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'ORESoftware'
+          git config user.email 'alex@oresoftware.com'
+          git add src/rust/src/lib.rs src/rust/src/hosts/mod.rs src/rust/src/hosts/edge_minimal_lifecycle.rs
+          git commit -m 'style(edge-minimal): apply rustfmt to terminal lifecycle'
+      - name: Push fast-forward-only to source PR branch
+        working-directory: subject
+        run: |
+          set -Eeuo pipefail
+          if test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"; then exit 0; fi
+          git push origin "HEAD:refs/heads/$SOURCE_BRANCH"
