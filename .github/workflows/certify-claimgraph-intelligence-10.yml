@@ -110,6 +110,7 @@ jobs:
             test "$(git rev-parse "origin/$SOURCE_BRANCH")" = "$EXPECTED_SHA" &&
             cargo +1.85.0 update -p base64ct --precise 1.7.3 &&
             cargo +1.85.0 update -p idna_adapter --precise 1.2.0 &&
+            cargo +1.85.0 update -p time --precise 0.3.44 &&
             test -n "$(git status --porcelain -- Cargo.lock)" &&
             cargo +1.82.0 check --locked --all-targets &&
             cargo +1.82.0 clippy --locked --all-targets -- -D warnings &&
@@ -141,7 +142,7 @@ jobs:
             echo 'Rust 1.82 lock compatibility repair diagnostic:'
             echo
             echo '```text'
-            tail -n 180 "${RUNNER_TEMP}/repair.log"
+            tail -n 200 "${RUNNER_TEMP}/repair.log"
             echo '```'
           } > "${RUNNER_TEMP}/repair-diagnostic.md"
           gh pr comment "${{ github.event.pull_request.number }}" --body-file "${RUNNER_TEMP}/repair-diagnostic.md"
