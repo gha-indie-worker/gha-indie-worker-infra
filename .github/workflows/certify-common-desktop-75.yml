@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   certify:
@@ -77,23 +78,54 @@ jobs:
           grep -F 'value == "." || value == ".."' "${RUNNER_TEMP}/head.rs"
           grep -F 'fn rejects_dot_path_components_as_identifiers()' "${RUNNER_TEMP}/head.rs"
 
-      - name: Locked IPC check
+      - name: Locked IPC check with diagnostic capture
+        id: locked_check
+        continue-on-error: true
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-        run: cargo check --locked -p ores-common-desktop-ipc --all-targets
+        shell: bash
+        run: |
+          set +e
+          cargo check --locked -p ores-common-desktop-ipc --all-targets >"${RUNNER_TEMP}/locked-check.log" 2>&1
+          code=$?
+          cat "${RUNNER_TEMP}/locked-check.log"
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+
+      - name: Publish locked-check diagnostic
+        if: steps.locked_check.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          {
+            echo 'Exact-head `cargo check --locked -p ores-common-desktop-ipc --all-targets` diagnostic:'
+            echo
+            echo '```text'
+            tail -n 120 "${RUNNER_TEMP}/locked-check.log"
+            echo '```'
+          } > "${RUNNER_TEMP}/diagnostic.md"
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file "${RUNNER_TEMP}/diagnostic.md"
 
       - name: Strict IPC Clippy
+        if: steps.locked_check.outputs.exit_code == '0'
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo clippy --locked -p ores-common-desktop-ipc --all-targets -- -D warnings -A clippy::needless-return
 
       - name: Locked IPC tests
+        if: steps.locked_check.outputs.exit_code == '0'
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: cargo test --locked -p ores-common-desktop-ipc --all-targets
+
+      - name: Enforce locked check
+        if: always()
+        shell: bash
+        run: test "${{ steps.locked_check.outputs.exit_code }}" = '0'
 
       - name: Assert immutable source checkout
         if: always()
