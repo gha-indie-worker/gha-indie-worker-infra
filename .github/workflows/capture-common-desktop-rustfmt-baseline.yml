@@ -1,0 +1,88 @@
+name: capture common desktop rustfmt baseline
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/capture-common-desktop-rustfmt-baseline.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    if: github.head_ref == 'ci/capture-common-desktop-rustfmt-baseline-20260930'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      EXPECTED_SHA: 87f8e87d5a4843d9dabcc062929e1272b8c16057
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact common desktop main
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-common-desktop-infra
+          ref: ${{ env.EXPECTED_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: common-desktop
+          persist-credentials: false
+          fetch-depth: 8
+
+      - name: Assert exact source
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git diff --check HEAD^
+
+      - name: Install declared Rust boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.82.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.82.0
+          rustc --version | grep -F 'rustc 1.82.0'
+
+      - name: Capture exact workspace rustfmt output
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --all
+          git diff -- '*.rs' > "${RUNNER_TEMP}/common-desktop-rustfmt-1.82.patch"
+          mapfile -t files < <(git diff --name-only -- '*.rs')
+          test "${#files[@]}" -gt 0
+          printf '%s\n' "${files[@]}" | tee "${RUNNER_TEMP}/common-desktop-rustfmt-files.txt"
+          mkdir -p "${RUNNER_TEMP}/formatted"
+          for file in "${files[@]}"; do
+            mkdir -p "${RUNNER_TEMP}/formatted/$(dirname "$file")"
+            cp "$file" "${RUNNER_TEMP}/formatted/$file"
+          done
+          echo 'Current main is not Rust 1.82 rustfmt-clean; exact patch/files uploaded as evidence.' >&2
+          exit 1
+
+      - name: Upload formatter evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-rustfmt-1.82-${{ env.EXPECTED_SHA }}
+          path: |
+            ${{ runner.temp }}/common-desktop-rustfmt-1.82.patch
+            ${{ runner.temp }}/common-desktop-rustfmt-files.txt
+            ${{ runner.temp }}/formatted
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Restore exact source and assert immutability
+        if: always()
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git checkout -- .
+          git clean -fd -- target
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
