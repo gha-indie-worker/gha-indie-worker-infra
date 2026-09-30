@@ -14,14 +14,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      EXPECTED_SHA: 23db8306e678a81a8f8f9f6b7375946b7a26667c
-      EXPECTED_BASE_SHA: 6c5a9d3dd3e58ab51274fc96addc4008f5d60ccb
+      EXPECTED_SHA: 7d62c6f57e96f2a45befe67a66a156e6d35cd4e1
+      EXPECTED_BASE_SHA: e317a089248e81f161e9b4472bf838f7221e48a2
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
 
-      - name: Checkout exact runtime-generation candidate
+      - name: Checkout exact reconciled runtime-generation candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: ORESoftware/ores-common-desktop-infra
@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 64
 
-      - name: Assert exact source and focused review surface
+      - name: Assert exact current-main review surface
         working-directory: common-desktop
         shell: bash
         run: |
@@ -39,10 +39,11 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
           git diff --check "$EXPECTED_BASE_SHA"..HEAD
-          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | wc -l | tr -d ' ')" -eq 20
-          git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Fx 'Cargo.toml'
-          test "$(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Ec '^(runtime-generation/|runtime/contracts/|runtime/conformance/|docs/runtime-(generation|activation)-contract\.md$)')" -eq 19
-          ! git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | grep -Eq '^(daemon/|desktop-app/|flutter/|ingress/|packaging/)'
+          mapfile -t files < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)
+          test "${#files[@]}" -eq 20
+          printf '%s\n' "${files[@]}" | grep -Fx 'Cargo.toml'
+          test "$(printf '%s\n' "${files[@]}" | grep -Ec '^(runtime-generation/|runtime/contracts/|runtime/conformance/|docs/runtime-(generation|activation)-contract\.md$)')" -eq 19
+          ! printf '%s\n' "${files[@]}" | grep -Eq '^(daemon/|desktop-app/|flutter/|ingress/|packaging/|router/)'
 
       - name: Configure private Cargo Git reads
         working-directory: common-desktop
@@ -58,39 +59,36 @@ jobs:
           rustup default 1.82.0
           rustc --version | grep -F 'rustc 1.82.0'
 
-      - name: Apply rustfmt ephemerally and capture exact patch
+      - name: Verify committed formatting
         working-directory: common-desktop
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          for file in runtime-generation/rust/src/*.rs; do
-            rustfmt --edition 2021 "$file"
-          done
-          git diff -- runtime-generation/rust/src > "${RUNNER_TEMP}/common-desktop-42-rustfmt.patch"
-          test -s "${RUNNER_TEMP}/common-desktop-42-rustfmt.patch"
-          echo 'Continuing semantic proof against exact source plus deterministic rustfmt-only working-tree repair.'
+        run: cargo fmt --all -- --check
 
-      - name: Upload rustfmt evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: common-desktop-42-rustfmt-${{ env.EXPECTED_SHA }}
-          path: |
-            ${{ runner.temp }}/common-desktop-42-rustfmt.patch
-            common-desktop/runtime-generation/rust/src/*.rs
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Generate deterministic lock candidate
+      - name: Generate post-merge lock candidate
         working-directory: common-desktop
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
+          cp Cargo.lock "${RUNNER_TEMP}/common-desktop-42-Cargo.lock.before"
           cargo generate-lockfile
-          sha256sum Cargo.lock | tee "${RUNNER_TEMP}/common-desktop-42-cargo-lock.sha256"
           cp Cargo.lock "${RUNNER_TEMP}/common-desktop-42-Cargo.lock"
+          sha256sum Cargo.lock | tee "${RUNNER_TEMP}/common-desktop-42-cargo-lock.sha256"
+          if ! cmp -s Cargo.lock "${RUNNER_TEMP}/common-desktop-42-Cargo.lock.before"; then
+            echo 'reconciled workspace Cargo.lock is stale; exact generated lockfile uploaded as evidence' >&2
+            exit 1
+          fi
+
+      - name: Upload lock candidate
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-42-lock-${{ env.EXPECTED_SHA }}
+          path: |
+            ${{ runner.temp }}/common-desktop-42-Cargo.lock
+            ${{ runner.temp }}/common-desktop-42-cargo-lock.sha256
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Locked workspace check
         working-directory: common-desktop
@@ -123,24 +121,13 @@ jobs:
           jq -e . runtime/conformance/route-precedence.v1.json >/dev/null
           jq -e . runtime/conformance/transaction.v1.json >/dev/null
 
-      - name: Upload lock candidate
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: common-desktop-42-lock-${{ env.EXPECTED_SHA }}
-          path: |
-            ${{ runner.temp }}/common-desktop-42-Cargo.lock
-            ${{ runner.temp }}/common-desktop-42-cargo-lock.sha256
-          if-no-files-found: warn
-          retention-days: 7
-
-      - name: Restore candidate and assert immutability
+      - name: Restore source and assert immutability
         if: always()
         working-directory: common-desktop
         shell: bash
         run: |
           set -Eeuo pipefail
-          git checkout -- runtime-generation/rust/src Cargo.lock || true
+          git checkout -- Cargo.lock || true
           git clean -fd -- target
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test -z "$(git status --porcelain)"
