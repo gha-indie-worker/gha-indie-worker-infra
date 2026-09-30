@@ -1,0 +1,81 @@
+name: certify ores-compose 177
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/certify-ores-compose-177.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+  SOURCE_REPO: ORESoftware/ores-compose
+  SOURCE_BRANCH: fix/refresh-locked-dependency-graph-20260922
+  SOURCE_BASE_SHA: '2e0d1488ca32371e4f410f95cf6886674b86876c'
+  SOURCE_HEAD_SHA: 'e364fd7453da96b23fbff6ae58e9a04f2226c99f'
+
+jobs:
+  certify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Configure exact private source access
+        shell: bash
+        env:
+          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "$ORE_SOURCE_PAT"
+          git config --global url."https://x-access-token:${ORE_SOURCE_PAT}@github.com/".insteadOf "https://github.com/"
+
+      - name: Fetch exact candidate and base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init source
+          git -C source remote add origin "https://github.com/${SOURCE_REPO}.git"
+          git -C source fetch --depth=4 origin "$SOURCE_HEAD_SHA" "$SOURCE_BASE_SHA"
+          git -C source checkout --detach "$SOURCE_HEAD_SHA"
+          test "$(git -C source rev-parse HEAD)" = "$SOURCE_HEAD_SHA"
+          test "$(git ls-remote "https://github.com/${SOURCE_REPO}.git" "refs/heads/${SOURCE_BRANCH}" | cut -f1)" = "$SOURCE_HEAD_SHA"
+          test "$(git -C source diff --name-only "$SOURCE_BASE_SHA" "$SOURCE_HEAD_SHA")" = 'Cargo.lock'
+          git -C source diff --check "$SOURCE_BASE_SHA" "$SOURCE_HEAD_SHA"
+
+      - name: Install repository Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update
+          rustup default 1.98.1
+          rustc --version
+          cargo --version
+
+      - name: Reproduce the resolver output from exact base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --no-checkout source resolver
+          git -C resolver checkout --detach "$SOURCE_BASE_SHA"
+          cd resolver
+          cargo metadata --format-version 1 > /dev/null
+          test "$(git diff --name-only)" = 'Cargo.lock'
+          cmp Cargo.lock ../source/Cargo.lock
+          git diff --check
+
+      - name: Prove candidate lock is frozen and production targets compile
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          cargo metadata --locked --format-version 1 > /dev/null
+          cargo check --locked --workspace --lib --bins
+          git diff --check
+          test -z "$(git status --porcelain)"
+          test "$(git ls-remote "https://github.com/${SOURCE_REPO}.git" "refs/heads/${SOURCE_BRANCH}" | cut -f1)" = "$SOURCE_HEAD_SHA"
