@@ -143,6 +143,50 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Harden reuse-key negative control structurally
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat > "${RUNNER_TEMP}/reuse-key-test.patch" <<'PATCH'
+          diff --git a/conformance/rust/src/bin/validate_runtime_contracts.rs b/conformance/rust/src/bin/validate_runtime_contracts.rs
+          --- a/conformance/rust/src/bin/validate_runtime_contracts.rs
+          +++ b/conformance/rust/src/bin/validate_runtime_contracts.rs
+          @@ -461,11 +461,17 @@ mod tests {
+               #[test]
+               fn tenant_generation_reuse_cannot_drop_generation_identity() {
+          -        let mutated = CONTRACTS.replacen(
+          -            "[\"tenant_id\", \"deployment_generation\"]",
+          -            "[\"tenant_id\"]",
+          -            1,
+          -        );
+          +        let mut contracts: Value = serde_json::from_str(CONTRACTS).expect("canonical contracts");
+          +        let contract = contracts["contracts"]
+          +            .as_array_mut()
+          +            .expect("contracts array")
+          +            .iter_mut()
+          +            .find(|entry| entry.get("product_id").and_then(Value::as_str) == Some("iso-lattes"))
+          +            .expect("iso-lattes contract");
+          +        contract["execution"]["reuse_key"] = serde_json::json!(["tenant_id"]);
+          +        let mutated = serde_json::to_string(&contracts).expect("serialize contracts");
+                   let error = validate_runtime_contracts_json(&mutated, PRODUCTS)
+                       .expect_err("reuse-key drift must fail");
+                   assert!(error.contains("tenant_id + deployment_generation"));
+          PATCH
+          git apply "${RUNNER_TEMP}/reuse-key-test.patch"
+          rustfmt --edition 2021 conformance/rust/src/bin/validate_runtime_contracts.rs
+          git diff --check
+          git diff -- conformance/rust/src/bin/validate_runtime_contracts.rs > "${RUNNER_TEMP}/common-desktop-main-runtime-test.patch"
+          test -s "${RUNNER_TEMP}/common-desktop-main-runtime-test.patch"
+
+      - name: Upload runtime negative-control repair
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-main-runtime-test-${{ env.EXPECTED_SHA }}
+          path: ${{ runner.temp }}/common-desktop-main-runtime-test.patch
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Locked workspace check after repairs
         working-directory: common-desktop
         env:
