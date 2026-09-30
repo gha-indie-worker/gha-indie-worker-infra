@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: canonical-cloud/canonical-orm-core
-          ref: 17f749963aa8fb3fcad956d41b3a6995fd003679
+          ref: 737079feea2c946fe536eeee224ae80d4da42f8c
           token: ${{ secrets.ORE_SOURCE_PAT }}
           path: source
           persist-credentials: false
@@ -67,7 +67,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$(git -C source rev-parse HEAD)" = "17f749963aa8fb3fcad956d41b3a6995fd003679"
+          test "$(git -C source rev-parse HEAD)" = "737079feea2c946fe536eeee224ae80d4da42f8c"
           test "$(git -C fixture rev-parse HEAD)" = "d74a51465395ea3d1f15936925cba1ca7cfcbdd8"
           git -C source diff --check
 
@@ -133,4 +133,4 @@ jobs:
           set -Eeuo pipefail
           cargo +1.95.0 clippy --all-targets --all-features --locked -- -D warnings
           git diff --exit-code
-          test "$(git rev-parse HEAD)" = "17f749963aa8fb3fcad956d41b3a6995fd003679"
+          test "$(git rev-parse HEAD)" = "737079feea2c946fe536eeee224ae80d4da42f8c"
