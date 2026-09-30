@@ -1,0 +1,237 @@
+name: certify ores-forms interfaces PR 8
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-ores-forms-interfaces-pr8.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ores-forms-interfaces-pr8-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  public-contracts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ores-forms/ores-forms-interfaces
+          ref: b53f76d74b15484a5b8b7f72f5575b7fc414657e
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: source
+          persist-credentials: false
+          show-progress: false
+          fetch-depth: 1
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "b53f76d74b15484a5b8b7f72f5575b7fc414657e"
+          git -C source diff --check
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.23.1'
+          package-manager-cache: false
+      - name: Run pinned flags-2-env and TJSV admission
+        working-directory: source
+        shell: bash
+        run: bash scripts/verify-contracts.sh
+      - name: Prove admission evidence is deterministic and provenance-bound
+        working-directory: source
+        shell: bash
+        env:
+          GITHUB_HEAD_SHA: b53f76d74b15484a5b8b7f72f5575b7fc414657e
+        run: |
+          set -euo pipefail
+          node scripts/write-admission-receipt.mjs "$RUNNER_TEMP/forms-admission-a.json"
+          node scripts/write-admission-receipt.mjs "$RUNNER_TEMP/forms-admission-b.json"
+          node --input-type=module - "$RUNNER_TEMP/forms-admission-a.json" "$RUNNER_TEMP/forms-admission-b.json" <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const a = readFileSync(process.argv[2]);
+          const b = readFileSync(process.argv[3]);
+          if (!a.equals(b)) throw new Error('admission receipt is not deterministic');
+          const receipt = JSON.parse(a);
+          if (receipt.mode !== 'resolved-admission') throw new Error('receipt mode must be resolved-admission');
+          if (!receipt.tools?.tjsv || !receipt.tools?.flags_2_env) throw new Error('tool provenance missing');
+          if (!receipt.inputs?.['contracts/typespec/main.tsp']) throw new Error('TypeSpec digest missing');
+          if (!receipt.inputs?.['contracts/json-schema/authored.schema.json']) throw new Error('authored JSON Schema digest missing');
+          NODE
+      - name: Prove manifest drift fails closed
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -R . "$RUNNER_TEMP/drift-fixture"
+          printf '\nORES_FORMS_UNDECLARED_DRIFT=\n' >> "$RUNNER_TEMP/drift-fixture/manifest.env"
+          tool_root="$RUNNER_TEMP/f2e-drift"
+          npm install --prefix "$tool_root" --no-save --no-package-lock \
+            "https://github.com/flags-2-env/flags-2-env/archive/333c2ace93c362d274171ab0e0edf613d96a8e59.tar.gz"
+          if "$tool_root/node_modules/.bin/flags2env" env-manifest check "$RUNNER_TEMP/drift-fixture" \
+            --manifest "$RUNNER_TEMP/drift-fixture/manifest.env" \
+            --cli "$RUNNER_TEMP/drift-fixture/.cli-flags.toml"; then
+            echo "expected stale-manifest control to fail" >&2
+            exit 1
+          fi
+      - name: Ensure exact source stayed clean
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          test "$(git rev-parse HEAD)" = "b53f76d74b15484a5b8b7f72f5575b7fc414657e"
+
+  linux-supplementary-gates:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ores-forms/ores-forms-interfaces
+          ref: b53f76d74b15484a5b8b7f72f5575b7fc414657e
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: source
+          persist-credentials: false
+          show-progress: false
+          fetch-depth: 1
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.23.1'
+          package-manager-cache: false
+      - name: Validate public JSON contract and required products
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m json.tool contracts/public-forms.v1.json >/dev/null
+          grep -F '"benefactor.quote"' contracts/public-forms.v1.json
+          grep -F '"hhaus.intake"' contracts/public-forms.v1.json
+          grep -F '"canonical.quote"' contracts/public-forms.v1.json
+          grep -F '"opto-sync.form.v1"' contracts/public-forms.v1.json
+      - name: Check conformance boundary
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check conformance/check.mjs
+          node conformance/check.mjs
+      - name: Exhaust bounded form contract state space
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from itertools import product
+          actions = ("field_a", "field_b", "publish", "clone_revision", "drop_a")
+          def step(state, action):
+              revision, fields, published = state
+              fields = set(fields)
+              if action == "clone_revision":
+                  return revision + 1, frozenset(fields), False
+              if action.startswith("field_") and not published:
+                  fields.add(action[-1])
+              elif action == "drop_a" and not published:
+                  fields.discard("a")
+              elif action == "publish" and fields:
+                  published = True
+              return revision, frozenset(fields), published
+          reached = set()
+          for trace in product(actions, repeat=5):
+              state = (0, frozenset(), False)
+              for action in trace:
+                  nxt = step(state, action)
+                  assert nxt[0] >= state[0], "schema revision regressed"
+                  assert len(nxt[1]) == len(set(nxt[1])), "duplicate field identity"
+                  if state[2] and nxt[0] == state[0]:
+                      assert nxt[1] == state[1] and nxt[2], "published schema mutated"
+                  state = nxt
+                  reached.add(state)
+          assert len(reached) >= 8
+          print(f"checked {len(reached)} form contract states")
+          PY
+      - name: Verify static ORES trace markers
+        working-directory: source
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const cp = require('node:child_process');
+          const path = require('node:path');
+          const sourceExts = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
+          const ignored = /(^|\/)(node_modules|dist|build|coverage|vendor|generated)(\/|$)/;
+          const files = cp.execFileSync('git', ['ls-files'], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean).filter((file) => sourceExts.has(path.extname(file)) && !ignored.test(file));
+          const failures = [];
+          for (const file of files) {
+            const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+            lines.forEach((line, index) => {
+              const lineNo = index + 1;
+              if (line.includes('dd-trace-')) failures.push(`${file}:${lineNo}: legacy dd-trace-* marker; use ores-trace-*`);
+              const staticCall = line.match(/\.(addTrace(?:Id)?)\(\s*(['"`])([^'"`]+)\2/);
+              if (staticCall && !/^ores-trace-[A-Za-z0-9_-]{12,64}$/.test(staticCall[3])) failures.push(`${file}:${lineNo}: literal ${staticCall[1]}() id must match ores-trace-[A-Za-z0-9_-]{12,64}`);
+              if (/\b(?:const|let|var)\s+\w*trace\w*\s*=\s*(['"`])ores-trace-[^'"`]+\1/i.test(line)) failures.push(`${file}:${lineNo}: static ores-trace-* ids belong inline in addTrace()/addTraceId(), not trace variables`);
+              const routine = line.match(/\bconst\s+routineId\s*=\s*(['"`])([^'"`]+)\1/);
+              if (routine && !/^ores-routine-[A-Za-z0-9_-]{12,64}$/.test(routine[2])) failures.push(`${file}:${lineNo}: routineId must match ores-routine-[A-Za-z0-9_-]{12,64}`);
+            });
+          }
+          if (failures.length) { console.error(failures.join('\n')); process.exit(1); }
+          console.log(`checked ${files.length} JS/TS source files for ORES trace marker conventions`);
+          NODE
+      - name: Prove one-sided TJSV drift controls fail closed
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tool_root="$RUNNER_TEMP/tjsv-drift"
+          npm install --prefix "$tool_root" --no-save --no-package-lock \
+            "https://github.com/ORESoftware/typespec-json-schema-validator/archive/c1b1ef213ffad78f1d037d73b658b4faad64bd24.tar.gz"
+          cp contracts/json-schema/authored.schema.json "$RUNNER_TEMP/drift.schema.json"
+          node --input-type=module - "$RUNNER_TEMP/drift.schema.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const p = process.argv[2];
+          const doc = JSON.parse(readFileSync(p, 'utf8'));
+          doc.$defs.QuestionKind.enum[0] = 'short-text-drift';
+          writeFileSync(p, JSON.stringify(doc, null, 2) + '\n');
+          NODE
+          if "$tool_root/node_modules/.bin/tjsv" check \
+            --typespec=contracts/typespec/main.tsp \
+            --schema="$RUNNER_TEMP/drift.schema.json" \
+            --instances=contracts/instances \
+            --report="$RUNNER_TEMP/drift-report.json" \
+            --output-dir="$RUNNER_TEMP/drift-generated"; then
+            echo "expected one-sided domain schema drift to fail" >&2
+            exit 1
+          fi
+          cp contracts/ores-forms-config/authored.schema.json "$RUNNER_TEMP/forms-config-drift.schema.json"
+          node --input-type=module - "$RUNNER_TEMP/forms-config-drift.schema.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const p = process.argv[2];
+          const doc = JSON.parse(readFileSync(p, 'utf8'));
+          doc.$defs.FormsConfigMode.enum[0] = 'client-drift';
+          writeFileSync(p, JSON.stringify(doc, null, 2) + '\n');
+          NODE
+          if "$tool_root/node_modules/.bin/tjsv" check \
+            --typespec=contracts/ores-forms-config/main.tsp \
+            --schema="$RUNNER_TEMP/forms-config-drift.schema.json" \
+            --instances=contracts/ores-forms-config/instances \
+            --report="$RUNNER_TEMP/forms-config-drift-report.json" \
+            --output-dir="$RUNNER_TEMP/forms-config-drift-generated"; then
+            echo "expected one-sided config schema drift to fail" >&2
+            exit 1
+          fi
+      - name: Verify exact clean source identity
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          test "$(git rev-parse HEAD)" = "b53f76d74b15484a5b8b7f72f5575b7fc414657e"
