@@ -40,15 +40,17 @@ jobs:
           git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
           git diff --check "$EXPECTED_BASE_SHA"..HEAD
           mapfile -t files < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)
-          test "${#files[@]}" -eq 17
+          test "${#files[@]}" -eq 14
           for path in \
             Cargo.lock Cargo.toml admission/README.md admission/rust/Cargo.toml admission/rust/src/lib.rs \
             capabilities.json conformance/rust/src/bin/validate_appliance_contract.rs distribution/rust-packages.json \
             quota/README.md quota/contracts/quota-policy.schema.json quota/contracts/quota-policy.tsp \
-            quota/redis/acquire_concurrency.lua quota/redis/admit.lua quota/redis/release_concurrency.lua quota/redis/renew_concurrency.lua \
-            quota/rust/Cargo.toml quota/rust/src/lib.rs; do
+            quota/redis/admit.lua quota/rust/Cargo.toml quota/rust/src/lib.rs; do
             printf '%s\n' "${files[@]}" | grep -Fx "$path"
           done
+          test ! -e quota/redis/acquire_concurrency.lua
+          test ! -e quota/redis/release_concurrency.lua
+          test ! -e quota/redis/renew_concurrency.lua
 
       - name: Install Rust 1.82
         shell: bash
@@ -103,15 +105,12 @@ jobs:
               --report="${RUNNER_TEMP}/quota-policy-parity.json"
           rm -rf .typespec-json-schema-validator
 
-      - name: Validate Redis scripts are bounded and single-slot documented
+      - name: Validate Redis atomic admission script
         working-directory: common-desktop
         shell: bash
         run: |
           set -Eeuo pipefail
           test -s quota/redis/admit.lua
-          test -s quota/redis/acquire_concurrency.lua
-          test -s quota/redis/release_concurrency.lua
-          test -s quota/redis/renew_concurrency.lua
           grep -F 'KEYS[' quota/redis/admit.lua >/dev/null
           grep -F 'ARGV[' quota/redis/admit.lua >/dev/null
           grep -F 'redis.call' quota/redis/admit.lua >/dev/null
