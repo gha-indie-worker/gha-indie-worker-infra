@@ -1,0 +1,160 @@
+name: certify common desktop #55 quota
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-common-desktop-55-quota.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-common-desktop-55-quota-20260930'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      EXPECTED_SHA: 253f019383ae947474bb978f9105e02749bf7968
+      EXPECTED_BASE_SHA: 1913481fe18cdc37635252970e052178d8187ff1
+      TJSV_SHA: dfe28b8a91e6555919a539dc607f4e1d5d183b4d
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact quota candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/ores-common-desktop-infra
+          ref: ${{ env.EXPECTED_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: common-desktop
+          persist-credentials: false
+          fetch-depth: 64
+
+      - name: Assert exact source and focused quota surface
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
+          git diff --check "$EXPECTED_BASE_SHA"..HEAD
+          mapfile -t files < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)
+          test "${#files[@]}" -eq 14
+          for path in \
+            Cargo.lock Cargo.toml admission/README.md admission/rust/Cargo.toml admission/rust/src/lib.rs \
+            capabilities.json conformance/rust/src/bin/validate_appliance_contract.rs distribution/rust-packages.json \
+            quota/README.md quota/contracts/quota-policy.schema.json quota/contracts/quota-policy.tsp \
+            quota/redis/admit.lua quota/rust/Cargo.toml quota/rust/src/lib.rs; do
+            printf '%s\n' "${files[@]}" | grep -Fx "$path"
+          done
+          test ! -e quota/redis/acquire_concurrency.lua
+          test ! -e quota/redis/release_concurrency.lua
+          test ! -e quota/redis/renew_concurrency.lua
+
+      - name: Install Rust 1.82
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup toolchain install 1.82.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.82.0
+          rustc --version | grep -F 'rustc 1.82.0'
+
+      - name: Apply changed-authority rustfmt ephemerally
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustfmt --edition 2021 quota/rust/src/lib.rs
+          rustfmt --edition 2021 admission/rust/src/lib.rs
+          rustfmt --edition 2021 conformance/rust/src/bin/validate_appliance_contract.rs
+          git diff -- quota/rust/src/lib.rs admission/rust/src/lib.rs conformance/rust/src/bin/validate_appliance_contract.rs > "${RUNNER_TEMP}/quota-rustfmt.patch"
+          test -s "${RUNNER_TEMP}/quota-rustfmt.patch"
+          cp quota/rust/src/lib.rs "${RUNNER_TEMP}/quota-lib.rs"
+
+      - name: Upload exact quota rustfmt repair
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: common-desktop-55-rustfmt-${{ env.EXPECTED_SHA }}
+          path: |
+            ${{ runner.temp }}/quota-rustfmt.patch
+            ${{ runner.temp }}/quota-lib.rs
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Locked quota and admission checks
+        working-directory: common-desktop
+        run: |
+          cargo check --locked -p ores-common-desktop-quota --all-targets
+          cargo check --locked -p ores-common-desktop-admission --all-targets
+          cargo check --locked -p ores-common-desktop-conformance --bin validate_appliance_contract
+
+      - name: Strict Clippy for quota and admission
+        working-directory: common-desktop
+        run: |
+          cargo clippy --locked -p ores-common-desktop-quota --all-targets -- -D warnings -A clippy::needless-return
+          cargo clippy --locked -p ores-common-desktop-admission --all-targets -- -D warnings -A clippy::needless-return
+
+      - name: Locked quota and admission tests
+        working-directory: common-desktop
+        run: |
+          cargo test --locked -p ores-common-desktop-quota --all-targets
+          cargo test --locked -p ores-common-desktop-admission --all-targets
+
+      - name: Set up Node 22.16
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.16.0
+
+      - name: Checkout pinned TJSV source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/typespec-json-schema-validator
+          ref: ${{ env.TJSV_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: tjsv
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install pinned TJSV dependencies and native flags parser
+        working-directory: tjsv
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm rebuild @oresoftware/f2e --foreground-scripts
+
+      - name: TJSV peer-authority parity
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C ../tjsv rev-parse HEAD)" = "$TJSV_SHA"
+          node ../tjsv/bin/typespec-json-schema-validator.mjs check \
+            --typespec=quota/contracts/quota-policy.tsp \
+            --schema=quota/contracts/quota-policy.schema.json \
+            --report="${RUNNER_TEMP}/quota-policy-parity.json"
+          rm -rf .typespec-json-schema-validator
+
+      - name: Validate Redis atomic admission script
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -s quota/redis/admit.lua
+          grep -F 'KEYS[' quota/redis/admit.lua >/dev/null
+          grep -F 'ARGV[' quota/redis/admit.lua >/dev/null
+          grep -F 'redis.call' quota/redis/admit.lua >/dev/null
+
+      - name: Restore exact source and assert immutability
+        if: always()
+        working-directory: common-desktop
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -rf .typespec-json-schema-validator
+          git checkout -- quota/rust/src/lib.rs admission/rust/src/lib.rs conformance/rust/src/bin/validate_appliance_contract.rs
+          git clean -fd -- target
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
