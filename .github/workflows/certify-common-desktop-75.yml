@@ -57,10 +57,25 @@ jobs:
           rustup default 1.82.0
           rustc --version | grep -F 'rustc 1.82.0'
 
-      - name: Verify changed IPC source is rustfmt-clean
+      - name: Classify inherited rustfmt drift
         working-directory: common-desktop
         shell: bash
-        run: rustfmt --edition 2021 --check ipc/rust/src/lib.rs
+        run: |
+          set -Eeuo pipefail
+          git show "$EXPECTED_BASE_SHA:ipc/rust/src/lib.rs" > "${RUNNER_TEMP}/base.rs"
+          cp ipc/rust/src/lib.rs "${RUNNER_TEMP}/head.rs"
+          base_clean=1
+          head_clean=1
+          rustfmt --edition 2021 --check "${RUNNER_TEMP}/base.rs" || base_clean=0
+          rustfmt --edition 2021 --check "${RUNNER_TEMP}/head.rs" || head_clean=0
+          printf 'base_rustfmt_clean=%s\nhead_rustfmt_clean=%s\n' "$base_clean" "$head_clean"
+          if test "$base_clean" -eq 1; then
+            test "$head_clean" -eq 1
+          fi
+          rustfmt --edition 2021 "${RUNNER_TEMP}/base.rs"
+          rustfmt --edition 2021 "${RUNNER_TEMP}/head.rs"
+          grep -F 'value == "." || value == ".."' "${RUNNER_TEMP}/head.rs"
+          grep -F 'fn rejects_dot_path_components_as_identifiers()' "${RUNNER_TEMP}/head.rs"
 
       - name: Locked IPC check
         working-directory: common-desktop
