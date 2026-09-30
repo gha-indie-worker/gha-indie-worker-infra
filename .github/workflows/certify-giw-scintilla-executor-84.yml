@@ -1,0 +1,95 @@
+name: certify GIW Scintilla executor #84
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-giw-scintilla-executor-84.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    if: github.head_ref == 'ci/certify-giw-scintilla-executor-84-20260928'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GIW_SHA: 2c3ed4dae06cb5a39420ae3b90dda5cf4be4721b
+      LIBS_SHA: c8bdc06d74746acc6439f9527ebd02697fdf028b
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Check out exact GIW source in canonical deployment layout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: gha-indie-worker/gha-indie-worker.rs
+          ref: ${{ env.GIW_SHA }}
+          path: remote/deployments/build-server-rs
+          persist-credentials: false
+
+      - name: Check out exact shared-libs gitlink
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ORESoftware/k8s-libs-and-shared-defs
+          ref: ${{ env.LIBS_SHA }}
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: remote/libs
+          persist-credentials: false
+
+      - name: Assert canonical dependency layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C remote/deployments/build-server-rs rev-parse HEAD)" = "$GIW_SHA"
+          test "$(git -C remote/libs rev-parse HEAD)" = "$LIBS_SHA"
+          test -f remote/libs/telemetry-rs/Cargo.toml
+          test -f remote/libs/runtime-config-client-rs/Cargo.toml
+          test -f remote/libs/nats/subject-defs/generated/rust/Cargo.toml
+
+      - name: Install Rust 1.98.1
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: 1.98.1
+          components: clippy
+
+      - name: Verify locked dependency graph
+        working-directory: remote/deployments/build-server-rs
+        run: cargo metadata --locked --format-version 1 > /dev/null
+
+      - name: Compile all targets
+        working-directory: remote/deployments/build-server-rs
+        run: cargo check --locked --all-targets
+
+      - name: Tests
+        working-directory: remote/deployments/build-server-rs
+        run: cargo test --locked --all-targets
+
+      - name: Strict Clippy
+        working-directory: remote/deployments/build-server-rs
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Assert Scintilla credential and execution boundaries
+        working-directory: remote/deployments/build-server-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F '.no_proxy()' src/scintilla_exec.rs
+          grep -F 'Policy::none()' src/scintilla_exec.rs
+          grep -F 'MAX_RESPONSE_BYTES' src/scintilla_exec.rs
+          grep -F 'BUILD_SERVER_SCINTILLA_AUTH_TOKEN' src/scintilla_exec.rs
+          grep -F 'fencingToken' src/scintilla_exec.rs
+          grep -F 'reuseWorkspace' src/scintilla_exec.rs
+          grep -F 'ephemeral' src/scintilla_exec.rs
+          ! grep -REn 'Command::|/bin/sh|bash -c|sh -c' src/scintilla_exec.rs
+
+      - name: Assert tracked sources remained immutable
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C remote/deployments/build-server-rs rev-parse HEAD)" = "$GIW_SHA"
+          test "$(git -C remote/libs rev-parse HEAD)" = "$LIBS_SHA"
+          git -C remote/deployments/build-server-rs diff --exit-code
+          git -C remote/libs diff --exit-code
