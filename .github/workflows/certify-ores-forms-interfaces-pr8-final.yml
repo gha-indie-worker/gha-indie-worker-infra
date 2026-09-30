@@ -1,0 +1,183 @@
+name: certify ores-forms interfaces PR 8 final
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-ores-forms-interfaces-pr8-final.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ores-forms-interfaces-pr8-final-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cross-platform-contracts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - name: Check out exact repaired source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ores-forms/ores-forms-interfaces
+          ref: 6cadcfd657a53433b898f986a78dff77e98322ca
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: source
+          persist-credentials: false
+          show-progress: false
+          fetch-depth: 1
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "6cadcfd657a53433b898f986a78dff77e98322ca"
+          git -C source diff --check
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.23.1'
+          package-manager-cache: false
+      - name: Run source-owned contract admission with private package fallback
+        working-directory: source
+        env:
+          GITHUB_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+          ZED_PKG_GITHUB_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+          ZED_PKG_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        shell: bash
+        run: bash scripts/verify-contracts.sh
+      - name: Prove deterministic receipt and manifest drift rejection
+        working-directory: source
+        env:
+          GITHUB_HEAD_SHA: 6cadcfd657a53433b898f986a78dff77e98322ca
+          GITHUB_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+          ZED_PKG_GITHUB_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+          ZED_PKG_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/write-admission-receipt.mjs "$RUNNER_TEMP/forms-admission-a.json"
+          node scripts/write-admission-receipt.mjs "$RUNNER_TEMP/forms-admission-b.json"
+          cmp "$RUNNER_TEMP/forms-admission-a.json" "$RUNNER_TEMP/forms-admission-b.json"
+          cp -R . "$RUNNER_TEMP/drift-fixture"
+          printf '\nORES_FORMS_UNDECLARED_DRIFT=\n' >> "$RUNNER_TEMP/drift-fixture/manifest.env"
+          tool_root="$RUNNER_TEMP/f2e-drift"
+          npm install --prefix "$tool_root" --no-save --no-package-lock \
+            "https://github.com/flags-2-env/flags-2-env/archive/333c2ace93c362d274171ab0e0edf613d96a8e59.tar.gz"
+          if "$tool_root/node_modules/.bin/flags2env" env-manifest check "$RUNNER_TEMP/drift-fixture" \
+            --manifest "$RUNNER_TEMP/drift-fixture/manifest.env" \
+            --cli "$RUNNER_TEMP/drift-fixture/.cli-flags.toml"; then
+            echo 'expected stale-manifest control to fail' >&2
+            exit 1
+          fi
+      - name: Verify exact clean source
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          test "$(git rev-parse HEAD)" = "6cadcfd657a53433b898f986a78dff77e98322ca"
+
+  supplementary-gates:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact repaired source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ores-forms/ores-forms-interfaces
+          ref: 6cadcfd657a53433b898f986a78dff77e98322ca
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: source
+          persist-credentials: false
+          show-progress: false
+          fetch-depth: 1
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.23.1'
+          package-manager-cache: false
+      - name: Check source conformance boundary under source CI identity
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check conformance/check.mjs
+          node --input-type=module -e "process.env.GITHUB_REPOSITORY='ores-forms/ores-forms-interfaces'; await import('./conformance/check.mjs');"
+      - name: Exhaust bounded form contract state space
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from itertools import product
+          actions = ('field_a', 'field_b', 'publish', 'clone_revision', 'drop_a')
+          def step(state, action):
+              revision, fields, published = state
+              fields = set(fields)
+              if action == 'clone_revision': return revision + 1, frozenset(fields), False
+              if action.startswith('field_') and not published: fields.add(action[-1])
+              elif action == 'drop_a' and not published: fields.discard('a')
+              elif action == 'publish' and fields: published = True
+              return revision, frozenset(fields), published
+          reached = set()
+          for trace in product(actions, repeat=5):
+              state = (0, frozenset(), False)
+              for action in trace:
+                  nxt = step(state, action)
+                  assert nxt[0] >= state[0]
+                  assert len(nxt[1]) == len(set(nxt[1]))
+                  if state[2] and nxt[0] == state[0]: assert nxt[1] == state[1] and nxt[2]
+                  state = nxt
+                  reached.add(state)
+          assert len(reached) >= 8
+          print(f'checked {len(reached)} form contract states')
+          PY
+      - name: Validate public JSON contract and trace policy
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m json.tool contracts/public-forms.v1.json >/dev/null
+          grep -F '"benefactor.quote"' contracts/public-forms.v1.json
+          grep -F '"hhaus.intake"' contracts/public-forms.v1.json
+          grep -F '"canonical.quote"' contracts/public-forms.v1.json
+          grep -F '"opto-sync.form.v1"' contracts/public-forms.v1.json
+          ! git grep -n 'dd-trace-' -- '*.js' '*.jsx' '*.ts' '*.tsx' '*.mjs' '*.cjs'
+      - name: Prove one-sided TJSV drift fails closed
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tool_root="$RUNNER_TEMP/tjsv-drift"
+          npm install --prefix "$tool_root" --no-save --no-package-lock \
+            "https://github.com/ORESoftware/typespec-json-schema-validator/archive/c1b1ef213ffad78f1d037d73b658b4faad64bd24.tar.gz"
+          cp contracts/json-schema/authored.schema.json "$RUNNER_TEMP/drift.schema.json"
+          node --input-type=module - "$RUNNER_TEMP/drift.schema.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const p = process.argv[2];
+          const doc = JSON.parse(readFileSync(p, 'utf8'));
+          doc.$defs.QuestionKind.enum[0] = 'short-text-drift';
+          writeFileSync(p, JSON.stringify(doc, null, 2) + '\n');
+          NODE
+          if "$tool_root/node_modules/.bin/tjsv" check \
+            --typespec=contracts/typespec/main.tsp \
+            --schema="$RUNNER_TEMP/drift.schema.json" \
+            --instances=contracts/instances \
+            --report="$RUNNER_TEMP/drift-report.json" \
+            --output-dir="$RUNNER_TEMP/drift-generated"; then
+            echo 'expected one-sided domain schema drift to fail' >&2
+            exit 1
+          fi
+      - name: Verify exact clean source
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          test "$(git rev-parse HEAD)" = "6cadcfd657a53433b898f986a78dff77e98322ca"
