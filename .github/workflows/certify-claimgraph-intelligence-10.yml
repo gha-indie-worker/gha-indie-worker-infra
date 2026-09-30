@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   certify:
@@ -57,17 +58,48 @@ jobs:
         working-directory: claimgraph-intelligence
         run: rustfmt --edition 2021 --check src/regression.rs
 
-      - name: Locked check
+      - name: Locked check with diagnostic capture
+        id: locked_check
+        continue-on-error: true
         working-directory: claimgraph-intelligence
-        run: cargo check --locked --all-targets
+        shell: bash
+        run: |
+          set +e
+          cargo check --locked --all-targets >"${RUNNER_TEMP}/locked-check.log" 2>&1
+          code=$?
+          cat "${RUNNER_TEMP}/locked-check.log"
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+
+      - name: Publish locked-check diagnostic
+        if: steps.locked_check.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          {
+            echo 'Exact-head `cargo check --locked --all-targets` diagnostic:'
+            echo
+            echo '```text'
+            tail -n 120 "${RUNNER_TEMP}/locked-check.log"
+            echo '```'
+          } > "${RUNNER_TEMP}/diagnostic.md"
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file "${RUNNER_TEMP}/diagnostic.md"
 
       - name: Strict Clippy
+        if: steps.locked_check.outputs.exit_code == '0'
         working-directory: claimgraph-intelligence
         run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: Locked tests
+        if: steps.locked_check.outputs.exit_code == '0'
         working-directory: claimgraph-intelligence
         run: cargo test --locked --all-targets
+
+      - name: Enforce locked check
+        if: always()
+        shell: bash
+        run: test "${{ steps.locked_check.outputs.exit_code }}" = '0'
 
       - name: Assert immutable source checkout
         if: always()
