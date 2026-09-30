@@ -1,0 +1,139 @@
+name: certify canonical ORM core PR 25
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-canonical-orm-core-pr25.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canonical-orm-core-pr25-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: canonical_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check protected source credential is available
+        env:
+          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "${ORE_SOURCE_PAT:-}"
+
+      - name: Check out exact canonical ORM source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: canonical-cloud/canonical-orm-core
+          ref: 17f749963aa8fb3fcad956d41b3a6995fd003679
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+          show-progress: false
+          submodules: false
+
+      - name: Check out exact reviewed database fixture
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: canonical-cloud/canonical-api-server.rs
+          ref: d74a51465395ea3d1f15936925cba1ca7cfcbdd8
+          token: ${{ secrets.ORE_SOURCE_PAT }}
+          path: fixture
+          sparse-checkout: db
+          persist-credentials: false
+          fetch-depth: 1
+          show-progress: false
+
+      - name: Verify exact source identities
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C source rev-parse HEAD)" = "17f749963aa8fb3fcad956d41b3a6995fd003679"
+          test "$(git -C fixture rev-parse HEAD)" = "d74a51465395ea3d1f15936925cba1ca7cfcbdd8"
+          git -C source diff --check
+
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.13.0
+
+      - name: Execute exact-head contract and Rust gates
+        working-directory: source
+        env:
+          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: 'url.https://x-access-token:${ORE_SOURCE_PAT}@github.com/.insteadOf'
+          GIT_CONFIG_VALUE_0: 'https://github.com/'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -f Cargo.lock
+          npm ci --ignore-scripts
+          npm run check:generated
+          npm test
+          cargo +1.95.0 fmt --all -- --check
+          cargo +1.95.0 test --all-targets --locked
+          cargo +1.95.0 test --all-targets --all-features --locked
+
+      - name: Verify live PostgreSQL driver parity and owner isolation
+        working-directory: source
+        env:
+          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: 'url.https://x-access-token:${ORE_SOURCE_PAT}@github.com/.insteadOf'
+          GIT_CONFIG_VALUE_0: 'https://github.com/'
+          PGHOST: 127.0.0.1
+          PGDATABASE: canonical_test
+          CANONICAL_ORM_TEST_DATABASE_URL: postgres://canonical_cloud__quote__api_rw@127.0.0.1:5432/canonical_test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          psql -U postgres -v ON_ERROR_STOP=1 -f ../fixture/db/bootstrap.sql
+          python3 - <<'PY' | psql -U canonical_cloud__quote__migrator -v ON_ERROR_STOP=1
+          from pathlib import Path
+          schema = Path('../fixture/db/schema.sql').read_text()
+          prefix = 'CREATE SCHEMA canonical_cloud__quote;\n'
+          assert schema.startswith(prefix)
+          print(schema[len(prefix):])
+          PY
+          psql -U postgres -v ON_ERROR_STOP=1 -f ../fixture/db/grants.sql
+          cargo +1.95.0 test --all-features --locked postgres_diesel_seaorm_parity_and_owner_isolation -- --ignored
+
+      - name: Clippy and immutable-source proof
+        working-directory: source
+        env:
+          ORE_SOURCE_PAT: ${{ secrets.ORE_SOURCE_PAT }}
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: 'url.https://x-access-token:${ORE_SOURCE_PAT}@github.com/.insteadOf'
+          GIT_CONFIG_VALUE_0: 'https://github.com/'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo +1.95.0 clippy --all-targets --all-features --locked -- -D warnings
+          git diff --exit-code
+          test "$(git rev-parse HEAD)" = "17f749963aa8fb3fcad956d41b3a6995fd003679"
