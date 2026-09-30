@@ -117,9 +117,13 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Install pinned TJSV dependencies
+      - name: Install pinned TJSV dependencies and native flags parser
         working-directory: tjsv
-        run: npm ci --ignore-scripts --no-audit --no-fund
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm rebuild @oresoftware/f2e --foreground-scripts
 
       - name: TJSV peer-authority parity
         working-directory: common-desktop
