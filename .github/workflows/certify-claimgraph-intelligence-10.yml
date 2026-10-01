@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   certify:
@@ -15,16 +14,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      EXPECTED_SHA: 4c17645be6f4e3db9e5a550ab54b293152a16a71
+      EXPECTED_SHA: 9709a69f56056ba76f446568918ba5fa9e225147
       EXPECTED_BASE_SHA: 22032cae30386f073d07c9b0166be583550ee72d
-      EXPECTED_BLOB_SHA: fb8b5fdb6602725768364ef268fd7153bf033fec
-      SOURCE_BRANCH: security/regression-feature-normalization-20260930
+      EXPECTED_REGRESSION_BLOB: fb8b5fdb6602725768364ef268fd7153bf033fec
+      EXPECTED_LOCK_BLOB: 513d4c915a24c31ef3e2ee3d0bcb10510ef810f0
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Check out carrier
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
 
-      - name: Checkout exact ClaimGraph candidate
+      - name: Check out exact ClaimGraph candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: ClaimGraph/claimgraph-intelligence.rs
@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 32
 
-      - name: Assert exact focused review surface and blob
+      - name: Assert exact review surface and blobs
         working-directory: claimgraph-intelligence
         shell: bash
         run: |
@@ -42,138 +42,33 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           git cat-file -e "$EXPECTED_BASE_SHA^{commit}"
           git diff --check "$EXPECTED_BASE_SHA"..HEAD
-          mapfile -t files < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD)
-          test "${#files[@]}" -eq 1
-          test "${files[0]}" = 'src/regression.rs'
-          test "$(git hash-object src/regression.rs)" = "$EXPECTED_BLOB_SHA"
+          mapfile -t files < <(git diff --name-only "$EXPECTED_BASE_SHA"..HEAD | sort)
+          test "${#files[@]}" -eq 2
+          test "${files[0]}" = 'Cargo.lock'
+          test "${files[1]}" = 'src/regression.rs'
+          test "$(git hash-object src/regression.rs)" = "$EXPECTED_REGRESSION_BLOB"
+          test "$(git hash-object Cargo.lock)" = "$EXPECTED_LOCK_BLOB"
 
-      - name: Configure private Git reads and writes
-        working-directory: claimgraph-intelligence
-        env:
-          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
-        run: gh auth setup-git
-
-      - name: Install verification and lock-surgery toolchains
+      - name: Install Rust 1.82
         shell: bash
         run: |
           set -Eeuo pipefail
           rustup toolchain install 1.82.0 --profile minimal --component rustfmt,clippy
-          rustup toolchain install 1.85.0 --profile minimal
           rustup default 1.82.0
           rustc --version | grep -F 'rustc 1.82.0'
-          cargo +1.85.0 --version | grep -F 'cargo 1.85.0'
 
-      - name: Verify changed source is rustfmt-clean
+      - name: Verify formatting
         working-directory: claimgraph-intelligence
-        run: rustfmt +1.82.0 --edition 2021 --check src/regression.rs
+        run: cargo +1.82.0 fmt --all -- --check
 
-      - name: Locked check with diagnostic capture
-        id: locked_check
-        continue-on-error: true
+      - name: Locked check
         working-directory: claimgraph-intelligence
-        shell: bash
-        run: |
-          set +e
-          cargo +1.82.0 check --locked --all-targets >"${RUNNER_TEMP}/locked-check.log" 2>&1
-          code=$?
-          cat "${RUNNER_TEMP}/locked-check.log"
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          exit "$code"
+        run: cargo +1.82.0 check --locked --all-targets
 
-      - name: Publish locked-check diagnostic
-        if: steps.locked_check.outputs.exit_code != '0'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          {
-            echo 'Exact-head Rust 1.82 `cargo check --locked --all-targets` diagnostic:'
-            echo
-            echo '```text'
-            tail -n 120 "${RUNNER_TEMP}/locked-check.log"
-            echo '```'
-          } > "${RUNNER_TEMP}/diagnostic.md"
-          gh pr comment "${{ github.event.pull_request.number }}" --body-file "${RUNNER_TEMP}/diagnostic.md"
-
-      - name: Repair Rust 1.82 lock compatibility and prove candidate
-        id: repair_lock
-        if: steps.locked_check.outputs.exit_code != '0'
-        continue-on-error: true
-        working-directory: claimgraph-intelligence
-        env:
-          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
-        shell: bash
-        run: |
-          set +e
-          {
-            git fetch origin "$SOURCE_BRANCH" &&
-            test "$(git rev-parse "origin/$SOURCE_BRANCH")" = "$EXPECTED_SHA" &&
-            cargo +1.85.0 update -p base64ct --precise 1.7.3 &&
-            cargo +1.85.0 update -p idna_adapter --precise 1.2.0 &&
-            cargo +1.85.0 update -p time --precise 0.3.44 &&
-            cargo +1.85.0 update -p deranged --precise 0.5.3 &&
-            cargo +1.85.0 update -p zeroize --precise 1.8.2 &&
-            cargo +1.85.0 update -p uuid --precise 1.12.1 &&
-            test -n "$(git status --porcelain -- Cargo.lock)" &&
-            cargo +1.82.0 check --locked --all-targets &&
-            cargo +1.82.0 clippy --locked --all-targets -- -D warnings &&
-            cargo +1.82.0 test --locked --all-targets
-          } >"${RUNNER_TEMP}/repair.log" 2>&1
-          code=$?
-          cat "${RUNNER_TEMP}/repair.log"
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          if test "$code" -ne 0; then
-            exit "$code"
-          fi
-          lock_sha256="$(sha256sum Cargo.lock | awk '{print $1}')"
-          git config user.name 'ORESoftware CI'
-          git config user.email 'ci@users.noreply.github.com'
-          git add Cargo.lock
-          git commit -m 'build: pin Rust 1.82-compatible transitive dependencies'
-          repaired_sha="$(git rev-parse HEAD)"
-          git push origin "HEAD:$SOURCE_BRANCH"
-          echo "repaired_sha=$repaired_sha" >> "$GITHUB_OUTPUT"
-          echo "lock_sha256=$lock_sha256" >> "$GITHUB_OUTPUT"
-
-      - name: Publish repair diagnostic
-        if: steps.repair_lock.outputs.exit_code != '' && steps.repair_lock.outputs.exit_code != '0'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          {
-            echo 'Rust 1.82 lock compatibility repair diagnostic:'
-            echo
-            echo '```text'
-            tail -n 260 "${RUNNER_TEMP}/repair.log"
-            echo '```'
-          } > "${RUNNER_TEMP}/repair-diagnostic.md"
-          gh pr comment "${{ github.event.pull_request.number }}" --body-file "${RUNNER_TEMP}/repair-diagnostic.md"
-
-      - name: Strict Clippy on already-compatible lock
-        if: steps.locked_check.outputs.exit_code == '0'
+      - name: Strict Clippy
         working-directory: claimgraph-intelligence
         run: cargo +1.82.0 clippy --locked --all-targets -- -D warnings
 
-      - name: Locked tests on already-compatible lock
-        if: steps.locked_check.outputs.exit_code == '0'
+      - name: Locked tests
         working-directory: claimgraph-intelligence
         run: cargo +1.82.0 test --locked --all-targets
-
-      - name: Report repaired source head
-        if: steps.repair_lock.outputs.repaired_sha != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          gh pr comment "${{ github.event.pull_request.number }}" --body "Pinned Rust-1.82-compatible transitive versions in the source lock only after exact-head Rust 1.82 check/Clippy/tests passed. Pushed source head \`${{ steps.repair_lock.outputs.repaired_sha }}\`; Cargo.lock SHA-256 \`${{ steps.repair_lock.outputs.lock_sha256 }}\`. Re-pin this carrier before promotion."
-
-      - name: Assert source result
-        if: always()
-        shell: bash
-        run: |
-          if test "${{ steps.locked_check.outputs.exit_code }}" = '0'; then
-            exit 0
-          fi
-          test "${{ steps.repair_lock.outputs.exit_code }}" = '0'
-          test -n "${{ steps.repair_lock.outputs.repaired_sha }}"
