@@ -1,9 +1,17 @@
-name = "gha-indie-worker-infra"
-kind = "infra"
-version = "0.1.0"
-
+[package]
 org = "gha-indie-worker"
+name = "gha-indie-worker-infra"
+version = "0.1.0"
+description = "Infrastructure definitions for the GHA indie-worker runtime"
+kind = "infra"
 language = "hcl"
+
+[package.repository]
+vcs = "git"
+url = "https://github.com/gha-indie-worker/gha-indie-worker-infra"
+
+[install]
+adapter = "none"
 
 [dependencies]
 "ORESoftware/ores-edge-router" = "^0.1.0"
