@@ -31,3 +31,5 @@ test('cancellation is not physical completion',()=>{
   maybeRelease(); assert.equal(released,false);
   physicallyRunning=false; maybeRelease(); assert.equal(released,true);
 });
+
+// trigger after workflow exists
