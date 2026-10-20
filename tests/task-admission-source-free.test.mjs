@@ -33,3 +33,22 @@ test('cancellation is not physical completion',()=>{
 });
 
 // trigger after workflow exists
+
+
+test('joined proof is consumable only at the exact Task boundary',()=>{
+  const exact={kind:'TaskExpr'};
+  const lookalike={kind:'TaskExpr'};
+  const nonTask={kind:'LiteralExpr'};
+  const joined=new Map([[exact,[{name:'x',ownership:'UNIQUE_MOVE'}]]]);
+
+  const requireFor=boundary=>{
+    if(boundary.kind!=='TaskExpr') throw new Error('TaskExpr boundary required');
+    const proof=joined.get(boundary);
+    if(!proof) throw new Error('exact joined admission proof required');
+    return proof;
+  };
+
+  assert.equal(requireFor(exact).length,1);
+  assert.throws(()=>requireFor(lookalike),/exact joined/);
+  assert.throws(()=>requireFor(nonTask),/TaskExpr boundary/);
+});
