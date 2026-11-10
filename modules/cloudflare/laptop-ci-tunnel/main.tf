@@ -18,6 +18,9 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "laptop_ci" {
     ingress = [
       {
         hostname = var.hostname
+        # Fail closed inside cloudflared even if the zone WAF is absent or stale.
+        # Method filtering must still happen at Cloudflare WAF, with HMAC at origin.
+        path     = "^/webhooks/github$"
         service  = local.origin_service
       },
       {
