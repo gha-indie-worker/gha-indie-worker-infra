@@ -10,11 +10,13 @@ The local machine does not maintain a repository-specific build command table.
 
 | Repository | Executed run | Result |
 | --- | --- | --- |
-| ores-truffle-oreslang/oreslang-target-profiles | [42927563192](https://github.com/ores-truffle-oreslang/oreslang-target-profiles/actions/runs/42927563192) | success |
-| ores-truffle-oreslang/oreslang-static-analysis.rs | [42927566802](https://github.com/ores-truffle-oreslang/oreslang-static-analysis.rs/actions/runs/42927566802) | success |
-| ores-truffle-oreslang/oreslang-format | [42927655701](https://github.com/ores-truffle-oreslang/oreslang-format/actions/runs/42927655701) | stable and Rust 1.85 jobs succeeded |
+| ores-truffle-oreslang/oreslang-target-profiles | [42930910494](https://github.com/ores-truffle-oreslang/oreslang-target-profiles/actions/runs/42930910494) | success |
+| ores-truffle-oreslang/oreslang-static-analysis.rs | [42930912035](https://github.com/ores-truffle-oreslang/oreslang-static-analysis.rs/actions/runs/42930912035) | success |
+| ores-truffle-oreslang/oreslang-format | [42930916290](https://github.com/ores-truffle-oreslang/oreslang-format/actions/runs/42930916290) | stable and Rust 1.85 jobs succeeded |
 
-`evidence/macbook-ci-2026-11-10.json` records exact commit/tree/workflow blob
+`evidence/macbook-native-ci-2026-11-10.json` records the original required CI
+workflows at their final heads. `evidence/macbook-ci-2026-11-10.json` retains the
+earlier additional-workflow proof. The receipts record exact commit/tree/workflow blob
 hashes, executed step conclusions, native job IDs, runner IDs/names, image digest
 and GitHub usage responses. All three usage responses have an empty `billable`
 map. This proves the listed workflow executions; it does not certify guest
@@ -46,19 +48,22 @@ bootstrap attempts were cancelled and recorded before replacing their images.
 - The disposable runner removes its registration after the job, and `--rm`
   removes its container. A LaunchAgent starts a new one-job runner afterward.
 
-The workflows use a distinct `IndieBuild / ...` job name and the
-`indiebuild-linux-arm64` label. They pin checkout to the exact admitted head,
-request read-only repository contents, disable persisted checkout credentials,
-and refuse fork PR execution. Existing hosted workflows and required merge
-checks remain. These rollout branches are reviewable changes; no source merge
-or branch-protection bypass was performed.
+The repositories’ original `ci.yml` jobs now select the
+`indiebuild-linux-arm64` label while retaining their required check names and
+complete test steps. They pin checkout to the exact admitted head, request
+read-only repository contents and disable persisted checkout credentials.
+Superseded work is cancelled through native workflow concurrency. The extra
+`IndieBuild / ...` proof workflow is manual-only to avoid duplicate execution.
+GitHub’s repository workflow approval settings remain in force. These rollout
+branches are reviewable changes; no source merge or branch-protection bypass
+was performed.
 
 ## Supervision and status
 
 Run `scripts/ci/install-macbook-services.sh` to install/update the user LaunchAgents:
 
 - `dev.indiebuild.runner.<repository>` — one supervised broker per admitted repo;
-- `dev.indiebuild.status-refresh` — refresh actual GitHub results every 30 seconds;
+- `dev.indiebuild.status-refresh` — refresh original `ci.yml` results every 30 seconds;
 - `dev.indiebuild.status-tunnel` — the read-only status connector.
 
 The status refresher alone uses the host's existing `gh` login. It writes an
