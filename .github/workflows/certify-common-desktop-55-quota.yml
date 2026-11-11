@@ -1,16 +1,17 @@
 name: certify common desktop #55 quota
 
+# SECURITY: no unreviewed pull-request workflow may read cross-org source.
+# This trust boundary requires a protected-main manual dispatch and approval.
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/certify-common-desktop-55-quota.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   certify:
-    if: github.head_ref == 'ci/certify-common-desktop-55-quota-20260930'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    environment: private-source-certification
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
@@ -27,7 +28,7 @@ jobs:
         with:
           repository: ORESoftware/ores-common-desktop-infra
           ref: ${{ env.EXPECTED_SHA }}
-          token: ${{ secrets.ORE_SOURCE_PAT }}
+          token: ${{ secrets.CERTIFIED_SOURCE_PAT }}
           path: common-desktop
           persist-credentials: false
           fetch-depth: 64
@@ -112,7 +113,7 @@ jobs:
         with:
           repository: ORESoftware/typespec-json-schema-validator
           ref: ${{ env.TJSV_SHA }}
-          token: ${{ secrets.ORE_SOURCE_PAT }}
+          token: ${{ secrets.CERTIFIED_SOURCE_PAT }}
           path: tjsv
           persist-credentials: false
           fetch-depth: 1
