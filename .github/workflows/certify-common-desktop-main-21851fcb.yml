@@ -1,16 +1,17 @@
 name: certify common desktop current main
 
+# SECURITY: no PR-head or unprotected branch receives private-source credentials.
+# Only a reviewed protected-main workflow may be manually dispatched.
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/certify-common-desktop-main-21851fcb.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   certify:
-    if: github.head_ref == 'ci/certify-common-desktop-main-21851fcb-20260930'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    environment: private-source-certification
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -25,7 +26,7 @@ jobs:
         with:
           repository: ORESoftware/ores-common-desktop-infra
           ref: ${{ env.EXPECTED_SHA }}
-          token: ${{ secrets.ORE_SOURCE_PAT }}
+          token: ${{ secrets.CERTIFIED_SOURCE_PAT }}
           path: common-desktop
           persist-credentials: false
           fetch-depth: 1
@@ -37,7 +38,7 @@ jobs:
       - name: Configure private Cargo Git reads
         working-directory: common-desktop
         env:
-          GH_TOKEN: ${{ secrets.ORE_SOURCE_PAT }}
+          GH_TOKEN: ${{ secrets.CERTIFIED_SOURCE_PAT }}
         run: gh auth setup-git
 
       - name: Install Rust 1.82
