@@ -1,0 +1,40 @@
+{
+  "name": "indiebuild-origin-availability",
+  "main": "worker.mjs",
+  "account_id": "62b833940607839add74bd2379cac303",
+  "compatibility_date": "2026-11-10",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "indiebuild.dev/*",
+      "zone_name": "indiebuild.dev"
+    },
+    {
+      "pattern": "builds.indiebuild.dev/*",
+      "zone_name": "indiebuild.dev"
+    },
+    {
+      "pattern": "bretelle.multiapp.fyi/*",
+      "zone_name": "multiapp.fyi"
+    }
+  ],
+  "vars": {
+    "SITES": {
+      "indiebuild.dev": {
+        "name": "IndieBuild",
+        "origin": "https://origin-status.indiebuild.dev",
+        "service": "gha-indie-worker-web-server"
+      },
+      "builds.indiebuild.dev": {
+        "name": "IndieBuild",
+        "origin": "https://origin-status.indiebuild.dev",
+        "service": "gha-indie-worker-web-server"
+      },
+      "bretelle.multiapp.fyi": {
+        "name": "Bretelle",
+        "origin": "https://origin-bretelle.multiapp.fyi",
+        "service": "bretelle-hosting-site"
+      }
+    }
+  }
+}

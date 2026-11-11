@@ -21,3 +21,14 @@ resource "cloudflare_dns_record" "local_status" {
   ttl     = 1
   comment = "Terraform-owned read-only IndieBuild local execution status"
 }
+
+resource "cloudflare_dns_record" "local_status_origin" {
+  count   = var.local_status_tunnel_cname == "" ? 0 : 1
+  zone_id = data.cloudflare_zone.this.id
+  name    = "origin-status.${var.zone_name}"
+  type    = "CNAME"
+  content = var.local_status_tunnel_cname
+  proxied = true
+  ttl     = 1
+  comment = "Tunnel origin for the Cloudflare-hosted availability Worker"
+}

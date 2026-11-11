@@ -1,0 +1,9 @@
+{
+  "name": "indiebuild-origin-availability",
+  "accountId": "62b833940607839add74bd2379cac303",
+  "sites": {
+    "indiebuild.dev": {"name":"IndieBuild","origin":"https://origin-status.indiebuild.dev","service":"gha-indie-worker-web-server"},
+    "builds.indiebuild.dev": {"name":"IndieBuild","origin":"https://origin-status.indiebuild.dev","service":"gha-indie-worker-web-server"},
+    "bretelle.multiapp.fyi": {"name":"Bretelle","origin":"https://origin-bretelle.multiapp.fyi","service":"bretelle-hosting-site"}
+  }
+}

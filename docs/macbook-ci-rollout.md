@@ -60,11 +60,11 @@ was performed.
 
 ## Supervision and status
 
-Run `scripts/ci/install-macbook-services.sh` to install/update the user LaunchAgents:
+Run `scripts/ci/install-macbook-services.sh` to install/update the login helpers (boot-managed services are skipped):
 
 - `dev.indiebuild.runner.<repository>` — one supervised broker per admitted repo;
 - `dev.indiebuild.status-refresh` — refresh original `ci.yml` results every 30 seconds;
-- `dev.indiebuild.status-tunnel` — the read-only status connector.
+- `dev.indiebuild.status-tunnel` — the read-only connector, promoted to a boot service.
 
 The status refresher alone uses the host's existing `gh` login. It writes an
 atomic owner-only `~/.local/share/indiebuild/runs.json`. The web service receives
@@ -72,12 +72,17 @@ only this evidence path, with no GitHub, Cloudflare or Bretelle management token
 Its `/api/runs` returns 503 when evidence is absent or invalid. Native GitHub
 Check Runs remain the authority for merge decisions.
 
-The web binary is supervised by Bretelle's application LaunchAgent on
-`127.0.0.1:18091`. `https://builds.indiebuild.dev` publishes only that read-only
-application through tunnel `6a771461-0645-425a-a9fb-4ccff913aff4` with a 404
-catch-all. It does not expose the build-control or machine-management APIs.
-The old developer ingress tunnel was not started: its port 8080 origin would
-currently collide with Bretelle's private control plane.
+The web binary is now independently supervised by system LaunchDaemon
+`dev.indiebuild.web` on `127.0.0.1:18091`. Bretelle hosts a different native
+application on `:18092`, through its private control-plane/gateway/health-agent
+stack. Both tunnel connectors and public application services start at boot
+under the normal user. The GitHub runners/evidence refresher remain login agents.
+
+`https://indiebuild.dev` and `https://builds.indiebuild.dev` serve IndieBuild.
+A Cloudflare-hosted availability Worker proxies a dedicated origin hostname,
+adds Server status/healthz controls, and serves an explicit outage page when
+the origin cannot respond. See `cloudflare/edge-router/availability/README.md`.
+The old local.indiebuild.dev developer tunnel remains disabled.
 
 ## DNS state and approved apply
 
@@ -95,5 +100,12 @@ claim. The root's local state and provider cache remain outside version control.
 The record ID is `0712b80605f1c6d890e9f16e8619da6f`.
 
 Cloudflare credentials and tunnel JSON remain in owner-only directories outside
-Git. The apex/marketing and admin planes were not changed. User LaunchAgents
-and the VM run while the MacBook is available under the logged-in account.
+Git. The admin plane was not changed. CI helpers use the login Keychain; public
+application services and connectors now run as boot services.
+
+The user separately authorized the saved apex/availability plan: two DNS records
+were added (indiebuild.dev and origin-status.indiebuild.dev), with no changes or
+deletions. The apex record uses the existing Terraform apex resource address.
+The Worker route/configuration is separate from the pre-existing fleet router.
+The operator installed scripts/ci/install-boot-services.sh with administrator
+privileges; system services were inspected running as the normal user.

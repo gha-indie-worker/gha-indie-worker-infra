@@ -2,6 +2,10 @@
 tunnel: REPLACE_WITH_TUNNEL_UUID
 credentials-file: /absolute/private/path/tunnel.json
 ingress:
+  - hostname: origin-status.indiebuild.dev
+    service: http://127.0.0.1:18091
+  - hostname: indiebuild.dev
+    service: http://127.0.0.1:18091
   - hostname: builds.indiebuild.dev
     service: http://127.0.0.1:18091
   - service: http_status:404

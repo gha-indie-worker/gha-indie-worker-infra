@@ -46,7 +46,7 @@ resource "cloudflare_dns_record" "apex" {
   name    = var.zone_name
   type    = "CNAME"
   ttl     = 1
-  content = var.github_pages_cname
+  content = var.local_status_tunnel_cname != "" ? var.local_status_tunnel_cname : var.github_pages_cname
   proxied = true
-  comment = "Apex -> marketing site (CNAME flattening)"
+  comment = var.local_status_tunnel_cname != "" ? "IndieBuild application via local status tunnel (CNAME flattening)" : "Apex -> marketing site (CNAME flattening)"
 }

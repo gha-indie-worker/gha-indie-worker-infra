@@ -10,6 +10,10 @@ node_bin="$(command -v node)"
 mkdir -p "$launch_dir" "$logs"
 install_agent() {
   local label="$1" interval="$2" args="$3" plist="$launch_dir/$1.plist"
+  if launchctl print "system/$label" >/dev/null 2>&1; then
+    printf 'Boot-managed service already installed: %s\n' "$label"
+    return
+  fi
   cat > "$plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
