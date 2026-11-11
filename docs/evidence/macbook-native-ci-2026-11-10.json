@@ -1,0 +1,318 @@
+{
+  "capturedAt": "2026-11-11T00:27:56.496Z",
+  "migration": "Original required CI job names and commands retained; compute moved to local one-job runners",
+  "runnerImage": "indiebuild-runner@sha256:6c241aa7944a536aaf0117ea7ecfb6e1973177330bd8976f11a819bc5f46b3cd",
+  "runs": [
+    {
+      "repository": "ores-truffle-oreslang/oreslang-target-profiles",
+      "conclusion": "success",
+      "databaseId": 42930910494,
+      "event": "pull_request",
+      "headSha": "a8d3ff2d47e0728e8cf3d988fe1ecc9b46006a57",
+      "status": "completed",
+      "url": "https://github.com/ores-truffle-oreslang/oreslang-target-profiles/actions/runs/42930910494",
+      "sourceTreeSha": "602757e7109d168dbef8fca92a94d9ccd17ff903",
+      "workflowBlobSha": "f91ce25873d31624b366490ea7a8ecef7021b1e7",
+      "jobs": [
+        {
+          "id": 130229120521,
+          "name": "contracts",
+          "runnerId": 29,
+          "runnerName": "indiebuild-oreslang-target-profiles-1",
+          "labels": [
+            "indiebuild-linux-arm64"
+          ],
+          "startedAt": "2026-11-11T00:23:51Z",
+          "completedAt": "2026-11-11T00:24:12Z",
+          "status": "completed",
+          "conclusion": "success",
+          "executedSteps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run npm test",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run npm run validate",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run node bin/oreslang-target.mjs check-closure examples/portable-closure.json --target=browser --backend=wasm --grants=clock,net.client",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run node bin/oreslang-target.mjs check-rt-candidate examples/strict-rt-candidate.json",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ],
+          "url": "https://github.com/ores-truffle-oreslang/oreslang-target-profiles/actions/runs/42930910494/job/130229120521"
+        }
+      ],
+      "githubUsage": {
+        "billable": {},
+        "run_duration_ms": 69000
+      }
+    },
+    {
+      "repository": "ores-truffle-oreslang/oreslang-static-analysis.rs",
+      "conclusion": "success",
+      "databaseId": 42930912035,
+      "event": "pull_request",
+      "headSha": "6ff52dc8aa204733291efd96f966844e6a593c07",
+      "status": "completed",
+      "url": "https://github.com/ores-truffle-oreslang/oreslang-static-analysis.rs/actions/runs/42930912035",
+      "sourceTreeSha": "3cf5d63049ef8be63c74a4b577643087e0d57d16",
+      "workflowBlobSha": "b0d4f25d080d178cac443b82080c9087af3ab4af",
+      "jobs": [
+        {
+          "id": 130229124778,
+          "name": "test",
+          "runnerId": 27,
+          "runnerName": "indiebuild-oreslang-static-analysis.rs-1",
+          "labels": [
+            "indiebuild-linux-arm64"
+          ],
+          "startedAt": "2026-11-11T00:23:07Z",
+          "completedAt": "2026-11-11T00:23:26Z",
+          "status": "completed",
+          "conclusion": "success",
+          "executedSteps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec",
+              "conclusion": "success"
+            },
+            {
+              "name": "Parse local exact-head producer/consumer gate (no external checkouts)",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo fmt --all -- --check",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo test --locked --workspace --all-targets",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo run --locked -p ores-analyze -- --flow examples/flow-scalar-from-rust.json hard",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo run --locked -p ores-analyze -- examples/hard-realtime.json hard",
+              "conclusion": "success"
+            },
+            {
+              "name": "Verify forward-call IR from Rust compiler",
+              "conclusion": "success"
+            },
+            {
+              "name": "Reject unsafe program",
+              "conclusion": "success"
+            },
+            {
+              "name": "Validate safety admission controls",
+              "conclusion": "success"
+            },
+            {
+              "name": "Validate data-layout advisory analysis",
+              "conclusion": "success"
+            },
+            {
+              "name": "CFG-v2 bounded ownership admission",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ],
+          "url": "https://github.com/ores-truffle-oreslang/oreslang-static-analysis.rs/actions/runs/42930912035/job/130229124778"
+        }
+      ],
+      "githubUsage": {
+        "billable": {},
+        "run_duration_ms": 22000
+      }
+    },
+    {
+      "repository": "ores-truffle-oreslang/oreslang-format",
+      "conclusion": "success",
+      "databaseId": 42930916290,
+      "event": "pull_request",
+      "headSha": "c2fc163cc488ab6c1e7d2d3d433beef28a2a8957",
+      "status": "completed",
+      "url": "https://github.com/ores-truffle-oreslang/oreslang-format/actions/runs/42930916290",
+      "sourceTreeSha": "65fac3e9adf2ebf0c51ddfce2af00168fabde4b1",
+      "workflowBlobSha": "ef88778b70e76a0faf1011f03972175af8a07cbc",
+      "jobs": [
+        {
+          "id": 130229138963,
+          "name": "test",
+          "runnerId": 35,
+          "runnerName": "indiebuild-oreslang-format-1",
+          "labels": [
+            "indiebuild-linux-arm64"
+          ],
+          "startedAt": "2026-11-11T00:24:40Z",
+          "completedAt": "2026-11-11T00:25:07Z",
+          "status": "completed",
+          "conclusion": "success",
+          "executedSteps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run test \"$(git rev-parse HEAD)\" = \"$EXPECTED_SHA\"",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo fmt --all -- --check",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo test --test type_only_declarations",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo test --all-targets",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo test --doc",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run python3 -m unittest discover -s scripts -p 'test_compiler_parity.py'",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run python3 -m unittest discover -s scripts -p 'test_compiler_ast_parity.py'",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run python3 -m unittest discover -s tests -p 'test_private_ci_visibility.py'",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo clippy --all-targets -- -D warnings",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run RUSTDOCFLAGS=\"-D warnings\" cargo doc --no-deps",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo build --release --bins",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ],
+          "url": "https://github.com/ores-truffle-oreslang/oreslang-format/actions/runs/42930916290/job/130229138963"
+        },
+        {
+          "id": 130229139530,
+          "name": "msrv",
+          "runnerId": 36,
+          "runnerName": "indiebuild-oreslang-format-1",
+          "labels": [
+            "indiebuild-linux-arm64"
+          ],
+          "startedAt": "2026-11-11T00:25:17Z",
+          "completedAt": "2026-11-11T00:25:34Z",
+          "status": "completed",
+          "conclusion": "success",
+          "executedSteps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run test \"$(git rev-parse HEAD)\" = \"$EXPECTED_SHA\"",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo test --all-targets",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ],
+          "url": "https://github.com/ores-truffle-oreslang/oreslang-format/actions/runs/42930916290/job/130229139530"
+        }
+      ],
+      "githubUsage": {
+        "billable": {},
+        "run_duration_ms": 148000
+      }
+    }
+  ]
+}
