@@ -45,9 +45,9 @@ function fixture() {
 echo "limactl $*" >> "$MOCK_LOG"
 case "$*" in
   "shell atto-ci -- id -u") echo 501 ;;
-  "shell atto-ci -- nerdctl image inspect "*) echo '${digest}' ;;
+  "shell atto-ci -- nerdctl image inspect "*) echo "\${MOCK_IMAGE_DIGEST:-${digest}}" ;;
   "shell atto-ci -- nerdctl run "*) exec /bin/sleep 30 ;;
-  "shell atto-ci -- nerdctl rm -f "*) echo cleanup >> "$MOCK_LOG" ;;
+  "shell atto-ci -- nerdctl rm -f "*) echo cleanup >> "$MOCK_LOG"; if [[ "\${MOCK_REMOVE_FAIL:-0}" == 1 ]]; then exit 9; fi ;;
   *) echo "unsupported mock operation: $*" >&2; exit 3 ;;
 esac
 `);
@@ -98,5 +98,43 @@ test('a stale lock rejects before registration-token acquisition', () => {
     assert.ok(!existsSync(f.log), 'no token or VM operation is allowed with stale lock');
   } finally {
     rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('wrong guest image digest rejects before acquiring a GitHub registration token', () => {
+  const f = fixture();
+  try {
+    const result = spawnSync('bash', [f.runner, repo], {
+      env: { ...f.env, MOCK_IMAGE_DIGEST: 'attacker/runner@sha256:bad' },
+      encoding: 'utf8', timeout: 3000,
+    });
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(result.stderr, /Runner image digest differs/);
+    assert.doesNotMatch(readFileSync(f.log, 'utf8'), /token/);
+    assert.ok(!existsSync(f.lock), 'preflight failure releases the lock');
+  } finally { rmSync(f.dir, { recursive: true, force: true }); }
+});
+test('failed guest cleanup retains a stale lock and blocks new broker admission', {timeout:12000}, async () => {
+  const f = fixture();
+  const child = spawn('bash', [f.runner, repo], {
+    env: {...f.env, MOCK_REMOVE_FAIL:'1'}, stdio:['ignore','pipe','pipe'],
+  });
+  let stderr='';
+  child.stderr.on('data', chunk => { stderr += String(chunk); });
+  try {
+    await until(() => existsSync(f.log) && readFileSync(f.log,'utf8').includes('nerdctl run'));
+    const done = new Promise(resolve => child.once('exit',(code,signal)=>resolve({code,signal})));
+    child.kill('SIGTERM');
+    const result = await done;
+    assert.deepEqual(result,{code:1,signal:null},stderr);
+    assert.match(stderr,/CRITICAL: could not remove VM runner/);
+    assert.ok(existsSync(f.lock),'unsafe cleanup retains the lock');
+    const another=spawnSync('bash',[f.runner,repo],{env:f.env,encoding:'utf8',timeout:3000});
+    assert.equal(another.status,2,another.stderr);
+    assert.match(another.stderr,/busy or a stale lock/);
+    assert.equal(readFileSync(f.log,'utf8').split('token').length-1,1);
+  } finally {
+    child.kill('SIGKILL');
+    rmSync(f.dir, {recursive:true,force:true});
   }
 });
