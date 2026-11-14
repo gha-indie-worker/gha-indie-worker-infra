@@ -1,11 +1,9 @@
-# Copy outside Git. Only this read-only app origin is published.
+# Copy outside Git to an owner-only file. This is a single, read-only app
+# origin behind the separately deployed Cloudflare availability Worker.
+# Never expose the GIW/Scintilla control APIs or runner/connector metrics.
 tunnel: REPLACE_WITH_TUNNEL_UUID
 credentials-file: /absolute/private/path/tunnel.json
 ingress:
   - hostname: origin-status.indiebuild.dev
-    service: http://127.0.0.1:18091
-  - hostname: indiebuild.dev
-    service: http://127.0.0.1:18091
-  - hostname: builds.indiebuild.dev
     service: http://127.0.0.1:18091
   - service: http_status:404
