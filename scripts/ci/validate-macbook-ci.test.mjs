@@ -92,3 +92,22 @@ test('invalid concurrency rejects before GitHub or Lima', () => {
   assert.equal(p.status,2);
   assert.match(p.stderr,/jobs must be 1\.\.4/);
 });
+
+test('real jq admission rejects malformed policy and substring confusion', () => {
+  const policy='type == "array" and all(.[]; type == "string") and any(.[]; . == $repo)';
+  assert.ok(readFileSync(runner,'utf8').includes(policy), 'broker must use the reviewed type-checked policy');
+  for (const [document, accepted] of [
+    [[repo],true],
+    [[repo+'-attacker'],false],
+    [repo,false],
+    [{repos:[repo]},false],
+    [[repo,42],false],
+    [['other/other'],false],
+    [[],false],
+  ]) {
+    const result=spawnSync('jq',['-e','--arg','repo',repo,policy],{
+      encoding:'utf8', input:JSON.stringify(document), timeout:2000,
+    });
+    assert.equal(result.status,accepted?0:1,JSON.stringify({document,stderr:result.stderr}));
+  }
+});
