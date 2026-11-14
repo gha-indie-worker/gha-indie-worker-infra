@@ -9,11 +9,13 @@ offline fixture as proof of the real machine.
 
 ## Prepare and trust the source
 
-1. Independently review and merge the fixture PR containing
-   `.github/workflows/indiebuild-native-acceptance.yml` into that repository's
-   default branch. GitHub `workflow_dispatch` requires the workflow to exist on
-   the default branch. **Do not merge it solely to run this test** until it
-   passes ordinary code review and any applicable branch rules.
+1. The fixture was independently staged in `oreslang-target-profiles#93`
+   and merged into the default branch on 2026-11-14 at exact SHA
+   `eded2037a3db1d691d48bcfd5c907ffc108949a0`. GitHub
+   `workflow_dispatch` requires the workflow to exist on the default branch.
+   Verify the branch still contains the reviewed
+   `.github/workflows/indiebuild-native-acceptance.yml` file before dispatch.
+   If `main` moves, re-review the changed revision before accepting results.
 2. On the physical MacBook, verify the expected unprivileged Lima VM, rootless
    container engine, admitted image digest, owner-only host credentials, and
    LAN/host egress restrictions. These security requirements are **not proven**
@@ -60,11 +62,18 @@ node scripts/ci/verify-native-acceptance.mjs \
 ```
 
 This fetches the live run, both jobs and artifact via the current `gh`
-authentication. It fails closed if any run or step is skipped, failed, not
-completed, assigned to the wrong runner label, wrong SHA, wrong workflow,
-out of dependency order, or if the receipt artifact is absent, expired, empty
-or attached to another run. Preserve the **run URL, job IDs, runner IDs,
-commit SHA, image digest and validation output** in the operator evidence.
+authentication, then **downloads the actual artifact bytes into a temporary
+owner-only directory** and independently verifies that exactly two small
+regular files exist (`commit.sha`, `commit.sha256`), the receipt equals the
+supplied commit SHA byte-for-byte, and its manifest matches SHA-256 of the
+downloaded receipt. The temporary directory is removed even on failure.
+
+Verification fails closed on skipped/failed steps, wrong runner identity,
+cross-run or old-attempt jobs, duplicate required steps, reused ephemeral
+runners, wrong workflow/commit, out-of-order dependencies, expired artifacts,
+forged receipt paths, unexpected files, symlinks or incorrect bytes. Preserve
+the **run URL, job IDs, runner IDs, commit SHA, image digest, artifact ID and
+validation output** in the operator evidence. This is still not host attestation.
 
 The artifact retention is one day; capture readback before it expires.
 This verification checks GitHub's own API records, not a fabricated fixture.
