@@ -19,6 +19,18 @@ restrictions before promotion. **A nonroot VM session alone does not prove the
 container runtime is rootless.** Verify the daemon socket, cgroup settings,
 network policy and guest isolation on the real MacBook separately.
 
+The MacBook broker now uses an owner-only per-login lock at
+`~/.cache/indiebuild-runner/active.lock` to reject concurrent launches before
+requesting any GitHub registration token. Names incorporate a per-invocation
+UUID, and normal/signal shutdown attempts to force-remove the attached Lima
+container. A power loss or SIGKILL may leave the lock intact deliberately.
+**Never delete a stale lock just to resume CI**: first inspect runner/container
+state in the guest, check GitHub's runner registration state, stop/remove any
+survivors, and only then remove the lock. Locking is **per macOS account**, not
+a proof of machine-wide mutual exclusion or host/LAN isolation. A failed
+container cleanup leaves the lock in place. The offline lifecycle fixture uses
+mocked `gh`, `limactl`, and `nerdctl`; it does not certify a live MacBook.
+
 This broker is a **registration-token** prototype, not a GitHub JIT config API
 integration. It does not bind a runner to a specific GitHub workflow/job ID or
 reliably prevent admission of untrusted fork PRs. Do not expand it to public
