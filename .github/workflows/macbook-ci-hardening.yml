@@ -29,3 +29,14 @@ jobs:
         run: node --test scripts/ci/test-one-job-lifecycle.mjs
       - name: Reject malformed local runner evidence receipts
         run: node scripts/ci/validate-macbook-ci.mjs
+  macos-shell:
+    runs-on: macos-15
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Check system Bash 3.2 compatibility
+        run: /bin/bash -n scripts/ci/run-local-runner.sh
+      - name: Verify mocked runner admission and cancellation on macOS
+        run: node --test scripts/ci/test-one-job-lifecycle.mjs
