@@ -6,6 +6,7 @@ on:
       - scripts/ci/run-local-runner.sh
       - scripts/ci/validate-macbook-ci.mjs
       - scripts/ci/validate-macbook-ci.test.mjs
+      - scripts/ci/test-one-job-lifecycle.mjs
       - cloudflare/local-ci-status/config.example.yml
       - config/macbook-ci-repositories.json
       - docs/evidence/macbook-*.json
@@ -24,5 +25,7 @@ jobs:
         run: bash -n scripts/ci/run-local-runner.sh
       - name: Exercise negative admission and Cloudflare contracts
         run: node --test scripts/ci/validate-macbook-ci.test.mjs
+      - name: Exercise concurrent admission, stale locks and TERM cancellation
+        run: node --test scripts/ci/test-one-job-lifecycle.mjs
       - name: Reject malformed local runner evidence receipts
         run: node scripts/ci/validate-macbook-ci.mjs
