@@ -10,7 +10,7 @@ function step(name) { return {name, status:'completed', conclusion:'success'}; }
 function fixture() {
   return {
     run: {
-      id:runId, repository:{full_name:repository}, event:'workflow_dispatch',
+      id:runId, repository:{full_name:repository,id:99}, event:'workflow_dispatch',
       path:'.github/workflows/indiebuild-native-acceptance.yml', head_sha:expectedSha,
       status:'completed', conclusion:'success', run_attempt:1,
       html_url:`https://github.com/${repository}/actions/runs/${runId}`,
@@ -18,12 +18,18 @@ function fixture() {
     jobs:{
       total_count:2, jobs:[
         {id:12, name:'Produce immutable evidence', runner_id:22,
+         run_id:runId, run_attempt:1, head_sha:expectedSha,
+         run_url:`https://api.github.com/repos/${repository}/actions/runs/${runId}`,
+         html_url:`https://github.com/${repository}/actions/runs/${runId}/job/12`,
          runner_name:'indiebuild-fixture-producer', labels:['indiebuild-linux-arm64'],
          started_at:'2026-11-14T00:00:00Z', completed_at:'2026-11-14T00:01:00Z',
          status:'completed', conclusion:'success',
          steps:['Pin and validate checkout','Assert native Linux guest and exact commit',
            'Write immutable SHA receipt','Upload receipt'].map(step)},
         {id:13, name:'Consume and verify artifact', runner_id:23,
+         run_id:runId, run_attempt:1, head_sha:expectedSha,
+         run_url:`https://api.github.com/repos/${repository}/actions/runs/${runId}`,
+         html_url:`https://github.com/${repository}/actions/runs/${runId}/job/13`,
          runner_name:'indiebuild-fixture-consumer', labels:['indiebuild-linux-arm64'],
          started_at:'2026-11-14T00:01:01Z', completed_at:'2026-11-14T00:02:00Z',
          status:'completed', conclusion:'success',
@@ -33,7 +39,7 @@ function fixture() {
     artifacts:{
       total_count:1,
       artifacts:[{id:33,name:`indiebuild-native-acceptance-${runId}-1`, expired:false,
-        size_in_bytes:128, workflow_run:{id:runId}}],
+        size_in_bytes:128, workflow_run:{id:runId,head_sha:expectedSha,repository_id:99}}],
     },
   };
 }
@@ -58,6 +64,16 @@ for (const [name,change] of [
   ['hosted runner',f=>f.jobs.jobs[0].runner_name='GitHub Actions 12'],
   ['no runner ID',f=>f.jobs.jobs[0].runner_id=0],
   ['wrong runner label',f=>f.jobs.jobs[0].labels=['ubuntu-latest']],
+  ['job linked to wrong run',f=>f.jobs.jobs[0].run_id=999],
+  ['job from older attempt',f=>f.jobs.jobs[0].run_attempt=2],
+  ['job head SHA mismatch',f=>f.jobs.jobs[0].head_sha='b'.repeat(40)],
+  ['forged job API URL',f=>f.jobs.jobs[0].run_url='https://example.test/forged'],
+  ['forged job HTML URL',f=>f.jobs.jobs[0].html_url='https://example.test/forged'],
+  ['reused ephemeral runner id',f=>f.jobs.jobs[1].runner_id=22],
+  ['reused ephemeral runner name',f=>f.jobs.jobs[1].runner_name=f.jobs.jobs[0].runner_name],
+  ['duplicate successful checkout step',f=>f.jobs.jobs[0].steps.splice(1,0,step('Pin and validate checkout'))],
+  ['artifact head mismatch',f=>f.artifacts.artifacts[0].workflow_run.head_sha='b'.repeat(40)],
+  ['artifact repository mismatch',f=>f.artifacts.artifacts[0].workflow_run.repository_id=100],
   ['failed required step',f=>f.jobs.jobs[0].steps[1].conclusion='failure'],
   ['skipped upload',f=>f.jobs.jobs[0].steps[3].conclusion='skipped'],
   ['step order altered',f=>f.jobs.jobs[0].steps.reverse()],
