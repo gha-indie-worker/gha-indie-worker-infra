@@ -76,6 +76,10 @@ export function validateRunnerScript(script) {
     '--security-opt no-new-privileges', '--pull=never',
     '--rm -i', '--pids-limit=1024', '--memory=4g',
     '--cpus=2', 'registration-token', IMAGE,
+    'active.lock', 'mkdir -m 700 "$lock"', 'trap cleanup EXIT',
+    'trap \'exit 143\' TERM', 'rmdir "$lock"',
+    'nerdctl rm -f "$active_name"', 'wait "$client_pid"',
+    'uuidgen',
   ]) requireValue(script.includes(requirement), `Missing runner guard: ${requirement}`);
   requireValue(!/--privileged\b|--network[= ]host\b|--volume\b/.test(script), 'Unsafe container flag');
 }
