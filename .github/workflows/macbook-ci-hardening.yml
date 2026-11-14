@@ -7,6 +7,8 @@ on:
       - scripts/ci/validate-macbook-ci.mjs
       - scripts/ci/validate-macbook-ci.test.mjs
       - scripts/ci/test-one-job-lifecycle.mjs
+      - scripts/ci/verify-native-acceptance.mjs
+      - scripts/ci/verify-native-acceptance.test.mjs
       - cloudflare/local-ci-status/config.example.yml
       - config/macbook-ci-repositories.json
       - docs/evidence/macbook-*.json
@@ -27,6 +29,8 @@ jobs:
         run: node --test scripts/ci/validate-macbook-ci.test.mjs
       - name: Exercise concurrent admission, stale locks and TERM cancellation
         run: node --test scripts/ci/test-one-job-lifecycle.mjs
+      - name: Check live-native run readback negative cases
+        run: node --test scripts/ci/verify-native-acceptance.test.mjs
       - name: Reject malformed local runner evidence receipts
         run: node scripts/ci/validate-macbook-ci.mjs
   macos-shell:
@@ -40,3 +44,5 @@ jobs:
         run: /bin/bash -n scripts/ci/run-local-runner.sh
       - name: Verify mocked runner admission and cancellation on macOS
         run: node --test scripts/ci/test-one-job-lifecycle.mjs
+      - name: Verify native-run acceptance readback negative cases on macOS
+        run: node --test scripts/ci/verify-native-acceptance.test.mjs
