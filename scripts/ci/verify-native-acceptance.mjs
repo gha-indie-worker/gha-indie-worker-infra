@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // Live GitHub API readback. Not a physical-host or network-isolation attestation.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { lstatSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const SHA40 = /^[a-f0-9]{40}$/;
@@ -65,7 +67,38 @@ export function validateNativeAcceptance({run, jobs, artifacts}, {repository, ru
   'Artifact run/head/repository identity mismatch');
   return {repository, runId, headSha: expectedSha, runAttempt: run.run_attempt,
     jobs: jobs.jobs.map(j => ({id:j.id, name:j.name, runnerId:j.runner_id, runnerName:j.runner_name})),
-    artifactId:artifact.id};
+    artifactId:artifact.id, artifactName:artifact.name};
+}
+export function validateDownloadedReceipt(directory, exactSha) {
+  assert(SHA40.test(exactSha), 'Expected exact commit SHA required for receipt');
+  // Files are expected at the artifact root, not behind a variable archive
+  // path. Refuse extra files, directories, symlinks and oversized contents.
+  const filenames = readdirSync(directory).sort();
+  assert(JSON.stringify(filenames) === JSON.stringify(['commit.sha', 'commit.sha256']),
+    'Receipt artifact must contain exactly commit.sha and commit.sha256');
+  const paths = filenames.map(name => join(directory, name));
+  for (const path of paths) {
+    const st = lstatSync(path);
+    assert(st.isFile() && st.size > 0 && st.size < 4096, 'Receipt file is not a small regular file');
+  }
+  const shaText = readFileSync(paths[0], 'utf8');
+  assert(shaText === `${exactSha}\n`, 'Downloaded commit receipt does not match requested SHA');
+  const digest = createHash('sha256').update(Buffer.from(shaText, 'utf8')).digest('hex');
+  const manifest = readFileSync(paths[1], 'utf8');
+  assert(manifest === `${digest}  commit.sha\n`, 'Downloaded SHA256 manifest does not match artifact bytes');
+  return {commitSha:exactSha, receiptSha256:digest};
+}
+function downloadAndVerifyArtifact({repository, runId, artifactName, expectedSha}) {
+  const directory = mkdtempSync(join(tmpdir(), 'indiebuild-gha-receipt-'));
+  try {
+    execFileSync('gh', ['run', 'download', String(runId), '-R', repository,
+      '-n', artifactName, '-D', directory], {
+      encoding:'utf8', maxBuffer:1024*1024, timeout:30000, stdio:['ignore','pipe','pipe'],
+    });
+    return validateDownloadedReceipt(directory, expectedSha);
+  } finally {
+    rmSync(directory, {recursive:true, force:true});
+  }
 }
 function github(path) {
   const output = execFileSync('gh', ['api', '-H', 'Accept: application/vnd.github+json', path], {
@@ -83,7 +116,10 @@ export function runCli(argv = process.argv.slice(2)) {
   const result = validateNativeAcceptance({
     run: github(base), jobs: github(`${base}/jobs?per_page=100`), artifacts: github(`${base}/artifacts?per_page=100`),
   }, {repository, runId:Number(runText), expectedSha});
-  process.stdout.write(JSON.stringify(result,null,2)+'\n');
+  const receipt = downloadAndVerifyArtifact({
+    repository, runId:Number(runText), artifactName:result.artifactName, expectedSha,
+  });
+  process.stdout.write(JSON.stringify({...result, downloadedReceipt:receipt},null,2)+'\n');
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { runCli(); } catch(error) { console.error(error.message); process.exitCode=1; }
