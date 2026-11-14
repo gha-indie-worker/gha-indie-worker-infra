@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateNativeAcceptance} from './verify-native-acceptance.mjs';
+import {validateNativeAcceptance, validateDownloadedReceipt} from './verify-native-acceptance.mjs';
+import {mkdtempSync, writeFileSync, rmSync, symlinkSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 
 const repository = 'ores-truffle-oreslang/oreslang-target-profiles';
 const runId = 12345678;
@@ -90,4 +94,39 @@ for (const [name,change] of [
 });
 test('malformed exact-head request cannot be accepted',()=>{
   assert.throws(()=>validateNativeAcceptance(fixture(),{...options,expectedSha:'main'}));
+});
+
+function withReceipt(mutator, testBody) {
+  const directory=mkdtempSync(join(tmpdir(),'native-acceptance-test-'));
+  try {
+    const content=expectedSha+'\n';
+    const digest=createHash('sha256').update(Buffer.from(content)).digest('hex');
+    writeFileSync(join(directory,'commit.sha'),content);
+    writeFileSync(join(directory,'commit.sha256'),digest+'  commit.sha\n');
+    if(mutator) mutator(directory);
+    testBody(directory,digest);
+  } finally { rmSync(directory,{recursive:true,force:true}); }
+}
+test('downloads must contain exactly two small regular receipt files with matching digest',()=>{
+  withReceipt(null,(directory,digest)=>{
+    assert.deepEqual(validateDownloadedReceipt(directory,expectedSha),
+      {commitSha:expectedSha,receiptSha256:digest});
+  });
+});
+for(const [name,mutate] of [
+  ['different commit SHA',d=>writeFileSync(join(d,'commit.sha'),'b'.repeat(40)+'\n')],
+  ['tampered manifest',d=>writeFileSync(join(d,'commit.sha256'),'0'.repeat(64)+'  commit.sha\n')],
+  ['absolute path in manifest',d=>writeFileSync(join(d,'commit.sha256'),'0'.repeat(64)+'  /etc/passwd\n')],
+  ['extra artifact file',d=>writeFileSync(join(d,'untrusted'),'hello')],
+  ['receipt truncated to empty',d=>writeFileSync(join(d,'commit.sha'),'')],
+  ['oversized artifact',d=>writeFileSync(join(d,'commit.sha'),'a'.repeat(4096))],
+  ['symlink instead of checksum',d=>{
+    rmSync(join(d,'commit.sha256'));
+    symlinkSync(join(d,'commit.sha'),join(d,'commit.sha256'));
+  }],
+]) test('fail closed for downloaded receipt: '+name,()=>{
+  withReceipt(mutate,d=>assert.throws(()=>validateDownloadedReceipt(d,expectedSha)));
+});
+test('downloaded receipt must match independently expected full commit SHA',()=>{
+  withReceipt(null,d=>assert.throws(()=>validateDownloadedReceipt(d,'b'.repeat(40))));
 });
