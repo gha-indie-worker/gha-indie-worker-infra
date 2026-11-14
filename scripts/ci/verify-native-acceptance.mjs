@@ -29,19 +29,29 @@ export function validateNativeAcceptance({run, jobs, artifacts}, {repository, ru
     assert(!found.has(job.name) && REQUIRED.has(job.name), 'Duplicate or unexpected job');
     found.set(job.name, job);
     assert(good(job) && pos(job.id) && pos(job.runner_id), `Job failed or lacks native IDs: ${job.name}`);
+    // A run can be re-run at the same head. Refuse old-attempt or cross-run
+    // jobs even if the name and reported conclusion happen to match.
+    assert(job.run_id === runId && job.run_attempt === run.run_attempt &&
+      job.head_sha === expectedSha, `Job run/attempt/head mismatch: ${job.name}`);
+    assert(job.run_url === `https://api.github.com/repos/${repository}/actions/runs/${runId}` &&
+      job.html_url === `${run.html_url}/job/${job.id}`, `Job URL mismatch: ${job.name}`);
     assert(job.runner_name?.startsWith('indiebuild-'), `Wrong runner name: ${job.name}`);
     assert(job.labels?.includes('indiebuild-linux-arm64'), `Wrong runner label: ${job.name}`);
     assert(Array.isArray(job.steps), 'Missing job step details');
     let prior = -1;
     for (const name of REQUIRED.get(job.name)) {
-      const idx = job.steps.findIndex(s => s.name === name);
-      assert(idx > prior && good(job.steps[idx]), `Missing/out-of-order/failed step: ${job.name} / ${name}`);
+      const matches = job.steps.map((step, idx) => ({step, idx})).filter(x => x.step?.name === name);
+      assert(matches.length === 1, `Missing or duplicate step: ${job.name} / ${name}`);
+      const {idx, step} = matches[0];
+      assert(idx > prior && good(step), `Out-of-order/failed step: ${job.name} / ${name}`);
       prior = idx;
     }
   }
   const producer = found.get('Produce immutable evidence');
   const consumer = found.get('Consume and verify artifact');
   assert(producer && consumer, 'Producer/consumer job missing');
+  assert(producer.runner_id !== consumer.runner_id &&
+    producer.runner_name !== consumer.runner_name, 'Two jobs reused one non-ephemeral runner');
   const ended = Date.parse(producer.completed_at);
   const started = Date.parse(consumer.started_at);
   assert(Number.isFinite(ended) && Number.isFinite(started) && started >= ended, 'Job dependency ordering violated');
@@ -49,7 +59,10 @@ export function validateNativeAcceptance({run, jobs, artifacts}, {repository, ru
   const artifact = artifacts.artifacts[0];
   assert(artifact.name === `indiebuild-native-acceptance-${runId}-${run.run_attempt}`, 'Artifact name or attempt mismatch');
   assert(artifact.expired === false && pos(artifact.size_in_bytes) && pos(artifact.id), 'Missing/expired/empty artifact');
-  assert(artifact.workflow_run?.id === runId, 'Artifact belongs to a different run');
+  assert(artifact.workflow_run?.id === runId &&
+    artifact.workflow_run?.head_sha === expectedSha &&
+    artifact.workflow_run?.repository_id === run.repository.id,
+  'Artifact run/head/repository identity mismatch');
   return {repository, runId, headSha: expectedSha, runAttempt: run.run_attempt,
     jobs: jobs.jobs.map(j => ({id:j.id, name:j.name, runnerId:j.runner_id, runnerName:j.runner_name})),
     artifactId:artifact.id};
