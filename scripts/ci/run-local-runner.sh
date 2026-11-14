@@ -7,7 +7,9 @@ export PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
 repo="${1:?usage: run-local-runner.sh OWNER/REPO [jobs]}"
 jobs="${2:-1}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-jq -e --arg repo "$repo" 'index($repo) != null' "$root/config/macbook-ci-repositories.json" >/dev/null \
+# A malformed/string-valued policy document must not admit substring matches.
+# Require a JSON array of string slugs with a literal, exact member match.
+jq -e --arg repo "$repo" 'type == "array" and all(.[]; type == "string") and any(.[]; . == $repo)' "$root/config/macbook-ci-repositories.json" >/dev/null \
   || { echo 'Repository is not admitted for this rollout.' >&2; exit 2; }
 [[ "$jobs" =~ ^[1-4]$ ]] || { echo 'jobs must be 1..4' >&2; exit 2; }
 [[ "$(uname -s)" == Darwin ]] || { echo 'MacBook runner broker requires macOS.' >&2; exit 2; }
