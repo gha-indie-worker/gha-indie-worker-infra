@@ -11,6 +11,7 @@ on:
       - scripts/ci/verify-native-acceptance.test.mjs
       - cloudflare/local-ci-status/config.example.yml
       - config/macbook-ci-repositories.json
+      - docs/macbook-native-acceptance.md
       - docs/evidence/macbook-*.json
   workflow_dispatch:
 permissions:
